@@ -1,16 +1,139 @@
-
-
 package sonos
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"sort"
 	"strings"
 	"time"
+
+	"github.com/ghchinoy/control/pkg/config"
+	"github.com/grandcat/zeroconf"
 )
+
+// Device represents a discovered Sonos device
+type Device struct {
+	Name string
+	IP   string
+}
+
+// Discover performs mDNS discovery to find Sonos devices
+func Discover(timeout time.Duration) ([]Device, error) {
+	resolver, err := zeroconf.NewResolver(nil)
+	if err != nil {
+		return nil, err
+	}
+
+	entries := make(chan *zeroconf.ServiceEntry)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	err = resolver.Browse(ctx, "_sonos._tcp", "local.", entries)
+	if err != nil {
+		return nil, err
+	}
+
+	var devices []Device
+	foundIPs := make(map[string]bool)
+
+	for entry := range entries {
+		var ip string
+		if len(entry.AddrIPv4) > 0 {
+			ip = entry.AddrIPv4[0].String()
+		} else if len(entry.AddrIPv6) > 0 {
+			ip = entry.AddrIPv6[0].String()
+		}
+
+		if ip == "" || foundIPs[ip] {
+			continue
+		}
+
+		// The Name in mDNS might be the serial number (e.g. RINCON_...)
+		// Let's try to get a better name from the XML description
+		name, err := GetDeviceName(ip)
+		if err != nil {
+			// Fallback to mDNS Instance name which often includes "RINCON_SERIAL@Player Name"
+			name = entry.Instance
+			if atIdx := strings.Index(name, "@"); atIdx != -1 {
+				name = name[atIdx+1:]
+			}
+		}
+
+		devices = append(devices, Device{
+			IP:   ip,
+			Name: name,
+		})
+		foundIPs[ip] = true
+	}
+
+	// Sort devices by name for a consistent UI
+	sort.Slice(devices, func(i, j int) bool {
+		return devices[i].Name < devices[j].Name
+	})
+
+	return devices, nil
+}
+
+func cacheFile() string {
+	return config.GetPath("sonos_cache.json")
+}
+
+// SaveCache persists discovered devices to a local file
+func SaveCache(devices []Device) error {
+	data, err := json.MarshalIndent(devices, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(cacheFile(), data, 0644)
+}
+
+// LoadCache retrieves previously discovered devices from the local file
+func LoadCache() ([]Device, error) {
+	data, err := os.ReadFile(cacheFile())
+	if err != nil {
+		return nil, err
+	}
+	var devices []Device
+	if err := json.Unmarshal(data, &devices); err != nil {
+		return nil, err
+	}
+	return devices, nil
+}
+
+// GetDeviceName fetches the device name from the Sonos XML description
+func GetDeviceName(ip string) (string, error) {
+	url := fmt.Sprintf("http://%s:1400/xml/device_description.xml", ip)
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	var desc struct {
+		RoomName    string `xml:"device>roomName"`
+		DisplayName string `xml:"device>displayName"`
+	}
+	err = xml.Unmarshal(data, &desc)
+	if err != nil {
+		return "", err
+	}
+	
+	if desc.RoomName != "" {
+		return desc.RoomName, nil
+	}
+	return desc.DisplayName, nil
+}
 
 // Client represents a Sonos UPnP client
 type Client struct {
@@ -149,6 +272,38 @@ func (c *Client) Stop() error {
 		"/MediaRenderer/AVTransport/Control",
 		"urn:schemas-upnp-org:service:AVTransport:1",
 		"Stop",
+		map[string]interface{}{
+			"InstanceID": 0,
+		})
+	if err != nil {
+		return err
+	}
+	body.Close()
+	return nil
+}
+
+// Next skips to the next track
+func (c *Client) Next() error {
+	body, err := c.SOAPAction(
+		"/MediaRenderer/AVTransport/Control",
+		"urn:schemas-upnp-org:service:AVTransport:1",
+		"Next",
+		map[string]interface{}{
+			"InstanceID": 0,
+		})
+	if err != nil {
+		return err
+	}
+	body.Close()
+	return nil
+}
+
+// Previous skips to the previous track
+func (c *Client) Previous() error {
+	body, err := c.SOAPAction(
+		"/MediaRenderer/AVTransport/Control",
+		"urn:schemas-upnp-org:service:AVTransport:1",
+		"Previous",
 		map[string]interface{}{
 			"InstanceID": 0,
 		})

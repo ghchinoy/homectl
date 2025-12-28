@@ -2,15 +2,111 @@ package leap
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/ghchinoy/control/pkg/config"
+	"github.com/grandcat/zeroconf"
 )
+
+var (
+	tagCounter uint64
+	leapLogger *log.Logger
+)
+
+func nextTag() string {
+	return fmt.Sprintf("%d", atomic.AddUint64(&tagCounter, 1))
+}
+
+func init() {
+	config.EnsureDir()
+	f, _ := os.OpenFile(config.GetPath("leap.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if f != nil {
+		leapLogger = log.New(f, "LEAP: ", log.LstdFlags)
+	}
+}
+
+// Bridge represents a discovered Lutron Bridge
+type Bridge struct {
+	Name string `json:"Name"`
+	IP   string `json:"IP"`
+}
+
+// Discover performs mDNS discovery to find Lutron bridges
+func Discover(timeout time.Duration) ([]Bridge, error) {
+	resolver, err := zeroconf.NewResolver(nil)
+	if err != nil {
+		return nil, err
+	}
+
+	entries := make(chan *zeroconf.ServiceEntry)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	err = resolver.Browse(ctx, "_leap._tcp", "local.", entries)
+	if err != nil {
+		return nil, err
+	}
+
+	var bridges []Bridge
+	foundIPs := make(map[string]bool)
+
+	for entry := range entries {
+		var ip string
+		if len(entry.AddrIPv4) > 0 {
+			ip = entry.AddrIPv4[0].String()
+		} else if len(entry.AddrIPv6) > 0 {
+			ip = entry.AddrIPv6[0].String()
+		}
+
+		if ip == "" || foundIPs[ip] {
+			continue
+		}
+
+		bridges = append(bridges, Bridge{
+			Name: entry.Instance,
+			IP:   ip,
+		})
+		foundIPs[ip] = true
+	}
+
+	return bridges, nil
+}
+
+func cacheFile() string {
+	return config.GetPath("lutron_cache.json")
+}
+
+// SaveCache persists discovered bridges to a local file
+func SaveCache(bridges []Bridge) error {
+	data, err := json.MarshalIndent(bridges, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(cacheFile(), data, 0644)
+}
+
+// LoadCache retrieves previously discovered bridges from the local file
+func LoadCache() ([]Bridge, error) {
+	data, err := os.ReadFile(cacheFile())
+	if err != nil {
+		return nil, err
+	}
+	var bridges []Bridge
+	if err := json.Unmarshal(data, &bridges); err != nil {
+		return nil, err
+	}
+	return bridges, nil
+}
 
 // Client represents a LEAP client connection to a Lutron Bridge
 type Client struct {
@@ -192,38 +288,48 @@ func isNetErr(err error) bool {
 
 func (c *Client) doRequest(req Message) (Message, error) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if c.conn == nil {
-		c.mu.Unlock()
 		return Message{}, fmt.Errorf("not connected")
 	}
+
+	tag := nextTag()
+	req.Header.ClientTag = tag
 	
 data, err := json.Marshal(req)
 	if err != nil {
-		c.mu.Unlock()
 		return Message{}, err
 	}
 
+	if leapLogger != nil {
+		leapLogger.Printf("-> %s\n", string(data))
+	}
 	_, err = c.conn.Write(append(data, '\n'))
 	if err != nil {
-		c.mu.Unlock()
 		return Message{}, err
 	}
-	c.mu.Unlock()
 
 	for {
 		c.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 		line, err := c.reader.ReadBytes('\n')
 		if err != nil {
+			if leapLogger != nil {
+				leapLogger.Printf("Read Error: %v\n", err)
+			}
 			return Message{}, err
 		}
 
+		if leapLogger != nil {
+			leapLogger.Printf("<- %s\n", string(line))
+		}
 		var resp Message
 		if err := json.Unmarshal(line, &resp); err != nil {
 			continue
 		}
 
-		// We filter out SubscribeResponse (background updates)
-		if resp.CommuniqueType != "SubscribeResponse" {
+		// Check if this is the response to OUR request
+		if resp.Header.ClientTag == tag {
 			return resp, nil
 		}
 	}
@@ -358,31 +464,43 @@ func (c *Client) SetLevel(zoneHref string, level float64) error {
 	return nil
 }
 
-// SetAllLevels sets the dimming level for all dimmable devices
+// SetAllLevels sets the dimming level for all dimmable devices sequentially for stability
 func (c *Client) SetAllLevels(level float64) error {
 	devices, err := c.GetDevices()
 	if err != nil {
 		return err
 	}
 
-	var wg sync.WaitGroup
 	var lastErr error
-	var errMu sync.Mutex
-
 	for _, d := range devices {
 		if len(d.LocalZones) > 0 {
-			wg.Add(1)
-			go func(href string) {
-				defer wg.Done()
-				if err := c.SetLevel(href, level); err != nil {
-					errMu.Lock()
-					lastErr = err
-					errMu.Unlock()
-				}
-		}(d.LocalZones[0].Href)
+			if err := c.SetLevel(d.LocalZones[0].Href, level); err != nil {
+				lastErr = err
+			}
+			// Small pause to allow bridge to process
+			time.Sleep(50 * time.Millisecond)
 		}
 	}
 
-	wg.Wait()
+	return lastErr
+}
+
+// SetAreaLevel sets the dimming level for all zones within a specific area sequentially
+func (c *Client) SetAreaLevel(areaHref string, level float64) error {
+	devices, err := c.GetDevices()
+	if err != nil {
+		return err
+	}
+
+	var lastErr error
+	for _, d := range devices {
+		if d.AssociatedArea.Href == areaHref && len(d.LocalZones) > 0 {
+			if err := c.SetLevel(d.LocalZones[0].Href, level); err != nil {
+				lastErr = err
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+
 	return lastErr
 }

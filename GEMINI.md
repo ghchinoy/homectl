@@ -22,9 +22,10 @@ This project is a Go-based integration for Lutron Caseta/RA2 Select systems, fea
 
 ## Architectural Principles
 
-### 1. Resilient IoT Pattern
+### 2. Resilient IoT Pattern
 - **Disconnection Handling:** IoT devices (Lutron, Sonos) frequently reset idle connections. The `leap.Client` and `sonos.Client` must implement automatic reconnection logic within their `Request` methods.
-- **Batching:** Avoid sequential polling of many resources. Use collective status endpoints (like `/zone/status`) to minimize network overhead and prevent I/O timeouts.
+- **Batching & Throttling:** Avoid high-concurrency bursts to a single IoT bridge. Sequential processing with small delays (e.g., 50ms) is significantly more stable than concurrent goroutines for bulk commands (e.g. "All Lights").
+- **ClientTag Pairing:** In asynchronous protocols like LEAP, every request must include a unique `ClientTag`. The client must loop through incoming messages and only return the response that matches the sent tag to prevent state desync.
 
 ### 2. Optimistic UI Updates
 - **Snappiness:** To hide network latency, the TUI model should update its local state **immediately** upon user input. The network command is dispatched as an asynchronous `tea.Cmd`, and the TUI only rolls back or alerts if the command fails.
@@ -42,6 +43,12 @@ This project is a Go-based integration for Lutron Caseta/RA2 Select systems, fea
 - **Batching for Performance:** Polling individual device statuses is slow and prone to timeouts. Using `/zone/status` to get all levels in a single request is significantly more efficient.
 - **JSON Structure:** LEAP commands for dimming require a specific nested structure: `{"Command": {"CommandType": "GoToLevel", ...}}`. Missing the outer `Command` wrapper results in a `400 BadRequest`.
 
+### 3. Sonos Integration & SSDP
+- **Discovery via SSDP:** Sonos devices are best discovered using SSDP (`urn:schemas-upnp-org:device:ZonePlayer:1`). Fetching the device description from `http://<ip>:1400/xml/device_description.xml` provides the `friendlyName`.
+- **UPnP/SOAP Actions:** Transport controls (Play, Pause, Next, Previous) and Rendering controls (Volume) are implemented via SOAP over HTTP on port 1400.
+- **State Sync via Refresh:** After bulk operations (like turning off all lights), always trigger a full status refresh (`refreshLights`) to ensure the TUI state matches the hardware state.
+- **Dynamic Refresh in TUI:** Implementing a `rediscover` mechanism for IoT devices allows the TUI to recover from network changes without restarting.
+
 ## Future Vision
 
 - **Multi-Device Integration:** Expand the CLI/TUI to support Sonos, LG, and GE appliances discovered on the network.
@@ -58,7 +65,8 @@ This project is a Go-based integration for Lutron Caseta/RA2 Select systems, fea
     - Always use `tlsConfig` (not `lsConfig`) for `*tls.Config` variables.
 - **Messaging:** All LEAP commands should include a `Header` and an optional `Body`.
 - **Concurrency:** The `leap.Client` uses a `sync.Mutex` to protect the connection during read/write operations.
-- **TUI Feedback:** Use a `statusMsg` pattern in Bubble Tea to provide non-blocking feedback.
+- **TUI Feedback:** Use a `statusMsg` pattern in Bubble Tea to provide non-blocking feedback. For bulk actions, return a `tea.Cmd` that performs the action and then triggers a refresh.
+- **Explicit UI Markers:** Terminals vary in rendering colors/borders. Use explicit text markers (e.g., `[ LIGHTS ]`) for critical navigation like tabs.
 - **Commits:** Use [Conventional Commits](https://www.conventionalcommits.org/).
 
 ### Golden Rules for TUI Development

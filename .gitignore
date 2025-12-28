@@ -5,7 +5,10 @@ secrets/
 
 # Binaries
 control
-bin/
+homectl
+secrets/
+.beads/bd.sock
+leap.log
 
 # Python / uv
 .venv/

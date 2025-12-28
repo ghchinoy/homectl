@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"time"
 
 	"github.com/ghchinoy/control/pkg/sonos"
 	"github.com/spf13/cobra"
@@ -18,19 +19,30 @@ var listSonosCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List discovered Sonos speakers",
 	Run: func(cmd *cobra.Command, args []string) {
-		// Hardcoded for now based on discovery, in future use mDNS
-		speakers := []struct {
-			Name string
-			IP   string
-		}{
-			{"TV Room", "192.168.4.100"},
-			{"Move 2", "192.168.4.120"},
-			{"Whole House", "192.168.4.101"},
-			{"Office", "192.168.4.99"},
+		// Load from cache first
+		speakers, _ := sonos.LoadCache()
+		if len(speakers) > 0 {
+			fmt.Printf("Loaded %d speakers from cache. Refreshing...\n", len(speakers))
+		} else {
+			fmt.Println("No cache found. Discovering Sonos speakers...")
 		}
 
-		fmt.Printf("%-15s %-15s %-10s %-15s %-30s\n", "NAME", "IP", "VOLUME", "STATUS", "NOW PLAYING")
-		fmt.Println("------------------------------------------------------------------------------------------------")
+		// Perform discovery
+		newSpeakers, err := sonos.Discover(5 * time.Second)
+		if err == nil && len(newSpeakers) > 0 {
+			speakers = newSpeakers
+			sonos.SaveCache(speakers)
+		} else if err != nil {
+			fmt.Printf("Discovery error: %v\n", err)
+		}
+
+		if len(speakers) == 0 {
+			fmt.Println("No Sonos speakers found.")
+			return
+		}
+
+		fmt.Printf("%-20s %-15s %-10s %-15s %-30s\n", "NAME", "IP", "VOLUME", "STATUS", "NOW PLAYING")
+		fmt.Println("---------------------------------------------------------------------------------------------------------")
 		for _, s := range speakers {
 			client := sonos.NewClient(s.IP)
 			vol, err := client.GetVolume()
@@ -51,7 +63,7 @@ var listSonosCmd = &cobra.Command{
 				}
 			}
 
-			fmt.Printf("%-15s %-15s %-10s %-15s %-30s\n", s.Name, s.IP, volStr, status, track)
+			fmt.Printf("%-20s %-15s %-10s %-15s %-30s\n", s.Name, s.IP, volStr, status, track)
 		}
 	},
 }
@@ -92,6 +104,32 @@ var stopSonosCmd = &cobra.Command{
 			log.Fatalf("Failed to stop: %v", err)
 		}
 		fmt.Println("Stopped.")
+	},
+}
+
+var nextSonosCmd = &cobra.Command{
+	Use:   "next [ip]",
+	Short: "Skip to the next track on a Sonos speaker",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		client := sonos.NewClient(args[0])
+		if err := client.Next(); err != nil {
+			log.Fatalf("Failed to skip next: %v", err)
+		}
+		fmt.Println("Skipped to next.")
+	},
+}
+
+var prevSonosCmd = &cobra.Command{
+	Use:   "prev [ip]",
+	Short: "Skip to the previous track on a Sonos speaker",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		client := sonos.NewClient(args[0])
+		if err := client.Previous(); err != nil {
+			log.Fatalf("Failed to skip previous: %v", err)
+		}
+		fmt.Println("Skipped to previous.")
 	},
 }
 
@@ -163,6 +201,8 @@ func init() {
 	sonosCmd.AddCommand(playSonosCmd)
 	sonosCmd.AddCommand(pauseSonosCmd)
 	sonosCmd.AddCommand(stopSonosCmd)
+	sonosCmd.AddCommand(nextSonosCmd)
+	sonosCmd.AddCommand(prevSonosCmd)
 	sonosCmd.AddCommand(nowPlayingCmd)
 	sonosCmd.AddCommand(sonosDetailsCmd)
 	sonosCmd.AddCommand(setSonosVolumeCmd)
