@@ -13,20 +13,28 @@ This project is a Go-based integration for Lutron Caseta/RA2 Select systems, fea
 ## Lessons Learned: Lutron Discovery & LEAP
 
 - **mDNS is Key:** Lutron bridges announce themselves via `_lutron._tcp` and `_leap._tcp`.
-- **LEAP Protocol:** Communication happens over TLS on port `8081`.
+- **LEAP Protocol:** Communication happens over TLS on port `8081`. 
 - **Strict TLS:** The bridge requires client-side certificates. You cannot even "ping" the LEAP protocol without a valid handshake.
 - **Pairing Flow:** Pairing requires a specific socket handshake followed by a physical button press on the bridge to generate a unique certificate/key pair for that client.
+- **Asynchronous Responses:** The bridge frequently sends unsolicited `SubscribeResponse` messages (status updates) over the same connection. The client must loop and filter incoming messages to find the specific `ReadResponse` or `CreateResponse` it is waiting for.
+
+## Application Architecture
+
+- **LEAP Client (`pkg/leap`):** Handles TLS, JSON messaging, and response filtering. It maps Lutron's hierarchical model (Areas -> Devices -> Zones).
+- **CLI (`cmd/`):** Built with Cobra. Uses a shared `getClient` helper to initialize the secure connection.
+- **TUI (`pkg/tui`):** Built with Bubble Tea. Uses a `list.Model` for navigation and sends asynchronous `tea.Cmd` messages to trigger LEAP commands.
 
 ## Coding Conventions
 
 - **Packages:** Logic is decoupled into `pkg/`.
-    - `pkg/leap`: Core protocol handling.
-- **CLI Commands:** Use Cobra for command structure.
-- **TUI:** Use Bubble Tea for interactive terminal components.
+    - `pkg/leap`: Core protocol handling and data models.
+    - `pkg/tui`: Interactive terminal views.
+- **Messaging:** All LEAP commands should include a `Header` and an optional `Body`.
+- **Concurrency:** The `leap.Client` uses a `sync.Mutex` to protect the connection during read/write operations.
+- **TUI Feedback:** Use a `statusMsg` pattern in Bubble Tea to provide non-blocking feedback to the user after network operations.
 - **Commits:** Use [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## Changelog Management
-
 To generate or update the `CHANGELOG.md` from completed tasks in `bd`, run:
 
 ```bash
