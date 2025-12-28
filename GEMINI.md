@@ -8,7 +8,7 @@ This project is a Go-based integration for Lutron Caseta/RA2 Select systems, fea
 - **Environment:**
     - **Go:** Core application logic and CLI.
     - **Python (via `uv`):** Used for auxiliary tasks like the initial pairing process.
-    - **Certs:** Certificates are required for communication and are ignored by git. See [lutron_discovery.md](./lutron_discovery.md) for pairing instructions.
+    - **Certs:** Certificates are required for communication and are ignored by git. See [NETWORK_DISCOVERY.md](./NETWORK_DISCOVERY.md) for pairing instructions.
 
 ## Application Architecture
 

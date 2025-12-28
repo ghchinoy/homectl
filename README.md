@@ -51,6 +51,6 @@ go run main.go
 ```
 
 ## Documentation
-- [Lutron Discovery Report](./lutron_discovery.md): Detailed discovery results and pairing notes.
+- [Network Discovery Report](./NETWORK_DISCOVERY.md): Comprehensive discovery methodology and device-specific results.
 - [GEMINI.md](./GEMINI.md): Lessons learned, coding conventions, and changelog workflow.
 - [AGENTS.md](./AGENTS.md): Issue tracking and developer workflow.
