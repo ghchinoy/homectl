@@ -1,3 +1,4 @@
+
 package leap
 
 import (
@@ -28,9 +29,9 @@ type Message struct {
 }
 
 type Header struct {
-	Url            string `json:"Url"`
-	StatusCode     string `json:"StatusCode,omitempty"`
-	ClientTag      string `json:"ClientTag,omitempty"`
+	Url             string `json:"Url"`
+	StatusCode      string `json:"StatusCode,omitempty"`
+	ClientTag       string `json:"ClientTag,omitempty"`
 	MessageBodyType string `json:"MessageBodyType,omitempty"`
 }
 
@@ -46,18 +47,33 @@ type AreaResponse struct {
 
 // Device represents a Lutron Device
 type Device struct {
-	Href         string   `json:"href"`
-	Name         string   `json:"Name"`
-	DeviceType   string   `json:"DeviceType"`
-	SerialNumber int      `json:"SerialNumber,omitempty"`
-	ModelNumber  string   `json:"ModelNumber,omitempty"`
+	Href           string   `json:"href"`
+	Name           string   `json:"Name"`
+	DeviceType     string   `json:"DeviceType"`
+	SerialNumber   int      `json:"SerialNumber,omitempty"`
+	ModelNumber    string   `json:"ModelNumber,omitempty"`
+	LocalZones     []Zone   `json:"LocalZones,omitempty"`
 	AssociatedArea struct {
 		Href string `json:"href"`
 	} `json:"AssociatedArea,omitempty"`
 }
 
+type Zone struct {
+	Href string `json:"href"`
+}
+
 type DeviceResponse struct {
 	Devices []Device `json:"Devices"`
+}
+
+type Command struct {
+	CommandType string `json:"CommandType"`
+	Parameter   []Parameter `json:"Parameter"`
+}
+
+type Parameter struct {
+	Type  string  `json:"Type"`
+	Value float64 `json:"Value"`
 }
 
 // NewClient creates a new LEAP client with the provided certificates
@@ -74,16 +90,25 @@ func NewClient(addr, certFile, keyFile, caFile string) (*Client, error) {
 	caCertPool := x509.NewCertPool()
 	caCertPool.AppendCertsFromPEM(caCert)
 
-	tlsConfig := &tls.Config{
-		Certificates:       []tls.Certificate{cert},
-		RootCAs:            caCertPool,
-		InsecureSkipVerify: true,
-	}
+		tlsConfig := &tls.Config{
 
-	return &Client{
-		addr:      addr,
-		tlsConfig: tlsConfig,
-	}, nil
+			Certificates:       []tls.Certificate{cert},
+
+			RootCAs:            caCertPool,
+
+			InsecureSkipVerify: true,
+
+		}
+
+	
+
+		return &Client{
+
+			addr:      addr,
+
+			tlsConfig: tlsConfig,
+
+		}, nil
 }
 
 // Connect opens the TLS connection to the bridge
@@ -105,17 +130,10 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// Request sends a JSON request and waits for the specific ReadResponse
-func (c *Client) Request(url string) (Message, error) {
+// Request sends a JSON request and waits for the specific ReadResponse or CreateResponse
+func (c *Client) Request(req Message) (Message, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
-	req := Message{
-		CommuniqueType: "ReadRequest",
-		Header: Header{
-			Url: url,
-		},
-	}
 
 	data, err := json.Marshal(req)
 	if err != nil {
@@ -127,7 +145,6 @@ func (c *Client) Request(url string) (Message, error) {
 		return Message{}, err
 	}
 
-	// We might get SubscribeResponses first, so we loop until we get our ReadResponse
 	for {
 		c.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 		line, err := c.reader.ReadBytes('\n')
@@ -140,7 +157,8 @@ func (c *Client) Request(url string) (Message, error) {
 			continue
 		}
 
-		if resp.CommuniqueType == "ReadResponse" && resp.Header.Url == url {
+		// Handle responses for the requested URL
+		if resp.Header.Url == req.Header.Url {
 			return resp, nil
 		}
 	}
@@ -148,7 +166,13 @@ func (c *Client) Request(url string) (Message, error) {
 
 // GetAreas retrieves all areas
 func (c *Client) GetAreas() ([]Area, error) {
-	resp, err := c.Request("/area")
+	req := Message{
+		CommuniqueType: "ReadRequest",
+		Header: Header{
+			Url: "/area",
+		},
+	}
+	resp, err := c.Request(req)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +185,13 @@ func (c *Client) GetAreas() ([]Area, error) {
 
 // GetDevices retrieves all devices
 func (c *Client) GetDevices() ([]Device, error) {
-	resp, err := c.Request("/device")
+	req := Message{
+		CommuniqueType: "ReadRequest",
+		Header: Header{
+			Url: "/device",
+		},
+	}
+	resp, err := c.Request(req)
 	if err != nil {
 		return nil, err
 	}
@@ -170,4 +200,27 @@ func (c *Client) GetDevices() ([]Device, error) {
 		return nil, err
 	}
 	return body.Devices, nil
+}
+
+// SetLevel sets the dimming level for a zone (0-100)
+func (c *Client) SetLevel(zoneHref string, level float64) error {
+	url := fmt.Sprintf("%s/commandprocessor", zoneHref)
+	cmd := Command{
+		CommandType: "GoToLevel",
+		Parameter: []Parameter{
+			{Type: "Level", Value: level},
+		},
+	}
+	
+	body, _ := json.Marshal(cmd)
+	req := Message{
+		CommuniqueType: "CreateRequest",
+		Header: Header{
+			Url: url,
+		},
+		Body: body,
+	}
+	
+	_, err := c.Request(req)
+	return err
 }
