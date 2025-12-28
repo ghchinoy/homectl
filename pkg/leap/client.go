@@ -1,4 +1,3 @@
-
 package leap
 
 import (
@@ -67,11 +66,16 @@ type DeviceResponse struct {
 }
 
 type ZoneStatus struct {
+	Href  string  `json:"href"`
 	Level float64 `json:"Level"`
+	Zone  struct {
+		Href string `json:"href"`
+	} `json:"Zone"`
 }
 
 type ZoneStatusResponse struct {
-	ZoneStatus ZoneStatus `json:"ZoneStatus"`
+	ZoneStatus   *ZoneStatus  `json:"ZoneStatus,omitempty"`
+	ZoneStatuses []ZoneStatus `json:"ZoneStatuses,omitempty"`
 }
 
 // CommandBody is the outer wrapper for commands
@@ -161,7 +165,7 @@ func (c *Client) Request(req Message) (Message, error) {
 			continue
 		}
 
-		// We filter out SubscribeResponse (background updates)
+		// We filter out SubscribeResponse (background updates) unless we explicitly want them
 		if resp.CommuniqueType != "SubscribeResponse" {
 			return resp, nil
 		}
@@ -206,6 +210,25 @@ func (c *Client) GetDevices() ([]Device, error) {
 	return body.Devices, nil
 }
 
+// GetAllZoneStatuses retrieves status for all zones in one call
+func (c *Client) GetAllZoneStatuses() ([]ZoneStatus, error) {
+	req := Message{
+		CommuniqueType: "ReadRequest",
+		Header: Header{
+			Url: "/zone/status",
+		},
+	}
+	resp, err := c.Request(req)
+	if err != nil {
+		return nil, err
+	}
+	var body ZoneStatusResponse
+	if err := json.Unmarshal(resp.Body, &body); err != nil {
+		return nil, err
+	}
+	return body.ZoneStatuses, nil
+}
+
 // GetZoneStatus retrieves the status for a specific zone
 func (c *Client) GetZoneStatus(zoneHref string) (ZoneStatus, error) {
 	req := Message{
@@ -222,7 +245,10 @@ func (c *Client) GetZoneStatus(zoneHref string) (ZoneStatus, error) {
 	if err := json.Unmarshal(resp.Body, &body); err != nil {
 		return ZoneStatus{}, err
 	}
-	return body.ZoneStatus, nil
+	if body.ZoneStatus == nil {
+		return ZoneStatus{}, fmt.Errorf("no zone status in response")
+	}
+	return *body.ZoneStatus, nil
 }
 
 // SetLevel sets the dimming level for a zone (0-100)

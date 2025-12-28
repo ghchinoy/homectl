@@ -1,3 +1,5 @@
+
+
 package tui
 
 import (
@@ -72,7 +74,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		
 		h, v := docStyle.GetFrameSize()
 		// Allocate 60% width to list, 40% to details
 		m.list.SetSize(int(float64(msg.Width)*0.6)-h, msg.Height-v-4)
