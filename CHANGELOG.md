@@ -1,4 +1,7 @@
 ## 2025-12-28
+- Refactor TUI for multi-mode navigation (control-j6c)
+- Add 'sonos details' command (control-4kt)
+- Implement Sonos 'Now Playing' metadata (control-9ne)
 - Add Sonos CLI commands (control-xy1)
 - Implement core Sonos UPnP client (control-ufd)
 - Implement split-screen detail view in TUI (control-1cg)
