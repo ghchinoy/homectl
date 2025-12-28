@@ -1,4 +1,13 @@
 ## 2025-12-28
+- Show 'Next Track' in TUI speaker details (control-f1l.16)
+- Implement robust XML parsing for Sonos LastChange events (control-f1l.15)
+- Expand GENA listener to include track metadata (control-f1l.14)
+- Implement atomic item merging in TUI (control-f1l.13)
+- Implement Sonos event subscriptions (control-f1l.12)
+- Implement UPnP GENA event listener (control-f1l.11)
+- Increase TUI volume/dimming granularity (control-f3o)
+- Fix Sonos volume flicker/reset in TUI refresh (control-9os)
+- Implement unified Go-native discovery engine (control-f1l.4)
 - Reorganize CLI: move list/set under lutron command (control-14s)
 - Enhance Sonos GROUPS view with group names (control-f1l.7)
 - Implement Sonos grouping support (control-f1l.6)

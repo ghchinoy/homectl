@@ -15,8 +15,40 @@ import (
 	"time"
 
 	"github.com/ghchinoy/control/pkg/config"
+	"github.com/ghchinoy/control/pkg/discovery"
 	"github.com/grandcat/zeroconf"
 )
+
+// DiscoveryProvider implements discovery.Provider for Lutron
+type DiscoveryProvider struct{}
+
+func (p *DiscoveryProvider) Name() string { return "lutron" }
+
+func (p *DiscoveryProvider) Discover(ctx context.Context) ([]discovery.Device, error) {
+	deadline, ok := ctx.Deadline()
+	timeout := 5 * time.Second
+	if ok {
+		timeout = time.Until(deadline)
+	}
+
+	bridges, err := Discover(timeout)
+	if err != nil {
+		return nil, err
+	}
+
+	var devices []discovery.Device
+	for _, b := range bridges {
+		devices = append(devices, discovery.Device{
+			ID:       b.Name, // Using name as ID for Lutron bridge discovery for now
+			Name:     b.Name,
+			IP:       b.IP,
+			Provider: "lutron",
+			Type:     "Bridge",
+		})
+	}
+	return devices, nil
+}
+
 
 var (
 	tagCounter uint64

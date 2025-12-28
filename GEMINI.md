@@ -25,7 +25,10 @@ This project is a Go-based integration for Lutron Caseta/RA2 Select systems and 
 - **Standard Paths:** Use `os.UserConfigDir()` to store all persistent state. Never hardcode paths to `secrets/` or the project root for runtime data.
 - **pkg/config:** Always use `config.GetPath("filename")` to ensure consistency across the CLI, TUI, and background services.
 
-### 2. Resilient IoT Pattern
+### 2. Command Grouping
+- **Logical Domains:** CLI commands must be grouped by domain (e.g., `lutron`, `sonos`) rather than attached directly to the root, ensuring a scalable and organized interface.
+
+### 3. Resilient IoT Pattern
 - **Disconnection Handling:** IoT devices frequently reset idle connections. The clients must implement automatic reconnection logic.
 - **Batching & Throttling:** Avoid high-concurrency bursts to a single bridge. Sequential processing with small delays (e.g., 50ms) is significantly more stable than concurrent goroutines for bulk commands.
 - **ClientTag Pairing:** In asynchronous protocols like LEAP, every request must include a unique `ClientTag`. The client must loop through incoming messages and only return the response that matches the sent tag to prevent state desync.
@@ -36,6 +39,11 @@ This project is a Go-based integration for Lutron Caseta/RA2 Select systems and 
 - **UPnP/SOAP Actions:** Transport controls and metadata retrieval are implemented via SOAP over HTTP on port 1400.
 - **Metadata Extraction:** Sonos often embeds escaped XML within XML (DIDL-Lite). Use robust string searching or specialized parsers to extract fields like `streamContent`, `albumArtURI`, and `NextURIMetaData`.
 - **State Sync via Refresh:** After bulk operations, always trigger a full status refresh to ensure the UI state accurately reflects the hardware state.
+
+### 4. Actionable Discovery
+- **Discovery vs. Audit:** homectl discovery is not a network audit tool (like nmap). It is an "Actionable Discovery" engine. It should only display devices for which a `Provider` exists that can either control or monitor the device.
+- **Identity Mapping:** The primary role of a Discovery Provider is to map raw network identifiers (IPs, MACs, Serial Numbers) to actionable metadata (Room Names, Capabilities, Control URLs).
+- **Unix Tool Synergy:** Use standard Unix tools (`avahi-browse`, `nmap`) for initial protocol reconnaissance and debugging. homectl leverages the same underlying protocols (mDNS, SSDP) but adds a layer of smart-home context.
 
 ## Future Vision
 ...

@@ -82,6 +82,7 @@ type model struct {
 	areasList  list.Model
 	groupsList list.Model
 	leapClient *leap.Client
+	sonosListener *sonos.GENAListener
 	err        error
 	status     string
 	progress   progress.Model
@@ -204,9 +205,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "+", "=":
-			cmds = append(cmds, m.adjustLevel(10))
+			cmds = append(cmds, m.adjustLevel(1))
 		case "-", "_":
-			cmds = append(cmds, m.adjustLevel(-10))
+			cmds = append(cmds, m.adjustLevel(-1))
 		case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 			level := float64((msg.String()[0] - '0') * 10)
 			cmds = append(cmds, m.setLevel(level))
@@ -290,7 +291,57 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case rediscoverMusicMsg:
+		// Merge with existing items to preserve volume and metadata
+		existingItems := m.musicList.Items()
+		metadata := make(map[string]item)
+		for _, itm := range existingItems {
+			i := itm.(item)
+			if i.ip != "" {
+				metadata[i.ip] = i
+			}
+		}
+
+		for idx, itm := range msg {
+			i := itm.(item)
+			if old, ok := metadata[i.ip]; ok {
+				// Preserve existing state not provided by discovery
+				i.level = old.level
+				i.status = old.status
+				i.trackTitle = old.trackTitle
+				i.artist = old.artist
+				i.album = old.album
+				i.stream = old.stream
+				i.format = old.format
+				i.nextTrack = old.nextTrack
+				i.queueLen = old.queueLen
+				msg[idx] = i
+			}
+		}
 		m.musicList.SetItems(msg)
+	case sonos.EventMsg:
+		// Handle real-time update from Sonos
+		for idx, itm := range m.musicList.Items() {
+			i := itm.(item)
+			if i.ip == msg.IP {
+				if msg.Volume >= 0 {
+					i.level = float64(msg.Volume)
+				}
+				if msg.Status != "" {
+					i.status = msg.Status
+				}
+				if msg.Metadata.Title != "" {
+					i.trackTitle = msg.Metadata.Title
+					i.artist = msg.Metadata.Artist
+					i.album = msg.Metadata.Album
+					i.stream = msg.Metadata.StreamContent
+					i.format = msg.Metadata.AudioFormat
+				}
+				if msg.NextMetadata.Title != "" {
+					i.nextTrack = fmt.Sprintf("%s by %s", msg.NextMetadata.Title, msg.NextMetadata.Artist)
+				}
+				m.musicList.SetItem(idx, i)
+			}
+		}
 	case refreshGroupsMsg:
 		m.groupsList.SetItems(msg)
 	}
@@ -396,12 +447,12 @@ func (m model) refreshGroups() tea.Cmd {
 		for _, g := range state.Groups {
 			members := ""
 			groupName := ""
-			for _, m := range g.Members {
-				if m.UUID == g.Coordinator {
-					groupName = m.RoomName
+			for _, mm := range g.Members {
+				if mm.UUID == g.Coordinator {
+					groupName = mm.RoomName
 				}
 				if members != "" { members += ", " }
-				members += m.RoomName
+				members += mm.RoomName
 			}
 			
 			if len(g.Members) > 1 {
@@ -422,6 +473,15 @@ func (m model) refreshGroups() tea.Cmd {
 type rediscoverMusicMsg []list.Item
 
 func (m model) rediscoverMusic() tea.Cmd {
+	// Capture current volumes to prevent reset
+	volumes := make(map[string]float64)
+	for _, itm := range m.musicList.Items() {
+		i := itm.(item)
+		if i.ip != "" {
+			volumes[i.ip] = i.level
+		}
+	}
+
 	return func() tea.Msg {
 		var musicItems []list.Item
 		speakers, _ := sonos.Discover(5 * time.Second)
@@ -431,11 +491,18 @@ func (m model) rediscoverMusic() tea.Cmd {
 		// Load potentially merged cache
 		speakers, _ = sonos.LoadCache()
 		for _, s := range speakers {
+			level := 0.0
+			if v, ok := volumes[s.IP]; ok {
+				level = v
+			}
 			musicItems = append(musicItems, item{
-				title:    s.Name,
-				ip:       s.IP,
-				isSonos:  true,
-				rinconID: s.RinconID,
+				title:     s.Name,
+				ip:        s.IP,
+				isSonos:   true,
+				rinconID:  s.RinconID,
+				modelName: s.ModelName,
+				modelNum:  s.ModelNumber,
+				level:     level,
 			})
 		}
 		return rediscoverMusicMsg(musicItems)
@@ -690,6 +757,11 @@ func (m model) View() string {
 	if m.status != "" {
 		footer += "\n" + statusStyle.Render(m.status)
 	}
+	
+	if m.mode == modeMusic && m.sonosListener != nil {
+		footer += fmt.Sprintf("\nEvent Callback: %s", m.sonosListener.GetLocalIP())
+		footer += fmt.Sprintf("\nLog Path: %s", config.GetPath("sonos_events.log"))
+	}
 
 	controls := "1-9 (Level), 0 (Off), +/- (Adjust), Tab (Switch Mode), r (Refresh), q (Quit)"
 	if m.mode == modeMusic {
@@ -821,14 +893,51 @@ func Start(leapClient *leap.Client) error {
 	m.groupsList.SetShowTitle(true)
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
+
+	if f, _ := os.OpenFile(config.GetPath("sonos_events.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666); f != nil {
+		fmt.Fprintf(f, "--- homectl started at %s ---\n", time.Now().Format(time.RFC3339))
+		f.Close()
+	}
+
+	listener := &sonos.GENAListener{
+		Handler: func(event sonos.EventMsg) {
+			p.Send(event)
+		},
+	}
+	callbackURL, _ := listener.Start()
+	m.sonosListener = listener
+
+	go func() {
+		for _, itm := range musicItems {
+			i := itm.(item)
+			client := sonos.NewClient(i.ip)
+			sid1, err1 := client.Subscribe("/MediaRenderer/AVTransport/Event", callbackURL, 300)
+			sid2, err2 := client.Subscribe("/MediaRenderer/RenderingControl/Event", callbackURL, 300)
+			if err1 == nil && err2 == nil {
+				if f, _ := os.OpenFile(config.GetPath("sonos_events.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666); f != nil {
+					fmt.Fprintf(f, "Subscribed %s: AV=%s, RC=%s\n", i.title, sid1, sid2)
+					f.Close()
+				}
+			}
+		}
+	}()
+
 	go func() {
 		speakers, _ := sonos.Discover(5 * time.Second)
 		if len(speakers) > 0 {
 			sonos.SaveCache(speakers)
 			var items []list.Item
-			// Load potentially merged cache
 			merged, _ := sonos.LoadCache()
 			for _, s := range merged {
+				client := sonos.NewClient(s.IP)
+				sid1, err1 := client.Subscribe("/MediaRenderer/AVTransport/Event", callbackURL, 300)
+				sid2, err2 := client.Subscribe("/MediaRenderer/RenderingControl/Event", callbackURL, 300)
+				if err1 == nil && err2 == nil {
+					if f, _ := os.OpenFile(config.GetPath("sonos_events.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666); f != nil {
+						fmt.Fprintf(f, "Subscribed (BG) %s: AV=%s, RC=%s\n", s.Name, sid1, sid2)
+						f.Close()
+					}
+				}
 				items = append(items, item{
 					title:     s.Name,
 					ip:        s.IP,

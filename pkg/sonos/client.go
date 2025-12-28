@@ -14,8 +14,43 @@ import (
 	"time"
 
 	"github.com/ghchinoy/control/pkg/config"
+	"github.com/ghchinoy/control/pkg/discovery"
 	"github.com/grandcat/zeroconf"
 )
+
+// DiscoveryProvider implements discovery.Provider for Sonos
+type DiscoveryProvider struct{}
+
+func (p *DiscoveryProvider) Name() string { return "sonos" }
+
+func (p *DiscoveryProvider) Discover(ctx context.Context) ([]discovery.Device, error) {
+	// Use existing Discover but convert to discovery.Device
+	// We need to pass the timeout from context
+	deadline, ok := ctx.Deadline()
+	timeout := 5 * time.Second
+	if ok {
+		timeout = time.Until(deadline)
+	}
+
+	sonosDevices, err := Discover(timeout)
+	if err != nil {
+		return nil, err
+	}
+
+	var devices []discovery.Device
+	for _, s := range sonosDevices {
+		devices = append(devices, discovery.Device{
+			ID:       s.RinconID,
+			Name:     s.Name,
+			IP:       s.IP,
+			Provider: "sonos",
+			Type:     "Speaker",
+			Model:    fmt.Sprintf("%s (%s)", s.ModelName, s.ModelNumber),
+		})
+	}
+	return devices, nil
+}
+
 
 // Device represents a discovered Sonos device
 type Device struct {
@@ -487,6 +522,32 @@ type ZoneGroupMember struct {
 
 type ZoneGroupState struct {
 	Groups []ZoneGroup `xml:"ZoneGroups>ZoneGroup"`
+}
+
+// Subscribe registers a callback URL for GENA events from a specific service
+func (c *Client) Subscribe(serviceURL, callbackURL string, timeout int) (string, error) {
+	url := fmt.Sprintf("http://%s:1400%s", c.ip, serviceURL)
+	
+	req, err := http.NewRequest("SUBSCRIBE", url, nil)
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("CALLBACK", fmt.Sprintf("<%s>", callbackURL))
+	req.Header.Set("NT", "upnp:event")
+	req.Header.Set("TIMEOUT", fmt.Sprintf("Second-%d", timeout))
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("subscribe error: %d", resp.StatusCode)
+	}
+
+	return resp.Header.Get("SID"), nil
 }
 
 func (c *Client) GetZoneGroupAttributes() (string, error) {
