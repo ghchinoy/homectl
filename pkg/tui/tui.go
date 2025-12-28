@@ -223,7 +223,7 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 			BorderForeground(lipgloss.Color("205"))
 	}
 
-	fmt.Fprintf(w, style.Render(str))
+	fmt.Fprint(w, style.Render(str))
 }
 
 func Start(client *leap.Client) error {
