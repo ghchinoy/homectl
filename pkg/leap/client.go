@@ -1,4 +1,3 @@
-
 package leap
 
 import (
@@ -9,16 +8,16 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 )
 
 // Client represents a LEAP client connection to a Lutron Bridge
 type Client struct {
-	addr       string
-	lsConfig  *tls.Config
-	conn       *tls.Conn
-	reader     *bufio.Reader
-	mu         sync.Mutex
-	tagCounter int
+	addr      string
+	tlsConfig *tls.Config
+	conn      *tls.Conn
+	reader    *bufio.Reader
+	mu        sync.Mutex
 }
 
 // Message represents a basic LEAP message structure
@@ -29,9 +28,36 @@ type Message struct {
 }
 
 type Header struct {
-	Url        string `json:"Url"`
-	StatusCode string `json:"StatusCode,omitempty"`
-	ClientTag  string `json:"ClientTag,omitempty"`
+	Url            string `json:"Url"`
+	StatusCode     string `json:"StatusCode,omitempty"`
+	ClientTag      string `json:"ClientTag,omitempty"`
+	MessageBodyType string `json:"MessageBodyType,omitempty"`
+}
+
+// Area represents a Lutron Area
+type Area struct {
+	Href string `json:"href"`
+	Name string `json:"Name"`
+}
+
+type AreaResponse struct {
+	Areas []Area `json:"Areas"`
+}
+
+// Device represents a Lutron Device
+type Device struct {
+	Href         string   `json:"href"`
+	Name         string   `json:"Name"`
+	DeviceType   string   `json:"DeviceType"`
+	SerialNumber int      `json:"SerialNumber,omitempty"`
+	ModelNumber  string   `json:"ModelNumber,omitempty"`
+	AssociatedArea struct {
+		Href string `json:"href"`
+	} `json:"AssociatedArea,omitempty"`
+}
+
+type DeviceResponse struct {
+	Devices []Device `json:"Devices"`
 }
 
 // NewClient creates a new LEAP client with the provided certificates
@@ -48,7 +74,7 @@ func NewClient(addr, certFile, keyFile, caFile string) (*Client, error) {
 	caCertPool := x509.NewCertPool()
 	caCertPool.AppendCertsFromPEM(caCert)
 
-	lsConfig := &tls.Config{
+	tlsConfig := &tls.Config{
 		Certificates:       []tls.Certificate{cert},
 		RootCAs:            caCertPool,
 		InsecureSkipVerify: true,
@@ -56,9 +82,8 @@ func NewClient(addr, certFile, keyFile, caFile string) (*Client, error) {
 
 	return &Client{
 		addr:      addr,
-		lsConfig: tlsConfig,
-	},
-	nil
+		tlsConfig: tlsConfig,
+	}, nil
 }
 
 // Connect opens the TLS connection to the bridge
@@ -80,10 +105,17 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// RawRequest sends a JSON request and waits for a single line response
-func (c *Client) RawRequest(req Message) (Message, error) {
+// Request sends a JSON request and waits for the specific ReadResponse
+func (c *Client) Request(url string) (Message, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	req := Message{
+		CommuniqueType: "ReadRequest",
+		Header: Header{
+			Url: url,
+		},
+	}
 
 	data, err := json.Marshal(req)
 	if err != nil {
@@ -95,23 +127,47 @@ func (c *Client) RawRequest(req Message) (Message, error) {
 		return Message{}, err
 	}
 
-	line, err := c.reader.ReadBytes('\n')
-	if err != nil {
-		return Message{}, err
-	}
+	// We might get SubscribeResponses first, so we loop until we get our ReadResponse
+	for {
+		c.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		line, err := c.reader.ReadBytes('\n')
+		if err != nil {
+			return Message{}, err
+		}
 
-	var resp Message
-	err = json.Unmarshal(line, &resp)
-	return resp, err
+		var resp Message
+		if err := json.Unmarshal(line, &resp); err != nil {
+			continue
+		}
+
+		if resp.CommuniqueType == "ReadResponse" && resp.Header.Url == url {
+			return resp, nil
+		}
+	}
 }
 
-// Read sends a ReadRequest to the specified URL
-func (c *Client) Read(url string) (Message, error) {
-	req := Message{
-		CommuniqueType: "ReadRequest",
-		Header: Header{
-			Url: url,
-		},
+// GetAreas retrieves all areas
+func (c *Client) GetAreas() ([]Area, error) {
+	resp, err := c.Request("/area")
+	if err != nil {
+		return nil, err
 	}
-	return c.RawRequest(req)
+	var body AreaResponse
+	if err := json.Unmarshal(resp.Body, &body); err != nil {
+		return nil, err
+	}
+	return body.Areas, nil
+}
+
+// GetDevices retrieves all devices
+func (c *Client) GetDevices() ([]Device, error) {
+	resp, err := c.Request("/device")
+	if err != nil {
+		return nil, err
+	}
+	var body DeviceResponse
+	if err := json.Unmarshal(resp.Body, &body); err != nil {
+		return nil, err
+	}
+	return body.Devices, nil
 }
