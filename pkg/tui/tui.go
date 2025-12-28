@@ -1,5 +1,3 @@
-
-
 package tui
 
 import (
@@ -8,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/progress"
-	ea "github.com/charmbracelet/bubbletea"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/ghchinoy/control/pkg/leap"
 	"github.com/ghchinoy/control/pkg/sonos"
@@ -27,14 +25,14 @@ var (
 	helpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Margin(1, 0)
 	detailStyle = lipgloss.NewStyle().
 		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("241")),
+		BorderForeground(lipgloss.Color("241")).
 		Padding(1, 2).
 		MarginLeft(2)
 	
-	act iveTabStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("205")),
+	activeTabStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("205")).
 		Border(lipgloss.NormalBorder(), false, false, true, false).
-		BorderForeground(lipgloss.Color("205")),
+		BorderForeground(lipgloss.Color("205")).
 		Padding(0, 1)
 	inactiveTabStyle = lipgloss.NewStyle().
 		Padding(0, 1)
@@ -186,10 +184,10 @@ func (m model) setLevel(level float64) tea.Cmd {
 	var itm list.Item
 	
 	if m.mode == modeLights {
-		act iveIdx = m.lightsList.Index()
+		activeIdx = m.lightsList.Index()
 		itm = m.lightsList.SelectedItem()
 	} else {
-		act iveIdx = m.musicList.Index()
+		activeIdx = m.musicList.Index()
 		itm = m.musicList.SelectedItem()
 	}
 
