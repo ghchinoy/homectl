@@ -5,7 +5,6 @@ import (
 	"log"
 	"sync"
 
-	"github.com/ghchinoy/control/pkg/leap"
 	"github.com/spf13/cobra"
 )
 
