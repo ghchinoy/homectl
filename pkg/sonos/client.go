@@ -19,8 +19,9 @@ import (
 
 // Device represents a discovered Sonos device
 type Device struct {
-	Name string
-	IP   string
+	Name     string `json:"Name"`
+	IP       string `json:"IP"`
+	RinconID string `json:"RinconID"`
 }
 
 // Discover performs mDNS discovery to find Sonos devices
@@ -56,7 +57,7 @@ func Discover(timeout time.Duration) ([]Device, error) {
 
 		// The Name in mDNS might be the serial number (e.g. RINCON_...)
 		// Let's try to get a better name from the XML description
-		name, err := GetDeviceName(ip)
+		name, rincon, err := GetDeviceName(ip)
 		if err != nil {
 			// Fallback to mDNS Instance name which often includes "RINCON_SERIAL@Player Name"
 			name = entry.Instance
@@ -66,8 +67,9 @@ func Discover(timeout time.Duration) ([]Device, error) {
 		}
 
 		devices = append(devices, Device{
-			IP:   ip,
-			Name: name,
+			IP:       ip,
+			Name:     name,
+			RinconID: rincon,
 		})
 		foundIPs[ip] = true
 	}
@@ -106,33 +108,39 @@ func LoadCache() ([]Device, error) {
 	return devices, nil
 }
 
-// GetDeviceName fetches the device name from the Sonos XML description
-func GetDeviceName(ip string) (string, error) {
+// GetDeviceName fetches the device name and Rincon ID (UDN) from the Sonos XML description
+func GetDeviceName(ip string) (string, string, error) {
 	url := fmt.Sprintf("http://%s:1400/xml/device_description.xml", ip)
 	resp, err := http.Get(url)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer resp.Body.Close()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	var desc struct {
 		RoomName    string `xml:"device>roomName"`
 		DisplayName string `xml:"device>displayName"`
+		UDN         string `xml:"device>UDN"`
 	}
 	err = xml.Unmarshal(data, &desc)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	
-	if desc.RoomName != "" {
-		return desc.RoomName, nil
+	rincon := desc.UDN
+	if strings.HasPrefix(rincon, "uuid:") {
+		rincon = rincon[5:]
 	}
-	return desc.DisplayName, nil
+
+	if desc.RoomName != "" {
+		return desc.RoomName, rincon, nil
+	}
+	return desc.DisplayName, rincon, nil
 }
 
 // Client represents a Sonos UPnP client
@@ -315,9 +323,9 @@ func (c *Client) Previous() error {
 }
 
 type TransportInfo struct {
-	CurrentTransportState string
+	CurrentTransportState  string
 	CurrentTransportStatus string
-	CurrentSpeed string
+	CurrentSpeed           string
 }
 
 func (c *Client) GetTransportInfo() (TransportInfo, error) {
@@ -356,9 +364,45 @@ type PositionInfo struct {
 }
 
 type TrackMetadata struct {
-	Title  string `xml:"title"`
-	Artist string `xml:"creator"`
-	Album  string `xml:"album"`
+	Title         string `xml:"title"`
+	Artist        string `xml:"creator"`
+	Album         string `xml:"album"`
+	StreamContent string `xml:"streamContent"`
+	AudioFormat   string `xml:"res"` // ProtocolInfo attribute
+	AlbumArtURI   string `xml:"albumArtURI"`
+}
+
+type MediaInfo struct {
+	NrTracks        int
+	CurrentURI      string
+	NextURIMetaData string
+}
+
+func (c *Client) GetMediaInfo() (MediaInfo, error) {
+	body, err := c.SOAPAction(
+		"/MediaRenderer/AVTransport/Control",
+		"urn:schemas-upnp-org:service:AVTransport:1",
+		"GetMediaInfo",
+		map[string]interface{}{
+			"InstanceID": 0,
+		})
+	if err != nil {
+		return MediaInfo{}, err
+	}
+	defer body.Close()
+
+	data, _ := io.ReadAll(body)
+	var resp struct {
+		NrTracks        int    `xml:"Body>GetMediaInfoResponse>NrTracks"`
+		CurrentURI      string `xml:"Body>GetMediaInfoResponse>CurrentURI"`
+		NextURIMetaData string `xml:"Body>GetMediaInfoResponse>NextURIMetaData"`
+	}
+	xml.Unmarshal(data, &resp)
+	return MediaInfo{
+		NrTracks:        resp.NrTracks,
+		CurrentURI:      resp.CurrentURI,
+		NextURIMetaData: resp.NextURIMetaData,
+	}, nil
 }
 
 func (c *Client) GetPositionInfo() (PositionInfo, error) {
@@ -392,37 +436,46 @@ func (c *Client) GetPositionInfo() (PositionInfo, error) {
 	}, nil
 }
 
-// ParseTrackMetadata extracts title, artist, and album from DIDL-Lite XML
+// ParseTrackMetadata extracts title, artist, album, and more from DIDL-Lite XML
 func (c *Client) ParseTrackMetadata(xmlStr string) (TrackMetadata, error) {
 	if xmlStr == "" || xmlStr == "NOT_IMPLEMENTED" {
 		return TrackMetadata{}, nil
 	}
 
-	// Sonos embeds XML in XML, often with escaped characters or namespaces
-	// We use a simplified approach to find the tags we need
 	var meta TrackMetadata
 	
-	// Helper to find content between tags
 	findTag := func(s, tag string) string {
 		start := strings.Index(s, "<"+tag+">")
 		if start == -1 {
-			// Try with namespace
 			start = strings.Index(s, ":"+tag+">")
 			if start == -1 { return "" }
 			start += len(tag) + 2
 		} else {
 			start += len(tag) + 2
 		}
-		
 		end := strings.Index(s[start:], "</")
 		if end == -1 { return "" }
-		
 		return s[start : start+end]
 	}
 
 	meta.Title = findTag(xmlStr, "title")
 	meta.Artist = findTag(xmlStr, "creator")
 	meta.Album = findTag(xmlStr, "album")
+	meta.StreamContent = findTag(xmlStr, "streamContent")
+	meta.AlbumArtURI = findTag(xmlStr, "albumArtURI")
+
+	// Audio Format is in the protocolInfo attribute of the <res> tag
+	resIdx := strings.Index(xmlStr, "<res")
+	if resIdx != -1 {
+		protoIdx := strings.Index(xmlStr[resIdx:], "protocolInfo=\"")
+		if protoIdx != -1 {
+			protoIdx += resIdx + 14
+			endProto := strings.Index(xmlStr[protoIdx:], "\"")
+			if endProto != -1 {
+				meta.AudioFormat = xmlStr[protoIdx : protoIdx+endProto]
+			}
+		}
+	}
 
 	return meta, nil
 }

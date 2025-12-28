@@ -165,16 +165,28 @@ var sonosDetailsCmd = &cobra.Command{
 		transport, _ := client.GetTransportInfo()
 		vol, _ := client.GetVolume()
 		pos, _ := client.GetPositionInfo()
+		media, _ := client.GetMediaInfo()
 		meta, _ := client.ParseTrackMetadata(pos.TrackMetaData)
+		nextMeta, _ := client.ParseTrackMetadata(media.NextURIMetaData)
 
 		fmt.Printf("IP:       %s\n", args[0])
 		fmt.Printf("Status:   %s\n", transport.CurrentTransportState)
 		fmt.Printf("Volume:   %d%%\n", vol)
+		fmt.Printf("Queue:    %d tracks\n", media.NrTracks)
 		fmt.Println("---------------------------------")
 		fmt.Printf("Track:    %s\n", meta.Title)
 		fmt.Printf("Artist:   %s\n", meta.Artist)
 		fmt.Printf("Album:    %s\n", meta.Album)
+		if meta.StreamContent != "" {
+			fmt.Printf("Stream:   %s\n", meta.StreamContent)
+		}
+		if meta.AudioFormat != "" {
+			fmt.Printf("Format:   %s\n", meta.AudioFormat)
+		}
 		fmt.Printf("Duration: %s (%s)\n", pos.TrackDuration, pos.RelTime)
+		if nextMeta.Title != "" {
+			fmt.Printf("Next:     %s by %s\n", nextMeta.Title, nextMeta.Artist)
+		}
 	},
 }
 

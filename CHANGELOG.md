@@ -1,4 +1,5 @@
 ## 2025-12-28
+- Enumerate available Sonos metadata for TUI expansion (control-449)
 - Migrate secrets and cache to ~/.config/control/ (control-tco)
 - Implement Area-based lighting control (control-mzt)
 - Investigate and fix 'All Lights' control in TUI (control-na6)

@@ -1,56 +1,60 @@
-# Control
+# homectl
 
-A modern, Go-powered toolkit for Lutron Caséta and RA2 Select systems. This project provides a robust library, a feature-rich CLI, and a beautiful Terminal UI (TUI) for local smart home management.
+A modern, Go-powered toolkit for local smart home management, specializing in Lutron Caseta/RA2 Select and Sonos integration.
 
-## Project Goals
+## Features
 
-- **Performance:** Native Go implementation for high-speed local control.
-- **Interactivity:** A delightful TUI built with Bubble Tea for real-time monitoring and control.
-- **Extensibility:** A clean Go SDK (`pkg/leap`) that can be used in other projects.
-- **Modern Web:** A server mode that hosts a Lit WebComponent dashboard.
+- **Lutron Integration:** Control lights, shades, and scenes via the LEAP protocol.
+- **Sonos Control:** Manage volume, transport, and rich metadata for network speakers.
+- **Go-Native Discovery:** Zero-config startup using mDNS/zeroconf for device discovery.
+- **Centralized Config:** Standard XDG configuration storage at `~/.config/homectl/`.
+- **Interactive TUI:** A responsive Bubble Tea terminal interface with multi-mode navigation.
+- **Nickname Support:** Add custom nicknames to devices without modifying bridge configuration.
 
-## Prerequisites
+## Getting Started
+
+### Prerequisites
 
 - **Go:** 1.25+
-- **Lutron Bridge:** Caséta Smart Bridge or RA2 Select Main Repeater.
-- **Python/uv:** Required for the initial one-time pairing process.
+- **Lutron Certificates:** Required for LEAP communication. See [NETWORK_DISCOVERY.md](./NETWORK_DISCOVERY.md) for pairing instructions.
 
-## Setup & Pairing
+### Installation
 
-Lutron bridges require unique TLS client certificates for security. 
-
-1. **Discovery:**
-   The system identifies your bridge using mDNS.
-2. **Pairing:**
-   Run the pairing script to generate your unique credentials:
-   ```bash
-   uv run --with pylutron-caseta tools/pair_lutron.py
-   ```
-   When prompted, press the black button on the back of your bridge. This will generate the necessary `.crt` and `.key` files in the `secrets/` directory (which are ignored by git).
-
-## Installation & Usage
-
-### Build
 ```bash
-go build -o control .
+go build -o homectl main.go
+./homectl ui
 ```
 
-### CLI Commands (Work in Progress)
-The CLI is built with Cobra. Future commands include:
+### Configuration
 
-- **List Devices:** `control list devices`
-- **Control Lights:** `control set --id <id> --level 50`
-- **TUI Mode:** `control ui` (launches the Bubble Tea interface)
-- **Server Mode:** `control serve` (starts the HTTP API and Web UI)
+All certificates and discovery caches are stored in `~/.config/homectl/`:
+- `lutron_client.crt`, `lutron_client.key`, `lutron_ca.crt`: Lutron credentials.
+- `lutron_cache.json`, `sonos_cache.json`: Discovery results for fast startup.
+- `nicknames.json`: Custom device names.
 
-## Testing the Client
-To run the current integration test that verifies connection to your bridge:
+## Usage
+
+### CLI
+
 ```bash
-cd go_test
-go run main.go
+# List resources
+./homectl list zones
+./homectl sonos list
+
+# Control devices
+./homectl set /zone/1 50
+./homectl sonos volume 192.168.4.120 20
 ```
 
-## Documentation
-- [Network Discovery Report](./NETWORK_DISCOVERY.md): Comprehensive discovery methodology and device-specific results.
-- [GEMINI.md](./GEMINI.md): Lessons learned, coding conventions, and changelog workflow.
-- [AGENTS.md](./AGENTS.md): Issue tracking and developer workflow.
+### Terminal UI
+
+Launch the interactive dashboard:
+```bash
+./homectl ui
+```
+- **Tab:** Switch between Lights, Music, and Areas.
+- **1-9 / 0:** Set dimming or volume level.
+- **e:** Edit nickname for the selected device.
+- **Space:** Play/Pause music.
+- **n / p:** Next/Previous track.
+```

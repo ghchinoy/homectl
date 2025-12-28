@@ -61,6 +61,11 @@ type item struct {
 	trackTitle string
 	artist     string
 	album      string
+	stream     string
+	format     string
+	nextTrack  string
+	queueLen   int
+	rinconID   string
 }
 
 func (i item) Title() string       { return i.title }
@@ -68,10 +73,15 @@ func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title }
 
 type model struct {
+
 	mode       sessionMode
+
 	lightsList list.Model
+
 	musicList  list.Model
+
 	areasList  list.Model
+
 	leapClient *leap.Client
 	err        error
 	status     string
@@ -248,7 +258,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.status = fmt.Sprintf("Refreshed %d light statuses", count)
-		// Also refresh Areas list
 		areaItems := m.areasList.Items()
 		for idx, itm := range areaItems {
 			i := itm.(item)
@@ -263,6 +272,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				i.trackTitle = stat.trackTitle
 				i.artist = stat.artist
 				i.album = stat.album
+				i.stream = stat.stream
+				i.format = stat.format
+				i.nextTrack = stat.nextTrack
+				i.queueLen = stat.queueLen
 				m.musicList.SetItem(idx, i)
 			}
 		}
@@ -291,6 +304,10 @@ type musicStatus struct {
 	trackTitle string
 	artist     string
 	album      string
+	stream     string
+	format     string
+	nextTrack  string
+	queueLen   int
 }
 type refreshMusicMsg map[string]musicStatus
 
@@ -317,7 +334,15 @@ func (m model) refreshMusic() tea.Cmd {
 			vol, _ := client.GetVolume()
 			transport, _ := client.GetTransportInfo()
 			pos, _ := client.GetPositionInfo()
+			media, _ := client.GetMediaInfo()
+			
 			meta, _ := client.ParseTrackMetadata(pos.TrackMetaData)
+			nextMeta, _ := client.ParseTrackMetadata(media.NextURIMetaData)
+
+			nextStr := ""
+			if nextMeta.Title != "" {
+				nextStr = fmt.Sprintf("%s by %s", nextMeta.Title, nextMeta.Artist)
+			}
 
 			results[i.ip] = musicStatus{
 				volume:     vol,
@@ -325,6 +350,10 @@ func (m model) refreshMusic() tea.Cmd {
 				trackTitle: meta.Title,
 				artist:     meta.Artist,
 				album:      meta.Album,
+				stream:     meta.StreamContent,
+				format:     meta.AudioFormat,
+				nextTrack:  nextStr,
+				queueLen:   media.NrTracks,
 			}
 		}
 		return results
@@ -342,9 +371,10 @@ func (m model) rediscoverMusic() tea.Cmd {
 		}
 		for _, s := range speakers {
 			musicItems = append(musicItems, item{
-				title:   s.Name,
-				ip:      s.IP,
-				isSonos: true,
+				title:    s.Name,
+				ip:       s.IP,
+				isSonos:  true,
+				rinconID: s.RinconID,
 			})
 		}
 		return rediscoverMusicMsg(musicItems)
@@ -544,9 +574,18 @@ func (m model) View() string {
 			}
 		} else if m.mode == modeMusic {
 			detailText = fmt.Sprintf(
-				"SPEAKER DETAILS\n\nName: %s\nIP: %s\nStatus: %s\nVolume: %.0f%%\n\nNOW PLAYING\n\nTrack:  %s\nArtist: %s\nAlbum:  %s",
-				i.title, i.ip, i.status, i.level, i.trackTitle, i.artist, i.album,
+				"SPEAKER DETAILS\n\nName: %s\nIP: %s\nID: %s\nStatus: %s\nVolume: %.0f%%\nQueue: %d\n\nNOW PLAYING\n\nTrack:  %s\nArtist: %s\nAlbum:  %s",
+				i.title, i.ip, i.rinconID, i.status, i.level, i.queueLen, i.trackTitle, i.artist, i.album,
 			)
+			if i.stream != "" {
+				detailText += fmt.Sprintf("\nStream: %s", i.stream)
+			}
+			if i.format != "" {
+				detailText += fmt.Sprintf("\nFormat: %s", i.format)
+			}
+			if i.nextTrack != "" {
+				detailText += fmt.Sprintf("\n\nNEXT\n%s", i.nextTrack)
+			}
 		} else {
 			detailText = fmt.Sprintf(
 				"AREA DETAILS\n\nName: %s\nHref: %s",
@@ -623,7 +662,7 @@ func Start(leapClient *leap.Client) error {
 
 	// Fetch Data
 
-	devices, err := leapClient.GetDevices()
+devices, err := leapClient.GetDevices()
 	if err != nil {
 		return fmt.Errorf("failed to get devices: %w", err)
 	}
@@ -667,6 +706,7 @@ func Start(leapClient *leap.Client) error {
 			ip:       s.IP,
 			isSonos:  true,
 			nickname: nicknames[s.IP],
+			rinconID: s.RinconID,
 		})
 	}
 
@@ -715,6 +755,7 @@ func Start(leapClient *leap.Client) error {
 					ip:       s.IP,
 					isSonos:  true,
 					nickname: nicknames[s.IP],
+					rinconID: s.RinconID,
 				})
 			}
 			p.Send(rediscoverMusicMsg(items))

@@ -1,59 +1,45 @@
-# Project Control: Lutron Integration
+# Project Control: homectl
 
-This project is a Go-based integration for Lutron Caseta/RA2 Select systems, featuring a Cobra CLI, Bubble Tea TUI, and a Lit Web UI.
+This project is a Go-based integration for Lutron Caseta/RA2 Select systems and Sonos speakers, featuring a Cobra CLI, Bubble Tea TUI, and a Lit Web UI.
 
 ## Developer Onboarding
 
-- **Issue Tracking:** This project uses `bd` (beads). Refer to [AGENTS.md](./AGENTS.md) for core workflow instructions and run `bd prime` for full context.
+- **Issue Tracking:** This project uses `bd` (beads).
 - **Environment:**
     - **Go:** Core application logic and CLI.
-    - **Python (via `uv`):** Used for auxiliary tasks like the initial pairing process.
-    - **Certs:** Certificates are required for communication and are ignored by git. See [NETWORK_DISCOVERY.md](./NETWORK_DISCOVERY.md) for pairing instructions.
+    - **Config:** Standard XDG path `~/.config/homectl/`. Use `pkg/config` for path resolution.
+- **Certs:** Certificates are required for communication and should be placed in the config directory.
 
 ## Application Architecture
 
 - **Project Structure:**
-    - `cmd/`: CLI commands (Cobra). `getClient` in `root.go` manages secure connections.
+    - `cmd/`: CLI commands (Cobra).
+    - `pkg/config`: Centralized path management (`~/.config/homectl/`).
     - `pkg/leap`: Core Lutron LEAP protocol implementation.
     - `pkg/sonos`: Core Sonos UPnP/SOAP protocol implementation.
     - `pkg/tui`: Terminal UI (Bubble Tea) with multi-mode navigation.
-    - `secrets/`: Local storage for credentials (ignored by git).
-    - `tools/`: Python and Go utilities for discovery and pairing.
 
 ## Architectural Principles
 
+### 1. Centralized Configuration
+- **Standard Paths:** Use `os.UserConfigDir()` to store all persistent state. Never hardcode paths to `secrets/` or the project root for runtime data.
+- **pkg/config:** Always use `config.GetPath("filename")` to ensure consistency across the CLI, TUI, and background services.
+
 ### 2. Resilient IoT Pattern
-- **Disconnection Handling:** IoT devices (Lutron, Sonos) frequently reset idle connections. The `leap.Client` and `sonos.Client` must implement automatic reconnection logic within their `Request` methods.
-- **Batching & Throttling:** Avoid high-concurrency bursts to a single IoT bridge. Sequential processing with small delays (e.g., 50ms) is significantly more stable than concurrent goroutines for bulk commands (e.g. "All Lights").
+- **Disconnection Handling:** IoT devices frequently reset idle connections. The clients must implement automatic reconnection logic.
+- **Batching & Throttling:** Avoid high-concurrency bursts to a single bridge. Sequential processing with small delays (e.g., 50ms) is significantly more stable than concurrent goroutines for bulk commands.
 - **ClientTag Pairing:** In asynchronous protocols like LEAP, every request must include a unique `ClientTag`. The client must loop through incoming messages and only return the response that matches the sent tag to prevent state desync.
+- **Thread Safety:** When using `bufio.Reader` on a shared connection, the **entire** request/response cycle (including the read loop) must be protected by a mutex to prevent data corruption and slice-out-of-bounds panics.
 
-### 2. Optimistic UI Updates
-- **Snappiness:** To hide network latency, the TUI model should update its local state **immediately** upon user input. The network command is dispatched as an asynchronous `tea.Cmd`, and the TUI only rolls back or alerts if the command fails.
-
-### 3. Mode-Based Hub
-- **Navigation:** Use a "Hub" model with `sessionMode` and tabs (Lights, Music, etc.) to handle multiple device categories without cluttering the UI.
-
-## Lessons Learned: Lutron Discovery & LEAP
-
-- **mDNS is Key:** Lutron bridges announce themselves via `_lutron._tcp` and `_leap._tcp`.
-- **LEAP Protocol:** Communication happens over TLS on port `8081`. 
-- **Strict TLS:** The bridge requires client-side certificates. You cannot even "ping" the LEAP protocol without a valid handshake.
-- **Pairing Flow:** Pairing requires a specific socket handshake followed by a physical button press on the bridge to generate a unique certificate/key pair for that client.
-- **Asynchronous Responses:** The bridge frequently sends unsolicited `SubscribeResponse` messages (status updates) over the same connection. The client must loop and filter incoming messages to find the specific `ReadResponse` or `CreateResponse` it is waiting for.
-- **Batching for Performance:** Polling individual device statuses is slow and prone to timeouts. Using `/zone/status` to get all levels in a single request is significantly more efficient.
-- **JSON Structure:** LEAP commands for dimming require a specific nested structure: `{"Command": {"CommandType": "GoToLevel", ...}}`. Missing the outer `Command` wrapper results in a `400 BadRequest`.
-
-### 3. Sonos Integration & SSDP
-- **Discovery via SSDP:** Sonos devices are best discovered using SSDP (`urn:schemas-upnp-org:device:ZonePlayer:1`). Fetching the device description from `http://<ip>:1400/xml/device_description.xml` provides the `friendlyName`.
-- **UPnP/SOAP Actions:** Transport controls (Play, Pause, Next, Previous) and Rendering controls (Volume) are implemented via SOAP over HTTP on port 1400.
-- **State Sync via Refresh:** After bulk operations (like turning off all lights), always trigger a full status refresh (`refreshLights`) to ensure the TUI state matches the hardware state.
-- **Dynamic Refresh in TUI:** Implementing a `rediscover` mechanism for IoT devices allows the TUI to recover from network changes without restarting.
+### 3. Sonos Integration & SSDP/mDNS
+- **Go-Native Discovery:** Prefer native Go mDNS (`_sonos._tcp`, `_leap._tcp`) over auxiliary Python scripts for zero-config onboarding.
+- **UPnP/SOAP Actions:** Transport controls and metadata retrieval are implemented via SOAP over HTTP on port 1400.
+- **Metadata Extraction:** Sonos often embeds escaped XML within XML (DIDL-Lite). Use robust string searching or specialized parsers to extract fields like `streamContent`, `albumArtURI`, and `NextURIMetaData`.
+- **State Sync via Refresh:** After bulk operations, always trigger a full status refresh to ensure the UI state accurately reflects the hardware state.
 
 ## Future Vision
-
-- **Multi-Device Integration:** Expand the CLI/TUI to support Sonos, LG, and GE appliances discovered on the network.
-- **Native Go Discovery:** Implement mDNS/SSDP discovery directly in Go to eliminate the Python `uv` dependency for onboarding.
-- **Web Dashboard:** A Lit WebComponent UI served directly by the Go binary for cross-platform control.
+...
+- **Unified Discovery Engine:** A background service to periodically scan for all supported devices.
 
 ## Coding Conventions
 
