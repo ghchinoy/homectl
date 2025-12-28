@@ -123,7 +123,7 @@ var listDevicesCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(listCmd)
+	lutronCmd.AddCommand(listCmd)
 	listCmd.AddCommand(listAreasCmd)
 	listCmd.AddCommand(listZonesCmd)
 	listCmd.AddCommand(listDevicesCmd)

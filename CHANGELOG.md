@@ -1,4 +1,8 @@
 ## 2025-12-28
+- Reorganize CLI: move list/set under lutron command (control-14s)
+- Enhance Sonos GROUPS view with group names (control-f1l.7)
+- Implement Sonos grouping support (control-f1l.6)
+- Improve Sonos discovery cache stability (control-f1l.5)
 - Enumerate available Sonos metadata for TUI expansion (control-449)
 - Migrate secrets and cache to ~/.config/control/ (control-tco)
 - Implement Area-based lighting control (control-mzt)

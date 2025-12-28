@@ -60,7 +60,7 @@ var setAllCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(setCmd)
+	lutronCmd.AddCommand(setCmd)
 	setCmd.AddCommand(setLevelCmd)
 	setCmd.AddCommand(setAllCmd)
 }
