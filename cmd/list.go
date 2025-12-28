@@ -123,18 +123,6 @@ var listDevicesCmd = &cobra.Command{
 	},
 }
 
-func getClient(cmd *cobra.Command) *leap.Client {
-	addr, _ := cmd.Flags().GetString("bridge")
-	client, err := leap.NewClient(addr+":8081", "lutron_client.crt", "lutron_client.key", "lutron_ca.crt")
-	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
-	}
-	if err := client.Connect(); err != nil {
-		log.Fatalf("Failed to connect: %v", err)
-	}
-	return client
-}
-
 func init() {
 	rootCmd.AddCommand(listCmd)
 	listCmd.AddCommand(listAreasCmd)

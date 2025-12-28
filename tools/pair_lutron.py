@@ -21,17 +21,17 @@ async def pair():
         
         # The data returned is a dictionary-like object (PairingData)
         # Based on library source, it contains 'ca', 'cert', and 'key'
-        with open("lutron_ca.crt", "w") as f:
+        with open("secrets/lutron_ca.crt", "w") as f:
             f.write(data["ca"])
-        with open("lutron_client.crt", "w") as f:
+        with open("secrets/lutron_client.crt", "w") as f:
             f.write(data["cert"])
-        with open("lutron_client.key", "w") as f:
+        with open("secrets/lutron_client.key", "w") as f:
             f.write(data["key"])
             
-        print("\nSUCCESS! Certificates have been saved:")
-        print("- lutron_ca.crt")
-        print("- lutron_client.crt")
-        print("- lutron_client.key")
+        print("\nSUCCESS! Certificates have been saved to secrets/:")
+        print("- secrets/lutron_ca.crt")
+        print("- secrets/lutron_client.crt")
+        print("- secrets/lutron_client.key")
         
     except Exception as e:
         print(f"\nError during pairing: {e}")

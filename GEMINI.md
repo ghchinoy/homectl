@@ -10,6 +10,17 @@ This project is a Go-based integration for Lutron Caseta/RA2 Select systems, fea
     - **Python (via `uv`):** Used for auxiliary tasks like the initial pairing process.
     - **Certs:** Certificates are required for communication and are ignored by git. See [lutron_discovery.md](./lutron_discovery.md) for pairing instructions.
 
+## Application Architecture
+
+- **Project Structure:**
+    - `cmd/`: CLI commands (Cobra). `getClient` helper in `root.go` manages the secure bridge connection.
+    - `pkg/leap`: Core LEAP protocol implementation, data models, and connection management.
+    - `pkg/tui`: Terminal UI implementation (Bubble Tea).
+    - `secrets/`: Local storage for TLS certificates (ignored by git).
+    - `tools/`: Python-based discovery and pairing utilities.
+- **LEAP Client (`pkg/leap`):** Handles TLS, JSON messaging, and response filtering. It maps Lutron's hierarchical model (Areas -> Devices -> Zones).
+- **TUI (`pkg/tui`):** Built with Bubble Tea. Uses a `list.Model` for navigation and sends asynchronous `tea.Cmd` messages to trigger LEAP commands.
+
 ## Lessons Learned: Lutron Discovery & LEAP
 
 - **mDNS is Key:** Lutron bridges announce themselves via `_lutron._tcp` and `_leap._tcp`.
@@ -17,12 +28,14 @@ This project is a Go-based integration for Lutron Caseta/RA2 Select systems, fea
 - **Strict TLS:** The bridge requires client-side certificates. You cannot even "ping" the LEAP protocol without a valid handshake.
 - **Pairing Flow:** Pairing requires a specific socket handshake followed by a physical button press on the bridge to generate a unique certificate/key pair for that client.
 - **Asynchronous Responses:** The bridge frequently sends unsolicited `SubscribeResponse` messages (status updates) over the same connection. The client must loop and filter incoming messages to find the specific `ReadResponse` or `CreateResponse` it is waiting for.
+- **Batching for Performance:** Polling individual device statuses is slow and prone to timeouts. Using `/zone/status` to get all levels in a single request is significantly more efficient.
+- **JSON Structure:** LEAP commands for dimming require a specific nested structure: `{"Command": {"CommandType": "GoToLevel", ...}}`. Missing the outer `Command` wrapper results in a `400 BadRequest`.
 
-## Application Architecture
+## Future Vision
 
-- **LEAP Client (`pkg/leap`):** Handles TLS, JSON messaging, and response filtering. It maps Lutron's hierarchical model (Areas -> Devices -> Zones).
-- **CLI (`cmd/`):** Built with Cobra. Uses a shared `getClient` helper to initialize the secure connection.
-- **TUI (`pkg/tui`):** Built with Bubble Tea. Uses a `list.Model` for navigation and sends asynchronous `tea.Cmd` messages to trigger LEAP commands.
+- **Multi-Device Integration:** Expand the CLI/TUI to support Sonos, LG, and GE appliances discovered on the network.
+- **Native Go Discovery:** Implement mDNS/SSDP discovery directly in Go to eliminate the Python `uv` dependency for onboarding.
+- **Web Dashboard:** A Lit WebComponent UI served directly by the Go binary for cross-platform control.
 
 ## Coding Conventions
 

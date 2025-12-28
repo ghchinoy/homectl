@@ -24,9 +24,9 @@ Lutron bridges require unique TLS client certificates for security.
 2. **Pairing:**
    Run the pairing script to generate your unique credentials:
    ```bash
-   uv run --with pylutron-caseta pair_lutron.py
+   uv run --with pylutron-caseta tools/pair_lutron.py
    ```
-   When prompted, press the black button on the back of your bridge. This will generate the necessary `.crt` and `.key` files (which are ignored by git).
+   When prompted, press the black button on the back of your bridge. This will generate the necessary `.crt` and `.key` files in the `secrets/` directory (which are ignored by git).
 
 ## Installation & Usage
 

@@ -3,8 +3,10 @@ package cmd
 
 import (
 	"fmt"
+	"log"
 	"os"
 
+	"github.com/ghchinoy/control/pkg/leap"
 	"github.com/spf13/cobra"
 )
 
@@ -19,6 +21,24 @@ func Execute() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func getClient(cmd *cobra.Command) *leap.Client {
+	addr, _ := cmd.Flags().GetString("bridge")
+	// Certs are now in the secrets/ directory
+	client, err := leap.NewClient(
+		addr+":8081",
+		"secrets/lutron_client.crt",
+		"secrets/lutron_client.key",
+		"secrets/lutron_ca.crt",
+	)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+	if err := client.Connect(); err != nil {
+		log.Fatalf("Failed to connect: %v", err)
+	}
+	return client
 }
 
 func init() {

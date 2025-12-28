@@ -1,12 +1,16 @@
-# Lutron Certificates
-lutron_ca.crt
-lutron_client.crt
-lutron_client.key
+# Lutron Secrets
+secrets/
+*.crt
+*.key
+
+# Binaries
+control
+bin/
 
 # Python / uv
 .venv/
 __pycache__/
+.python-version
 
 # Go
 go_test/
-bin/
