@@ -1,5 +1,3 @@
-
-
 package tui
 
 import (
@@ -18,6 +16,11 @@ var (
 	docStyle = lipgloss.NewStyle().Margin(1, 2)
 	statusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
 	helpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Margin(1, 0)
+	detailStyle = lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("241")).
+		Padding(1, 2).
+		MarginLeft(2)
 )
 
 type item struct {
@@ -25,6 +28,7 @@ type item struct {
 	zoneHref    string
 	isAll       bool
 	level       float64
+	device      leap.Device
 }
 
 func (i item) Title() string       { return i.title }
@@ -37,6 +41,8 @@ type model struct {
 	err      error
 	status   string
 	progress progress.Model
+	width    int
+	height   int
 }
 
 func (m model) Init() tea.Cmd {
@@ -64,8 +70,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.refreshStatus())
 		}
 	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		
 		h, v := docStyle.GetFrameSize()
-		m.list.SetSize(msg.Width-h, msg.Height-v)
+		// Allocate 60% width to list, 40% to details
+		m.list.SetSize(int(float64(msg.Width)*0.6)-h, msg.Height-v-4)
 	case statusMsg:
 		m.status = string(msg)
 	case refreshMsg:
@@ -135,12 +145,43 @@ func (m model) View() string {
 		return fmt.Sprintf("Error: %v", m.err)
 	}
 	
-s := docStyle.Render(m.list.View())
-	if m.status != "" {
-		s += "\n" + statusStyle.Render(m.status)
+	// Left side: List
+	listView := docStyle.Render(m.list.View())
+	
+	// Right side: Details
+	var detailView string
+	selected := m.list.SelectedItem()
+	if selected != nil {
+		i := selected.(item)
+		if i.isAll {
+			detailView = detailStyle.
+				Height(m.list.Height()).
+				Width(int(float64(m.width)*0.3)).
+				Render("Master Control\n\nAffects all dimmable zones on the bridge.")
+		} else {
+			detailText := fmt.Sprintf(
+				"DEVICE DETAILS\n\nName: %s\nType: %s\nModel: %s\nSerial: %d\nHref: %s",
+				i.title, i.device.DeviceType, i.device.ModelNumber, i.device.SerialNumber, i.device.Href,
+			)
+			if i.zoneHref != "" {
+				detailText += fmt.Sprintf("\nZone: %s\nLevel: %.0f%%", i.zoneHref, i.level)
+			}
+			detailView = detailStyle.
+				Height(m.list.Height()).
+				Width(int(float64(m.width)*0.3)).
+				Render(detailText)
+		}
 	}
-	s += helpStyle.Render("\nControls: 1-9 (10-90%), 0 (Off), + (Full), r (Refresh), q (Quit)")
-	return s
+
+	mainView := lipgloss.JoinHorizontal(lipgloss.Top, listView, detailView)
+	
+	footer := ""
+	if m.status != "" {
+		footer += "\n" + statusStyle.Render(m.status)
+	}
+	footer += helpStyle.Render("\nControls: 1-9 (10-90%), 0 (Off), + (Full), r (Refresh), q (Quit)")
+	
+	return mainView + footer
 }
 
 type itemDelegate struct {
@@ -194,6 +235,7 @@ func Start(client *leap.Client) error {
 			title:    d.Name,
 			desc:     fmt.Sprintf("%s (%s)", d.DeviceType, d.ModelNumber),
 			zoneHref: zoneHref,
+			device:   d,
 		})
 	}
 
