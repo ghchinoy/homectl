@@ -1,3 +1,5 @@
+
+
 package tui
 
 import (
@@ -14,6 +16,7 @@ var docStyle = lipgloss.NewStyle().Margin(1, 2)
 type item struct {
 	title, desc string
 	zoneHref    string
+	isAll       bool
 }
 
 func (i item) Title() string       { return i.title }
@@ -63,14 +66,22 @@ type statusMsg string
 
 func (m model) setLevel(level float64) tea.Cmd {
 	i, ok := m.list.SelectedItem().(item)
-	if !ok || i.zoneHref == "" {
+	if !ok {
 		return nil
 	}
 
 	return func() tea.Msg {
-		err := m.client.SetLevel(i.zoneHref, level)
+		var err error
+		if i.isAll {
+			err = m.client.SetAllLevels(level)
+		} else if i.zoneHref != "" {
+			err = m.client.SetLevel(i.zoneHref, level)
+		} else {
+			return nil
+		}
+
 		if err != nil {
-			return statusMsg(fmt.Sprintf("Error setting level: %v", err))
+			return statusMsg(fmt.Sprintf("Error: %v", err))
 		}
 		return statusMsg(fmt.Sprintf("Set %s to %.0f%%", i.title, level))
 	}
@@ -91,13 +102,15 @@ s := docStyle.Render(m.list.View())
 
 // Start launches the TUI
 func Start(client *leap.Client) error {
-
-devices, err := client.GetDevices()
+	devices, err := client.GetDevices()
 	if err != nil {
 		return err
 	}
 
-	items := []list.Item{}
+	items := []list.Item{
+		item{title: "ALL LIGHTS", desc: "Control everything at once", isAll: true},
+	}
+	
 	for _, d := range devices {
 		var zoneHref string
 		if len(d.LocalZones) > 0 {

@@ -1,3 +1,4 @@
+
 package leap
 
 import (
@@ -94,25 +95,16 @@ func NewClient(addr, certFile, keyFile, caFile string) (*Client, error) {
 	caCertPool := x509.NewCertPool()
 	caCertPool.AppendCertsFromPEM(caCert)
 
-		tlsConfig := &tls.Config{
+	tlsConfig := &tls.Config{
+		Certificates:       []tls.Certificate{cert},
+		RootCAs:            caCertPool,
+		InsecureSkipVerify: true,
+	}
 
-			Certificates:       []tls.Certificate{cert},
-
-			RootCAs:            caCertPool,
-
-			InsecureSkipVerify: true,
-
-		}
-
-	
-
-		return &Client{
-
-			addr:      addr,
-
-			tlsConfig: tlsConfig,
-
-		}, nil
+	return &Client{
+		addr:      addr,
+		tlsConfig: tlsConfig,
+	}, nil
 }
 
 // Connect opens the TLS connection to the bridge
@@ -236,4 +228,33 @@ func (c *Client) SetLevel(zoneHref string, level float64) error {
 		return fmt.Errorf("bridge returned exception: %s", string(resp.Body))
 	}
 	return nil
+}
+
+// SetAllLevels sets the dimming level for all dimmable devices
+func (c *Client) SetAllLevels(level float64) error {
+	devices, err := c.GetDevices()
+	if err != nil {
+		return err
+	}
+
+	var wg sync.WaitGroup
+	var lastErr error
+	var errMu sync.Mutex
+
+	for _, d := range devices {
+		if len(d.LocalZones) > 0 {
+			wg.Add(1)
+			go func(href string) {
+				defer wg.Done()
+				if err := c.SetLevel(href, level); err != nil {
+					errMu.Lock()
+					lastErr = err
+					errMu.Unlock()
+				}
+			}(d.LocalZones[0].Href)
+		}
+	}
+
+	wg.Wait()
+	return lastErr
 }

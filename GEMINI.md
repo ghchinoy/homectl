@@ -29,6 +29,8 @@ This project is a Go-based integration for Lutron Caseta/RA2 Select systems, fea
 - **Packages:** Logic is decoupled into `pkg/`.
     - `pkg/leap`: Core protocol handling and data models.
     - `pkg/tui`: Interactive terminal views.
+- **Naming Conventions:** 
+    - Always use `tlsConfig` (not `lsConfig`) for `*tls.Config` variables to maintain consistency and avoid repeated typos.
 - **Messaging:** All LEAP commands should include a `Header` and an optional `Body`.
 - **Concurrency:** The `leap.Client` uses a `sync.Mutex` to protect the connection during read/write operations.
 - **TUI Feedback:** Use a `statusMsg` pattern in Bubble Tea to provide non-blocking feedback to the user after network operations.
