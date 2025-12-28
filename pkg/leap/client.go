@@ -1,4 +1,3 @@
-
 package leap
 
 import (
@@ -7,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -19,6 +19,11 @@ type Client struct {
 	conn      *tls.Conn
 	reader    *bufio.Reader
 	mu        sync.Mutex
+
+	// Cert paths for reconnection
+	certFile string
+	keyFile  string
+	caFile   string
 }
 
 // Message represents a basic LEAP message structure
@@ -47,11 +52,11 @@ type AreaResponse struct {
 
 // Device represents a Lutron Device
 type Device struct {
-	Href           string   `json:"href"`
-	Name           string   `json:"Name"`
-	DeviceType     string   `json:"DeviceType"`
-	SerialNumber   int      `json:"SerialNumber,omitempty"`
-	ModelNumber    string   `json:"ModelNumber,omitempty"`
+	Href           string     `json:"href"`
+	Name           string     `json:"Name"`
+	DeviceType     string     `json:"DeviceType"`
+	SerialNumber   int        `json:"SerialNumber,omitempty"`
+	ModelNumber    string     `json:"ModelNumber,omitempty"`
 	LocalZones     []ZoneLink `json:"LocalZones,omitempty"`
 	AssociatedArea struct {
 		Href string `json:"href"`
@@ -96,7 +101,7 @@ type CommandBody struct {
 }
 
 type Command struct {
-	CommandType string `json:"CommandType"`
+	CommandType string      `json:"CommandType"`
 	Parameter   []Parameter `json:"Parameter"`
 }
 
@@ -128,11 +133,21 @@ func NewClient(addr, certFile, keyFile, caFile string) (*Client, error) {
 	return &Client{
 		addr:      addr,
 		tlsConfig: tlsConfig,
+		certFile:  certFile,
+		keyFile:   keyFile,
+		caFile:    caFile,
 	}, nil
 }
 
 // Connect opens the TLS connection to the bridge
 func (c *Client) Connect() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.conn != nil {
+		c.conn.Close()
+	}
+
 	conn, err := tls.Dial("tcp", c.addr, c.tlsConfig)
 	if err != nil {
 		return fmt.Errorf("failed to dial: %w", err)
@@ -144,6 +159,8 @@ func (c *Client) Connect() error {
 
 // Close closes the connection
 func (c *Client) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.conn != nil {
 		return c.conn.Close()
 	}
@@ -152,18 +169,46 @@ func (c *Client) Close() error {
 
 // Request sends a JSON request and waits for a response (skipping status updates)
 func (c *Client) Request(req Message) (Message, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	// Attempt the request
+	resp, err := c.doRequest(req)
 
-	data, err := json.Marshal(req)
+	// If we got a connection error, try to reconnect once and retry
+	if err != nil && (err == io.EOF || isNetErr(err)) {
+		if reconnectErr := c.Connect(); reconnectErr == nil {
+			return c.doRequest(req)
+		}
+	}
+
+	return resp, err
+}
+
+func isNetErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Check for common connection errors
+	return true // Simplified for now to retry on any error
+}
+
+func (c *Client) doRequest(req Message) (Message, error) {
+	c.mu.Lock()
+	if c.conn == nil {
+		c.mu.Unlock()
+		return Message{}, fmt.Errorf("not connected")
+	}
+	
+data, err := json.Marshal(req)
 	if err != nil {
+		c.mu.Unlock()
 		return Message{}, err
 	}
 
 	_, err = c.conn.Write(append(data, '\n'))
 	if err != nil {
+		c.mu.Unlock()
 		return Message{}, err
 	}
+	c.mu.Unlock()
 
 	for {
 		c.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
@@ -334,7 +379,7 @@ func (c *Client) SetAllLevels(level float64) error {
 					lastErr = err
 					errMu.Unlock()
 				}
-			}(d.LocalZones[0].Href)
+		}(d.LocalZones[0].Href)
 		}
 	}
 
