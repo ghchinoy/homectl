@@ -1,4 +1,3 @@
-
 package leap
 
 import (
@@ -66,6 +65,11 @@ type DeviceResponse struct {
 	Devices []Device `json:"Devices"`
 }
 
+// CommandBody is the outer wrapper for commands
+type CommandBody struct {
+	Command Command `json:"Command"`
+}
+
 type Command struct {
 	CommandType string `json:"CommandType"`
 	Parameter   []Parameter `json:"Parameter"`
@@ -130,7 +134,7 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// Request sends a JSON request and waits for the specific ReadResponse or CreateResponse
+// Request sends a JSON request and waits for a response (skipping status updates)
 func (c *Client) Request(req Message) (Message, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -157,8 +161,9 @@ func (c *Client) Request(req Message) (Message, error) {
 			continue
 		}
 
-		// Handle responses for the requested URL
-		if resp.Header.Url == req.Header.Url {
+		// Success status codes for Read and Create are 200 and 201 (or 204 if no body)
+		// We filter out SubscribeResponse (background updates)
+		if resp.CommuniqueType != "SubscribeResponse" {
 			return resp, nil
 		}
 	}
@@ -205,14 +210,16 @@ func (c *Client) GetDevices() ([]Device, error) {
 // SetLevel sets the dimming level for a zone (0-100)
 func (c *Client) SetLevel(zoneHref string, level float64) error {
 	url := fmt.Sprintf("%s/commandprocessor", zoneHref)
-	cmd := Command{
-		CommandType: "GoToLevel",
-		Parameter: []Parameter{
-			{Type: "Level", Value: level},
+	cmdBody := CommandBody{
+		Command: Command{
+			CommandType: "GoToLevel",
+			Parameter: []Parameter{
+				{Type: "Level", Value: level},
+			},
 		},
 	}
 	
-	body, _ := json.Marshal(cmd)
+	body, _ := json.Marshal(cmdBody)
 	req := Message{
 		CommuniqueType: "CreateRequest",
 		Header: Header{
@@ -221,6 +228,12 @@ func (c *Client) SetLevel(zoneHref string, level float64) error {
 		Body: body,
 	}
 	
-	_, err := c.Request(req)
-	return err
+	resp, err := c.Request(req)
+	if err != nil {
+		return err
+	}
+	if resp.CommuniqueType == "ExceptionResponse" {
+		return fmt.Errorf("bridge returned exception: %s", string(resp.Body))
+	}
+	return nil
 }
