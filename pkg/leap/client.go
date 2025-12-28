@@ -66,6 +66,14 @@ type DeviceResponse struct {
 	Devices []Device `json:"Devices"`
 }
 
+type ZoneStatus struct {
+	Level float64 `json:"Level"`
+}
+
+type ZoneStatusResponse struct {
+	ZoneStatus ZoneStatus `json:"ZoneStatus"`
+}
+
 // CommandBody is the outer wrapper for commands
 type CommandBody struct {
 	Command Command `json:"Command"`
@@ -153,7 +161,6 @@ func (c *Client) Request(req Message) (Message, error) {
 			continue
 		}
 
-		// Success status codes for Read and Create are 200 and 201 (or 204 if no body)
 		// We filter out SubscribeResponse (background updates)
 		if resp.CommuniqueType != "SubscribeResponse" {
 			return resp, nil
@@ -197,6 +204,25 @@ func (c *Client) GetDevices() ([]Device, error) {
 		return nil, err
 	}
 	return body.Devices, nil
+}
+
+// GetZoneStatus retrieves the status for a specific zone
+func (c *Client) GetZoneStatus(zoneHref string) (ZoneStatus, error) {
+	req := Message{
+		CommuniqueType: "ReadRequest",
+		Header: Header{
+			Url: fmt.Sprintf("%s/status", zoneHref),
+		},
+	}
+	resp, err := c.Request(req)
+	if err != nil {
+		return ZoneStatus{}, err
+	}
+	var body ZoneStatusResponse
+	if err := json.Unmarshal(resp.Body, &body); err != nil {
+		return ZoneStatus{}, err
+	}
+	return body.ZoneStatus, nil
 }
 
 // SetLevel sets the dimming level for a zone (0-100)
@@ -251,7 +277,7 @@ func (c *Client) SetAllLevels(level float64) error {
 					lastErr = err
 					errMu.Unlock()
 				}
-			}(d.LocalZones[0].Href)
+		}(d.LocalZones[0].Href)
 		}
 	}
 
