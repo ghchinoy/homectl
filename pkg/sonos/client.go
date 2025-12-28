@@ -19,9 +19,11 @@ import (
 
 // Device represents a discovered Sonos device
 type Device struct {
-	Name     string `json:"Name"`
-	IP       string `json:"IP"`
-	RinconID string `json:"RinconID"`
+	Name        string `json:"Name"`
+	IP          string `json:"IP"`
+	RinconID    string `json:"RinconID"`
+	ModelName   string `json:"ModelName"`
+	ModelNumber string `json:"ModelNumber"`
 }
 
 // Discover performs mDNS discovery to find Sonos devices
@@ -57,7 +59,7 @@ func Discover(timeout time.Duration) ([]Device, error) {
 
 		// The Name in mDNS might be the serial number (e.g. RINCON_...)
 		// Let's try to get a better name from the XML description
-		name, rincon, err := GetDeviceName(ip)
+		name, rincon, modelName, modelNum, err := GetDeviceName(ip)
 		if err != nil {
 			// Fallback to mDNS Instance name which often includes "RINCON_SERIAL@Player Name"
 			name = entry.Instance
@@ -67,9 +69,11 @@ func Discover(timeout time.Duration) ([]Device, error) {
 		}
 
 		devices = append(devices, Device{
-			IP:       ip,
-			Name:     name,
-			RinconID: rincon,
+			IP:          ip,
+			Name:        name,
+			RinconID:    rincon,
+			ModelName:   modelName,
+			ModelNumber: modelNum,
 		})
 		foundIPs[ip] = true
 	}
@@ -86,9 +90,38 @@ func cacheFile() string {
 	return config.GetPath("sonos_cache.json")
 }
 
-// SaveCache persists discovered devices to a local file
-func SaveCache(devices []Device) error {
-	data, err := json.MarshalIndent(devices, "", "  ")
+// SaveCache merges newly discovered devices with existing ones and persists them
+func SaveCache(newDevices []Device) error {
+	// Load existing first
+	existing, _ := LoadCache()
+	
+	// Create a map keyed by RinconID for merging
+	merged := make(map[string]Device)
+	for _, d := range existing {
+		if d.RinconID != "" {
+			merged[d.RinconID] = d
+		}
+	}
+	
+	// Update with new discovery results
+	for _, d := range newDevices {
+		if d.RinconID != "" {
+			merged[d.RinconID] = d
+		}
+	}
+	
+	// Convert back to slice
+	var result []Device
+	for _, d := range merged {
+		result = append(result, d)
+	}
+	
+	// Sort for consistency
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name
+	})
+
+	data, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -108,28 +141,30 @@ func LoadCache() ([]Device, error) {
 	return devices, nil
 }
 
-// GetDeviceName fetches the device name and Rincon ID (UDN) from the Sonos XML description
-func GetDeviceName(ip string) (string, string, error) {
+// GetDeviceName fetches the device name, Rincon ID, model name and model number from the Sonos XML description
+func GetDeviceName(ip string) (string, string, string, string, error) {
 	url := fmt.Sprintf("http://%s:1400/xml/device_description.xml", ip)
 	resp, err := http.Get(url)
 	if err != nil {
-		return "", "", err
+		return "", "", "", "", err
 	}
 	defer resp.Body.Close()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", "", err
+		return "", "", "", "", err
 	}
 
 	var desc struct {
 		RoomName    string `xml:"device>roomName"`
 		DisplayName string `xml:"device>displayName"`
 		UDN         string `xml:"device>UDN"`
+		ModelName   string `xml:"device>modelName"`
+		ModelNumber string `xml:"device>modelNumber"`
 	}
 	err = xml.Unmarshal(data, &desc)
 	if err != nil {
-		return "", "", err
+		return "", "", "", "", err
 	}
 	
 	rincon := desc.UDN
@@ -138,9 +173,9 @@ func GetDeviceName(ip string) (string, string, error) {
 	}
 
 	if desc.RoomName != "" {
-		return desc.RoomName, rincon, nil
+		return desc.RoomName, rincon, desc.ModelName, desc.ModelNumber, nil
 	}
-	return desc.DisplayName, rincon, nil
+	return desc.DisplayName, rincon, desc.ModelName, desc.ModelNumber, nil
 }
 
 // Client represents a Sonos UPnP client
@@ -434,6 +469,68 @@ func (c *Client) GetPositionInfo() (PositionInfo, error) {
 		TrackURI:      resp.TrackURI,
 		RelTime:       resp.RelTime,
 	}, nil
+}
+
+type ZoneGroup struct {
+	ID          string            `xml:"ID,attr"`
+	Coordinator string            `xml:"Coordinator,attr"`
+	Members     []ZoneGroupMember `xml:"ZoneGroupMember"`
+}
+
+type ZoneGroupMember struct {
+	UUID            string `xml:"UUID,attr"`
+	Location        string `xml:"Location,attr"`
+	RoomName        string `xml:"ZoneName,attr"`
+	Invisible       bool   `xml:"Invisible,attr"`
+	IsZoneStandAlone bool   `xml:"IsZoneStandAlone,attr"`
+}
+
+type ZoneGroupState struct {
+	Groups []ZoneGroup `xml:"ZoneGroups>ZoneGroup"`
+}
+
+func (c *Client) GetZoneGroupAttributes() (string, error) {
+	body, err := c.SOAPAction(
+		"/ZoneGroupTopology/Control",
+		"urn:schemas-upnp-org:service:ZoneGroupTopology:1",
+		"GetZoneGroupAttributes",
+		nil)
+	if err != nil {
+		return "", err
+	}
+	defer body.Close()
+
+	data, _ := io.ReadAll(body)
+	var resp struct {
+		CurrentZoneGroupName string `xml:"Body>GetZoneGroupAttributesResponse>CurrentZoneGroupName"`
+	}
+	xml.Unmarshal(data, &resp)
+	return resp.CurrentZoneGroupName, nil
+}
+
+func (c *Client) GetZoneGroupState() (ZoneGroupState, error) {
+	body, err := c.SOAPAction(
+		"/ZoneGroupTopology/Control",
+		"urn:schemas-upnp-org:service:ZoneGroupTopology:1",
+		"GetZoneGroupState",
+		nil)
+	if err != nil {
+		return ZoneGroupState{}, err
+	}
+	defer body.Close()
+
+	data, _ := io.ReadAll(body)
+	
+	// The response has a ZoneGroupState XML string inside the SOAP response
+	var resp struct {
+		XML string `xml:"Body>GetZoneGroupStateResponse>ZoneGroupState"`
+	}
+	xml.Unmarshal(data, &resp)
+	
+	// Now parse the inner XML
+	var state ZoneGroupState
+	xml.Unmarshal([]byte(resp.XML), &state)
+	return state, nil
 }
 
 // ParseTrackMetadata extracts title, artist, album, and more from DIDL-Lite XML

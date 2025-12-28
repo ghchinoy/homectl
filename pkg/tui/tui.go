@@ -23,6 +23,7 @@ const (
 	modeLights sessionMode = iota
 	modeMusic
 	modeAreas
+	modeSonosGroups
 )
 
 var (
@@ -66,6 +67,8 @@ type item struct {
 	nextTrack  string
 	queueLen   int
 	rinconID   string
+	modelName  string
+	modelNum   string
 }
 
 func (i item) Title() string       { return i.title }
@@ -73,15 +76,11 @@ func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title }
 
 type model struct {
-
 	mode       sessionMode
-
 	lightsList list.Model
-
 	musicList  list.Model
-
 	areasList  list.Model
-
+	groupsList list.Model
 	leapClient *leap.Client
 	err        error
 	status     string
@@ -134,7 +133,7 @@ func loadNicknames() map[string]string {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(m.refreshLights(), m.refreshMusic())
+	return tea.Batch(m.refreshLights(), m.refreshMusic(), m.refreshGroups())
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -154,9 +153,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else if m.mode == modeMusic {
 					activeIdx = m.musicList.Index()
 					itm = m.musicList.SelectedItem()
-				} else {
+				} else if m.mode == modeAreas {
 					activeIdx = m.areasList.Index()
 					itm = m.areasList.SelectedItem()
+				} else {
+					activeIdx = m.groupsList.Index()
+					itm = m.groupsList.SelectedItem()
 				}
 
 				if itm != nil {
@@ -166,8 +168,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.lightsList.SetItem(activeIdx, i)
 					} else if m.mode == modeMusic {
 						m.musicList.SetItem(activeIdx, i)
-					} else {
+					} else if m.mode == modeAreas {
 						m.areasList.SetItem(activeIdx, i)
+					} else {
+						m.groupsList.SetItem(activeIdx, i)
 					}
 					m.saveNicknames()
 				}
@@ -193,6 +197,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.mode = modeMusic
 			} else if m.mode == modeMusic {
 				m.mode = modeAreas
+			} else if m.mode == modeAreas {
+				m.mode = modeSonosGroups
 			} else {
 				m.mode = modeLights
 			}
@@ -207,7 +213,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "0":
 			cmds = append(cmds, m.setLevel(0))
 		case "r":
-			cmds = append(cmds, m.refreshLights(), m.refreshMusic(), m.rediscoverMusic())
+			cmds = append(cmds, m.refreshLights(), m.refreshMusic(), m.rediscoverMusic(), m.refreshGroups())
 		case " ": // Play/Pause for Sonos
 			if m.mode == modeMusic {
 				cmds = append(cmds, m.togglePlayback())
@@ -244,6 +250,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.lightsList.SetSize(listWidth, listHeight)
 		m.musicList.SetSize(listWidth, listHeight)
 		m.areasList.SetSize(listWidth, listHeight)
+		m.groupsList.SetSize(listWidth, listHeight)
 	case statusMsg:
 		m.status = string(msg)
 	case refreshLightsMsg:
@@ -258,6 +265,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.status = fmt.Sprintf("Refreshed %d light statuses", count)
+		// Also refresh Areas list
 		areaItems := m.areasList.Items()
 		for idx, itm := range areaItems {
 			i := itm.(item)
@@ -267,7 +275,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for idx, itm := range m.musicList.Items() {
 			i := itm.(item)
 			if stat, ok := msg[i.ip]; ok {
-				i.level = float64(stat.volume)
+				if stat.volume >= 0 {
+					i.level = float64(stat.volume)
+				}
 				i.status = stat.status
 				i.trackTitle = stat.trackTitle
 				i.artist = stat.artist
@@ -281,6 +291,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case rediscoverMusicMsg:
 		m.musicList.SetItems(msg)
+	case refreshGroupsMsg:
+		m.groupsList.SetItems(msg)
 	}
 
 	var listCmd tea.Cmd
@@ -288,8 +300,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.lightsList, listCmd = m.lightsList.Update(msg)
 	} else if m.mode == modeMusic {
 		m.musicList, listCmd = m.musicList.Update(msg)
-	} else {
+	} else if m.mode == modeAreas {
 		m.areasList, listCmd = m.areasList.Update(msg)
+	} else {
+		m.groupsList, listCmd = m.groupsList.Update(msg)
 	}
 	cmds = append(cmds, listCmd)
 
@@ -331,7 +345,10 @@ func (m model) refreshMusic() tea.Cmd {
 		for _, itm := range m.musicList.Items() {
 			i := itm.(item)
 			client := sonos.NewClient(i.ip)
-			vol, _ := client.GetVolume()
+			vol, err := client.GetVolume()
+			if err != nil {
+				vol = -1
+			}
 			transport, _ := client.GetTransportInfo()
 			pos, _ := client.GetPositionInfo()
 			media, _ := client.GetMediaInfo()
@@ -360,6 +377,48 @@ func (m model) refreshMusic() tea.Cmd {
 	}
 }
 
+type refreshGroupsMsg []list.Item
+
+func (m model) refreshGroups() tea.Cmd {
+	return func() tea.Msg {
+		var groupItems []list.Item
+		speakers, _ := sonos.LoadCache()
+		if len(speakers) == 0 {
+			return refreshGroupsMsg(groupItems)
+		}
+		
+		client := sonos.NewClient(speakers[0].IP)
+		state, err := client.GetZoneGroupState()
+		if err != nil {
+			return statusMsg(fmt.Sprintf("Groups Error: %v", err))
+		}
+		
+		for _, g := range state.Groups {
+			members := ""
+			groupName := ""
+			for _, m := range g.Members {
+				if m.UUID == g.Coordinator {
+					groupName = m.RoomName
+				}
+				if members != "" { members += ", " }
+				members += m.RoomName
+			}
+			
+			if len(g.Members) > 1 {
+				groupName = fmt.Sprintf("%s + %d", groupName, len(g.Members)-1)
+			}
+
+			groupItems = append(groupItems, item{
+				title:    groupName,
+				desc:     members,
+				isSonos:  true,
+				zoneHref: g.ID,
+			})
+		}
+		return refreshGroupsMsg(groupItems)
+	}
+}
+
 type rediscoverMusicMsg []list.Item
 
 func (m model) rediscoverMusic() tea.Cmd {
@@ -369,6 +428,8 @@ func (m model) rediscoverMusic() tea.Cmd {
 		if len(speakers) > 0 {
 			sonos.SaveCache(speakers)
 		}
+		// Load potentially merged cache
+		speakers, _ = sonos.LoadCache()
 		for _, s := range speakers {
 			musicItems = append(musicItems, item{
 				title:    s.Name,
@@ -391,9 +452,12 @@ func (m model) setLevel(level float64) tea.Cmd {
 	} else if m.mode == modeMusic {
 		activeIdx = m.musicList.Index()
 		itm = m.musicList.SelectedItem()
-	} else {
+	} else if m.mode == modeAreas {
 		activeIdx = m.areasList.Index()
 		itm = m.areasList.SelectedItem()
+	} else {
+		activeIdx = m.groupsList.Index()
+		itm = m.groupsList.SelectedItem()
 	}
 
 	if itm == nil {
@@ -406,8 +470,10 @@ func (m model) setLevel(level float64) tea.Cmd {
 		m.lightsList.SetItem(activeIdx, i)
 	} else if m.mode == modeMusic {
 		m.musicList.SetItem(activeIdx, i)
-	} else {
+	} else if m.mode == modeAreas {
 		m.areasList.SetItem(activeIdx, i)
+	} else {
+		m.groupsList.SetItem(activeIdx, i)
 	}
 
 	return func() tea.Msg {
@@ -431,7 +497,6 @@ func (m model) setLevel(level float64) tea.Cmd {
 			return statusMsg(fmt.Sprintf("Error: %v", err))
 		}
 		
-		// If it was a bulk command, trigger a refresh to sync levels
 		if m.mode == modeAreas || (m.mode == modeLights && i.isAll) {
 			return m.refreshLights()()
 		}
@@ -515,8 +580,10 @@ func (m model) getCurrentItem() list.Item {
 		return m.lightsList.SelectedItem()
 	} else if m.mode == modeMusic {
 		return m.musicList.SelectedItem()
+	} else if m.mode == modeAreas {
+		return m.areasList.SelectedItem()
 	}
-	return m.areasList.SelectedItem()
+	return m.groupsList.SelectedItem()
 }
 
 func (m model) View() string {
@@ -524,40 +591,47 @@ func (m model) View() string {
 		return fmt.Sprintf("Error: %v", m.err)
 	}
 
-	// Tabs with clear markers
-	var lightsTab, musicTab, areasTab string
+	var lightsTab, musicTab, areasTab, groupsTab string
 	if m.mode == modeLights {
 		lightsTab = activeTabStyle.Render("[ LIGHTS ]")
 		musicTab = inactiveTabStyle.Render("  MUSIC  ")
 		areasTab = inactiveTabStyle.Render("  AREAS  ")
+		groupsTab = inactiveTabStyle.Render("  GROUPS ")
 	} else if m.mode == modeMusic {
 		lightsTab = inactiveTabStyle.Render("  LIGHTS ")
 		musicTab = activeTabStyle.Render("[  MUSIC ]")
 		areasTab = inactiveTabStyle.Render("  AREAS  ")
-	} else {
+		groupsTab = inactiveTabStyle.Render("  GROUPS ")
+	} else if m.mode == modeAreas {
 		lightsTab = inactiveTabStyle.Render("  LIGHTS ")
 		musicTab = inactiveTabStyle.Render("  MUSIC  ")
 		areasTab = activeTabStyle.Render("[  AREAS ]")
+		groupsTab = inactiveTabStyle.Render("  GROUPS ")
+	} else {
+		lightsTab = inactiveTabStyle.Render("  LIGHTS ")
+		musicTab = inactiveTabStyle.Render("  MUSIC  ")
+		areasTab = inactiveTabStyle.Render("  AREAS  ")
+		groupsTab = activeTabStyle.Render("[  GROUPS ]")
 	}
-	tabsRow := lipgloss.JoinHorizontal(lipgloss.Top, lightsTab, musicTab, areasTab)
+	tabsRow := lipgloss.JoinHorizontal(lipgloss.Top, lightsTab, musicTab, areasTab, groupsTab)
 	tabs := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder(), false, false, true, false).
 		BorderForeground(lipgloss.Color("241")).
 		Render(tabsRow)
 
-	// Main Content
 	var currentList list.Model
 	if m.mode == modeLights {
 		currentList = m.lightsList
 	} else if m.mode == modeMusic {
 		currentList = m.musicList
-	} else {
+	} else if m.mode == modeAreas {
 		currentList = m.areasList
+	} else {
+		currentList = m.groupsList
 	}
 
 	listView := docStyle.Render(currentList.View())
 
-	// Details
 	var detailView string
 	selected := currentList.SelectedItem()
 	if selected != nil {
@@ -574,8 +648,8 @@ func (m model) View() string {
 			}
 		} else if m.mode == modeMusic {
 			detailText = fmt.Sprintf(
-				"SPEAKER DETAILS\n\nName: %s\nIP: %s\nID: %s\nStatus: %s\nVolume: %.0f%%\nQueue: %d\n\nNOW PLAYING\n\nTrack:  %s\nArtist: %s\nAlbum:  %s",
-				i.title, i.ip, i.rinconID, i.status, i.level, i.queueLen, i.trackTitle, i.artist, i.album,
+				"SPEAKER DETAILS\n\nName: %s\nIP: %s\nModel: %s (%s)\nID: %s\nStatus: %s\nVolume: %.0f%%\nQueue: %d\n\nNOW PLAYING\n\nTrack:  %s\nArtist: %s\nAlbum:  %s",
+				i.title, i.ip, i.modelName, i.modelNum, i.rinconID, i.status, i.level, i.queueLen, i.trackTitle, i.artist, i.album,
 			)
 			if i.stream != "" {
 				detailText += fmt.Sprintf("\nStream: %s", i.stream)
@@ -586,10 +660,15 @@ func (m model) View() string {
 			if i.nextTrack != "" {
 				detailText += fmt.Sprintf("\n\nNEXT\n%s", i.nextTrack)
 			}
-		} else {
+		} else if m.mode == modeAreas {
 			detailText = fmt.Sprintf(
 				"AREA DETAILS\n\nName: %s\nHref: %s",
 				i.title, i.zoneHref,
+			)
+		} else {
+			detailText = fmt.Sprintf(
+				"SONOS GROUP\n\nID: %s\nMembers: %s",
+				i.zoneHref, i.desc,
 			)
 		}
 		detailView = detailStyle.
@@ -655,14 +734,11 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 }
 
 func Start(leapClient *leap.Client) error {
-	// Initialize Lists
 	prog := progress.New(progress.WithDefaultGradient())
 	delegate := itemDelegate{progress: prog}
 	nicknames := loadNicknames()
 
-	// Fetch Data
-
-devices, err := leapClient.GetDevices()
+	devices, err := leapClient.GetDevices()
 	if err != nil {
 		return fmt.Errorf("failed to get devices: %w", err)
 	}
@@ -679,7 +755,6 @@ devices, err := leapClient.GetDevices()
 		zoneNames[z.Href] = z.Name
 	}
 
-	// Lights Items
 	lightItems := []list.Item{
 		item{title: "ALL LIGHTS", desc: "Master control", isAll: true},
 	}
@@ -697,20 +772,20 @@ devices, err := leapClient.GetDevices()
 		}
 	}
 
-	// Music Items (loaded from cache, then discovered)
 	musicItems := []list.Item{}
 	cached, _ := sonos.LoadCache()
 	for _, s := range cached {
 		musicItems = append(musicItems, item{
-			title:    s.Name,
-			ip:       s.IP,
-			isSonos:  true,
-			nickname: nicknames[s.IP],
-			rinconID: s.RinconID,
+			title:     s.Name,
+			ip:        s.IP,
+			isSonos:   true,
+			nickname:  nicknames[s.IP],
+			rinconID:  s.RinconID,
+			modelName: s.ModelName,
+			modelNum:  s.ModelNumber,
 		})
 	}
 
-	// Areas Items
 	areaItems := []list.Item{}
 	for _, a := range areas {
 		areaItems = append(areaItems, item{
@@ -731,6 +806,7 @@ devices, err := leapClient.GetDevices()
 		lightsList: list.New(lightItems, delegate, 0, 0),
 		musicList:  list.New(musicItems, delegate, 0, 0),
 		areasList:  list.New(areaItems, delegate, 0, 0),
+		groupsList: list.New([]list.Item{}, delegate, 0, 0),
 		leapClient: leapClient,
 		progress:   prog,
 		textInput:  ti,
@@ -738,24 +814,29 @@ devices, err := leapClient.GetDevices()
 	m.lightsList.Title = "Lutron Control"
 	m.musicList.Title = "Sonos Control"
 	m.areasList.Title = "Lutron Areas"
+	m.groupsList.Title = "Sonos Groups"
 	m.lightsList.SetShowTitle(true)
 	m.musicList.SetShowTitle(true)
 	m.areasList.SetShowTitle(true)
+	m.groupsList.SetShowTitle(true)
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
-	// Trigger discovery after startup
 	go func() {
 		speakers, _ := sonos.Discover(5 * time.Second)
 		if len(speakers) > 0 {
 			sonos.SaveCache(speakers)
 			var items []list.Item
-			for _, s := range speakers {
+			// Load potentially merged cache
+			merged, _ := sonos.LoadCache()
+			for _, s := range merged {
 				items = append(items, item{
-					title:    s.Name,
-					ip:       s.IP,
-					isSonos:  true,
-					nickname: nicknames[s.IP],
-					rinconID: s.RinconID,
+					title:     s.Name,
+					ip:        s.IP,
+					isSonos:   true,
+					nickname:  nicknames[s.IP],
+					rinconID:  s.RinconID,
+					modelName: s.ModelName,
+					modelNum:  s.ModelNumber,
 				})
 			}
 			p.Send(rediscoverMusicMsg(items))

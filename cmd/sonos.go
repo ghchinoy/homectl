@@ -27,14 +27,16 @@ var listSonosCmd = &cobra.Command{
 			fmt.Println("No cache found. Discovering Sonos speakers...")
 		}
 
-		// Perform discovery
+		// Perform discovery and save
 		newSpeakers, err := sonos.Discover(5 * time.Second)
 		if err == nil && len(newSpeakers) > 0 {
-			speakers = newSpeakers
-			sonos.SaveCache(speakers)
+			sonos.SaveCache(newSpeakers)
 		} else if err != nil {
 			fmt.Printf("Discovery error: %v\n", err)
 		}
+
+		// Reload merged cache for display
+		speakers, _ = sonos.LoadCache()
 
 		if len(speakers) == 0 {
 			fmt.Println("No Sonos speakers found.")
@@ -168,8 +170,12 @@ var sonosDetailsCmd = &cobra.Command{
 		media, _ := client.GetMediaInfo()
 		meta, _ := client.ParseTrackMetadata(pos.TrackMetaData)
 		nextMeta, _ := client.ParseTrackMetadata(media.NextURIMetaData)
+		name, rincon, modelName, modelNum, _ := sonos.GetDeviceName(args[0])
 
+		fmt.Printf("Name:     %s\n", name)
 		fmt.Printf("IP:       %s\n", args[0])
+		fmt.Printf("Model:    %s (%s)\n", modelName, modelNum)
+		fmt.Printf("ID:       %s\n", rincon)
 		fmt.Printf("Status:   %s\n", transport.CurrentTransportState)
 		fmt.Printf("Volume:   %d%%\n", vol)
 		fmt.Printf("Queue:    %d tracks\n", media.NrTracks)
