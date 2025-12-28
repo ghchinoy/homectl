@@ -1,3 +1,5 @@
+
+
 package sonos
 
 import (
@@ -6,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -197,6 +200,12 @@ type PositionInfo struct {
 	RelTime       string
 }
 
+type TrackMetadata struct {
+	Title  string `xml:"title"`
+	Artist string `xml:"creator"`
+	Album  string `xml:"album"`
+}
+
 func (c *Client) GetPositionInfo() (PositionInfo, error) {
 	body, err := c.SOAPAction(
 		"/MediaRenderer/AVTransport/Control",
@@ -226,4 +235,39 @@ func (c *Client) GetPositionInfo() (PositionInfo, error) {
 		TrackURI:      resp.TrackURI,
 		RelTime:       resp.RelTime,
 	}, nil
+}
+
+// ParseTrackMetadata extracts title, artist, and album from DIDL-Lite XML
+func (c *Client) ParseTrackMetadata(xmlStr string) (TrackMetadata, error) {
+	if xmlStr == "" || xmlStr == "NOT_IMPLEMENTED" {
+		return TrackMetadata{}, nil
+	}
+
+	// Sonos embeds XML in XML, often with escaped characters or namespaces
+	// We use a simplified approach to find the tags we need
+	var meta TrackMetadata
+	
+	// Helper to find content between tags
+	findTag := func(s, tag string) string {
+		start := strings.Index(s, "<"+tag+">")
+		if start == -1 {
+			// Try with namespace
+			start = strings.Index(s, ":"+tag+">")
+			if start == -1 { return "" }
+			start += len(tag) + 2
+		} else {
+			start += len(tag) + 2
+		}
+		
+		end := strings.Index(s[start:], "</")
+		if end == -1 { return "" }
+		
+		return s[start : start+end]
+	}
+
+	meta.Title = findTag(xmlStr, "title")
+	meta.Artist = findTag(xmlStr, "creator")
+	meta.Album = findTag(xmlStr, "album")
+
+	return meta, nil
 }

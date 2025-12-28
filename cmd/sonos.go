@@ -29,8 +29,8 @@ var listSonosCmd = &cobra.Command{
 			{"Office", "192.168.4.99"},
 		}
 
-		fmt.Printf("%-20s %-15s %-10s %-10s\n", "NAME", "IP", "VOLUME", "STATUS")
-		fmt.Println("------------------------------------------------------------")
+		fmt.Printf("%-15s %-15s %-10s %-15s %-30s\n", "NAME", "IP", "VOLUME", "STATUS", "NOW PLAYING")
+		fmt.Println("------------------------------------------------------------------------------------------------")
 		for _, s := range speakers {
 			client := sonos.NewClient(s.IP)
 			vol, err := client.GetVolume()
@@ -40,12 +40,18 @@ var listSonosCmd = &cobra.Command{
 			}
 			
 			status := "-"
+			track := "-"
 			info, err := client.GetTransportInfo()
 			if err == nil {
 				status = info.CurrentTransportState
+				pos, _ := client.GetPositionInfo()
+				meta, _ := client.ParseTrackMetadata(pos.TrackMetaData)
+				if meta.Title != "" {
+					track = meta.Title
+				}
 			}
 
-			fmt.Printf("%-20s %-15s %-10s %-10s\n", s.Name, s.IP, volStr, status)
+			fmt.Printf("%-15s %-15s %-10s %-15s %-30s\n", s.Name, s.IP, volStr, status, track)
 		}
 	},
 }
@@ -95,17 +101,42 @@ var nowPlayingCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		client := sonos.NewClient(args[0])
-		info, err := client.GetPositionInfo()
+		pos, err := client.GetPositionInfo()
 		if err != nil {
 			log.Fatalf("Failed to get position info: %v", err)
 		}
 		
-		fmt.Printf("Track: %d\n", info.Track)
-		fmt.Printf("Duration: %s\n", info.TrackDuration)
-		fmt.Printf("RelTime: %s\n", info.RelTime)
-		fmt.Printf("URI: %s\n", info.TrackURI)
-		// Metadata is XML encoded, skipping pretty printing for now
-		fmt.Printf("Metadata: %s\n", info.TrackMetaData)
+		meta, _ := client.ParseTrackMetadata(pos.TrackMetaData)
+		
+		fmt.Printf("Title:    %s\n", meta.Title)
+		fmt.Printf("Artist:   %s\n", meta.Artist)
+		fmt.Printf("Album:    %s\n", meta.Album)
+		fmt.Printf("Duration: %s\n", pos.TrackDuration)
+		fmt.Printf("Progress: %s\n", pos.RelTime)
+		fmt.Printf("URI:      %s\n", pos.TrackURI)
+	},
+}
+
+var sonosDetailsCmd = &cobra.Command{
+	Use:   "details [ip]",
+	Short: "Show detailed status and metadata for a Sonos speaker",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		client := sonos.NewClient(args[0])
+		
+		transport, _ := client.GetTransportInfo()
+		vol, _ := client.GetVolume()
+		pos, _ := client.GetPositionInfo()
+		meta, _ := client.ParseTrackMetadata(pos.TrackMetaData)
+
+		fmt.Printf("IP:       %s\n", args[0])
+		fmt.Printf("Status:   %s\n", transport.CurrentTransportState)
+		fmt.Printf("Volume:   %d%%\n", vol)
+		fmt.Println("---------------------------------")
+		fmt.Printf("Track:    %s\n", meta.Title)
+		fmt.Printf("Artist:   %s\n", meta.Artist)
+		fmt.Printf("Album:    %s\n", meta.Album)
+		fmt.Printf("Duration: %s (%s)\n", pos.TrackDuration, pos.RelTime)
 	},
 }
 
@@ -133,5 +164,6 @@ func init() {
 	sonosCmd.AddCommand(pauseSonosCmd)
 	sonosCmd.AddCommand(stopSonosCmd)
 	sonosCmd.AddCommand(nowPlayingCmd)
+	sonosCmd.AddCommand(sonosDetailsCmd)
 	sonosCmd.AddCommand(setSonosVolumeCmd)
 }

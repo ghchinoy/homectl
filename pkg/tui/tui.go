@@ -20,22 +20,22 @@ const (
 )
 
 var (
-	docStyle = lipgloss.NewStyle().Margin(1, 2)
+	docStyle    = lipgloss.NewStyle().Margin(1, 2)
 	statusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
-	helpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Margin(1, 0)
+	helpStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Margin(1, 0)
 	detailStyle = lipgloss.NewStyle().
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("241")).
 		Padding(1, 2).
 		MarginLeft(2)
-	
+
 	activeTabStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("205")).
 		Border(lipgloss.NormalBorder(), false, false, true, false).
 		BorderForeground(lipgloss.Color("205")).
 		Padding(0, 1)
 	inactiveTabStyle = lipgloss.NewStyle().
-		Padding(0, 1)
+			Padding(0, 1)
 )
 
 type item struct {
@@ -45,11 +45,14 @@ type item struct {
 	isAll       bool
 	level       float64
 	device      leap.Device
-	
+
 	// Sonos specific
-	isSonos bool
-	ip      string
-	status  string
+	isSonos    bool
+	ip         string
+	status     string
+	trackTitle string
+	artist     string
+	album      string
 }
 
 func (i item) Title() string       { return i.title }
@@ -57,15 +60,15 @@ func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title }
 
 type model struct {
-	mode        sessionMode
-	lightsList  list.Model
-	musicList   list.Model
-	leapClient  *leap.Client
-	err         error
-	status      string
-	progress    progress.Model
-	width       int
-	height      int
+	mode       sessionMode
+	lightsList list.Model
+	musicList  list.Model
+	leapClient *leap.Client
+	err        error
+	status     string
+	progress   progress.Model
+	width      int
+	height     int
 }
 
 func (m model) Init() tea.Cmd {
@@ -127,6 +130,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if stat, ok := msg[i.ip]; ok {
 				i.level = float64(stat.volume)
 				i.status = stat.status
+				i.trackTitle = stat.trackTitle
+				i.artist = stat.artist
+				i.album = stat.album
 				m.musicList.SetItem(idx, i)
 			}
 		}
@@ -146,8 +152,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 type statusMsg string
 type refreshLightsMsg map[string]float64
 type musicStatus struct {
-	volume int
-	status string
+	volume     int
+	status     string
+	trackTitle string
+	artist     string
+	album      string
 }
 type refreshMusicMsg map[string]musicStatus
 
@@ -172,8 +181,17 @@ func (m model) refreshMusic() tea.Cmd {
 			i := itm.(item)
 			client := sonos.NewClient(i.ip)
 			vol, _ := client.GetVolume()
-			info, _ := client.GetTransportInfo()
-			results[i.ip] = musicStatus{volume: vol, status: info.CurrentTransportState}
+			transport, _ := client.GetTransportInfo()
+			pos, _ := client.GetPositionInfo()
+			meta, _ := client.ParseTrackMetadata(pos.TrackMetaData)
+
+			results[i.ip] = musicStatus{
+				volume:     vol,
+				status:     transport.CurrentTransportState,
+				trackTitle: meta.Title,
+				artist:     meta.Artist,
+				album:      meta.Album,
+			}
 		}
 		return results
 	}
@@ -182,7 +200,7 @@ func (m model) refreshMusic() tea.Cmd {
 func (m model) setLevel(level float64) tea.Cmd {
 	var activeIdx int
 	var itm list.Item
-	
+
 	if m.mode == modeLights {
 		activeIdx = m.lightsList.Index()
 		itm = m.lightsList.SelectedItem()
@@ -191,10 +209,12 @@ func (m model) setLevel(level float64) tea.Cmd {
 		itm = m.musicList.SelectedItem()
 	}
 
-	if itm == nil { return nil }
+	if itm == nil {
+		return nil
+	}
 	i := itm.(item)
 	i.level = level
-	
+
 	if m.mode == modeLights {
 		m.lightsList.SetItem(activeIdx, i)
 	} else {
@@ -228,16 +248,22 @@ func (m model) adjustLevel(delta float64) tea.Cmd {
 	}
 	i := itm.(item)
 	newLevel := i.level + delta
-	if newLevel < 0 { newLevel = 0 }
-	if newLevel > 100 { newLevel = 100 }
+	if newLevel < 0 {
+		newLevel = 0
+	}
+	if newLevel > 100 {
+		newLevel = 100
+	}
 	return m.setLevel(newLevel)
 }
 
 func (m model) togglePlayback() tea.Cmd {
 	itm := m.musicList.SelectedItem()
-	if itm == nil { return nil }
+	if itm == nil {
+		return nil
+	}
 	i := itm.(item)
-	
+
 	return func() tea.Msg {
 		client := sonos.NewClient(i.ip)
 		var err error
@@ -282,9 +308,9 @@ func (m model) View() string {
 	} else {
 		currentList = m.musicList
 	}
-	
+
 	listView := docStyle.Render(currentList.View())
-	
+
 	// Details
 	var detailView string
 	selected := currentList.SelectedItem()
@@ -302,8 +328,8 @@ func (m model) View() string {
 			}
 		} else {
 			detailText = fmt.Sprintf(
-				"SPEAKER DETAILS\n\nName: %s\nIP: %s\nStatus: %s\nVolume: %.0f%%",
-				i.title, i.ip, i.status, i.level,
+				"SPEAKER DETAILS\n\nName: %s\nIP: %s\nStatus: %s\nVolume: %.0f%%\n\nNOW PLAYING\n\nTrack:  %s\nArtist: %s\nAlbum:  %s",
+				i.title, i.ip, i.status, i.level, i.trackTitle, i.artist, i.album,
 			)
 		}
 		detailView = detailStyle.
@@ -313,18 +339,18 @@ func (m model) View() string {
 	}
 
 	mainView := lipgloss.JoinHorizontal(lipgloss.Top, listView, detailView)
-	
+
 	footer := ""
 	if m.status != "" {
 		footer += "\n" + statusStyle.Render(m.status)
 	}
-	
+
 	controls := "1-9 (Level), 0 (Off), +/- (Adjust), Tab (Switch Mode), r (Refresh), q (Quit)"
 	if m.mode == modeMusic {
 		controls += ", Space (Play/Pause)"
 	}
 	footer += helpStyle.Render("\n" + controls)
-	
+
 	return tabs + "\n" + mainView + footer
 }
 
@@ -337,7 +363,9 @@ func (d itemDelegate) Spacing() int                              { return 1 }
 func (d itemDelegate) Update(msg tea.Msg, m *list.Model) tea.Cmd { return nil }
 func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
 	itm, ok := listItem.(item)
-	if !ok { return }
+	if !ok {
+		return
+	}
 
 	str := fmt.Sprintf("%d. %s\n", index+1, itm.title)
 	d.progress.Width = 30
@@ -392,11 +420,11 @@ func Start(leapClient *leap.Client) error {
 	}
 
 	m := model{
-		mode:        modeLights,
-		lightsList:  list.New(lightItems, delegate, 0, 0),
-		musicList:   list.New(musicItems, delegate, 0, 0),
-		leapClient:  leapClient,
-		progress:    prog,
+		mode:       modeLights,
+		lightsList: list.New(lightItems, delegate, 0, 0),
+		musicList:  list.New(musicItems, delegate, 0, 0),
+		leapClient: leapClient,
+		progress:   prog,
 	}
 	m.lightsList.Title = "Lutron Control"
 	m.musicList.Title = "Sonos Control"
