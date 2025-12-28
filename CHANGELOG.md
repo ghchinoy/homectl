@@ -1,4 +1,6 @@
 ## 2025-12-28
+- Add Sonos CLI commands (control-xy1)
+- Implement core Sonos UPnP client (control-ufd)
 - Implement split-screen detail view in TUI (control-1cg)
 - Add progress bar indicators to TUI (control-dsj)
 - Show device status (on/off/level) in listing (control-5us)

@@ -13,13 +13,24 @@ This project is a Go-based integration for Lutron Caseta/RA2 Select systems, fea
 ## Application Architecture
 
 - **Project Structure:**
-    - `cmd/`: CLI commands (Cobra). `getClient` helper in `root.go` manages the secure bridge connection.
-    - `pkg/leap`: Core LEAP protocol implementation, data models, and connection management.
-    - `pkg/tui`: Terminal UI implementation (Bubble Tea).
-    - `secrets/`: Local storage for TLS certificates (ignored by git).
-    - `tools/`: Python-based discovery and pairing utilities.
-- **LEAP Client (`pkg/leap`):** Handles TLS, JSON messaging, and response filtering. It maps Lutron's hierarchical model (Areas -> Devices -> Zones).
-- **TUI (`pkg/tui`):** Built with Bubble Tea. Uses a `list.Model` for navigation and sends asynchronous `tea.Cmd` messages to trigger LEAP commands.
+    - `cmd/`: CLI commands (Cobra). `getClient` in `root.go` manages secure connections.
+    - `pkg/leap`: Core Lutron LEAP protocol implementation.
+    - `pkg/sonos`: Core Sonos UPnP/SOAP protocol implementation.
+    - `pkg/tui`: Terminal UI (Bubble Tea) with multi-mode navigation.
+    - `secrets/`: Local storage for credentials (ignored by git).
+    - `tools/`: Python and Go utilities for discovery and pairing.
+
+## Architectural Principles
+
+### 1. Resilient IoT Pattern
+- **Disconnection Handling:** IoT devices (Lutron, Sonos) frequently reset idle connections. The `leap.Client` and `sonos.Client` must implement automatic reconnection logic within their `Request` methods.
+- **Batching:** Avoid sequential polling of many resources. Use collective status endpoints (like `/zone/status`) to minimize network overhead and prevent I/O timeouts.
+
+### 2. Optimistic UI Updates
+- **Snappiness:** To hide network latency, the TUI model should update its local state **immediately** upon user input. The network command is dispatched as an asynchronous `tea.Cmd`, and the TUI only rolls back or alerts if the command fails.
+
+### 3. Mode-Based Hub
+- **Navigation:** Use a "Hub" model with `sessionMode` and tabs (Lights, Music, etc.) to handle multiple device categories without cluttering the UI.
 
 ## Lessons Learned: Lutron Discovery & LEAP
 
