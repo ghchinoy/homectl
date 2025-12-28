@@ -1,4 +1,5 @@
 ## 2025-12-28
+- Add progress bar indicators to TUI (control-dsj)
 - Show device status (on/off/level) in listing (control-5us)
 
 ## 2025-12-27
