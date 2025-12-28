@@ -1,3 +1,4 @@
+
 package leap
 
 import (
@@ -51,18 +52,29 @@ type Device struct {
 	DeviceType     string   `json:"DeviceType"`
 	SerialNumber   int      `json:"SerialNumber,omitempty"`
 	ModelNumber    string   `json:"ModelNumber,omitempty"`
-	LocalZones     []Zone   `json:"LocalZones,omitempty"`
+	LocalZones     []ZoneLink `json:"LocalZones,omitempty"`
 	AssociatedArea struct {
 		Href string `json:"href"`
 	} `json:"AssociatedArea,omitempty"`
 }
 
-type Zone struct {
+type ZoneLink struct {
 	Href string `json:"href"`
 }
 
 type DeviceResponse struct {
 	Devices []Device `json:"Devices"`
+}
+
+// Zone represents a Lutron Zone
+type Zone struct {
+	Href        string `json:"href"`
+	Name        string `json:"Name"`
+	ControlType string `json:"ControlType,omitempty"`
+}
+
+type ZoneResponse struct {
+	Zones []Zone `json:"Zones"`
 }
 
 type ZoneStatus struct {
@@ -165,7 +177,7 @@ func (c *Client) Request(req Message) (Message, error) {
 			continue
 		}
 
-		// We filter out SubscribeResponse (background updates) unless we explicitly want them
+		// We filter out SubscribeResponse (background updates)
 		if resp.CommuniqueType != "SubscribeResponse" {
 			return resp, nil
 		}
@@ -208,6 +220,25 @@ func (c *Client) GetDevices() ([]Device, error) {
 		return nil, err
 	}
 	return body.Devices, nil
+}
+
+// GetZones retrieves all zones
+func (c *Client) GetZones() ([]Zone, error) {
+	req := Message{
+		CommuniqueType: "ReadRequest",
+		Header: Header{
+			Url: "/zone",
+		},
+	}
+	resp, err := c.Request(req)
+	if err != nil {
+		return nil, err
+	}
+	var body ZoneResponse
+	if err := json.Unmarshal(resp.Body, &body); err != nil {
+		return nil, err
+	}
+	return body.Zones, nil
 }
 
 // GetAllZoneStatuses retrieves status for all zones in one call
@@ -303,7 +334,7 @@ func (c *Client) SetAllLevels(level float64) error {
 					lastErr = err
 					errMu.Unlock()
 				}
-		}(d.LocalZones[0].Href)
+			}(d.LocalZones[0].Href)
 		}
 	}
 

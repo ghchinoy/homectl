@@ -26,10 +26,30 @@ var listAreasCmd = &cobra.Command{
 			log.Fatalf("Failed to get areas: %v", err)
 		}
 
-		fmt.Printf("%-20s %-20s\n", "NAME", "HREF")
+		fmt.Printf("% -20s % -20s\n", "NAME", "HREF")
 		fmt.Println("------------------------------------------")
 		for _, a := range areas {
-			fmt.Printf("%-20s %-20s\n", a.Name, a.Href)
+			fmt.Printf("% -20s % -20s\n", a.Name, a.Href)
+		}
+	},
+}
+
+var listZonesCmd = &cobra.Command{
+	Use:   "zones",
+	Short: "List all zones",
+	Run: func(cmd *cobra.Command, args []string) {
+		client := getClient(cmd)
+		defer client.Close()
+
+		zones, err := client.GetZones()
+		if err != nil {
+			log.Fatalf("Failed to get zones: %v", err)
+		}
+
+		fmt.Printf("% -30s % -15s % -10s\n", "NAME", "TYPE", "HREF")
+		fmt.Println("-----------------------------------------------------------")
+		for _, z := range zones {
+			fmt.Printf("% -30s % -15s % -10s\n", z.Name, z.ControlType, z.Href)
 		}
 	},
 }
@@ -41,14 +61,19 @@ var listDevicesCmd = &cobra.Command{
 		client := getClient(cmd)
 		defer client.Close()
 
-	
-devices, err := client.GetDevices()
+		devices, err := client.GetDevices()
 		if err != nil {
 			log.Fatalf("Failed to get devices: %v", err)
 		}
 
-		fmt.Printf("%-30s %-20s %-10s %-10s\n", "NAME", "TYPE", "STATUS", "HREF")
-		fmt.Println("------------------------------------------------------------------------------------------")
+		zones, _ := client.GetZones()
+		zoneNames := make(map[string]string)
+		for _, z := range zones {
+			zoneNames[z.Href] = z.Name
+		}
+
+		fmt.Printf("% -30s % -20s % -10s % -20s % -10s\n", "NAME", "TYPE", "STATUS", "ZONE NAME", "HREF")
+		fmt.Println("-------------------------------------------------------------------------------------------------------------")
 		
 		var wg sync.WaitGroup
 		type devStatus struct {
@@ -89,7 +114,11 @@ devices, err := client.GetDevices()
 		}
 
 		for i, d := range devices {
-			fmt.Printf("%-30s %-20s %-10s %-10s\n", d.Name, d.DeviceType, results[i], d.Href)
+			zn := "-"
+			if len(d.LocalZones) > 0 {
+				zn = zoneNames[d.LocalZones[0].Href]
+			}
+			fmt.Printf("% -30s % -20s % -10s % -20s % -10s\n", d.Name, d.DeviceType, results[i], zn, d.Href)
 		}
 	},
 }
@@ -109,5 +138,6 @@ func getClient(cmd *cobra.Command) *leap.Client {
 func init() {
 	rootCmd.AddCommand(listCmd)
 	listCmd.AddCommand(listAreasCmd)
+	listCmd.AddCommand(listZonesCmd)
 	listCmd.AddCommand(listDevicesCmd)
 }

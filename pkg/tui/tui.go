@@ -1,5 +1,3 @@
-
-
 package tui
 
 import (
@@ -28,6 +26,7 @@ var (
 type item struct {
 	title, desc string
 	zoneHref    string
+	zoneName    string
 	isAll       bool
 	level       float64
 	device      leap.Device
@@ -75,19 +74,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		h, v := docStyle.GetFrameSize()
-		// Allocate 60% width to list, 40% to details
 		m.list.SetSize(int(float64(msg.Width)*0.6)-h, msg.Height-v-4)
 	case statusMsg:
 		m.status = string(msg)
 	case refreshMsg:
-		for idx, lvl := range msg {
-			if idx < len(m.list.Items()) {
-				itm := m.list.Items()[idx].(item)
-				itm.level = lvl
-				m.list.SetItem(idx, itm)
+		for idx, itm := range m.list.Items() {
+			i := itm.(item)
+			if i.zoneHref != "" {
+				if lvl, ok := msg[i.zoneHref]; ok {
+					i.level = lvl
+					m.list.SetItem(idx, i)
+				}
 			}
 		}
-		cmds = append(cmds, tea.Tick(10*time.Second, func(t time.Time) tea.Msg {
+		cmds = append(cmds, tea.Tick(30*time.Second, func(t time.Time) tea.Msg {
 			return m.refreshStatus()()
 		}))
 	}
@@ -100,28 +100,40 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 type statusMsg string
-type refreshMsg map[int]float64
+type refreshMsg map[string]float64
 
 func (m model) refreshStatus() tea.Cmd {
 	return func() tea.Msg {
+		statuses, err := m.client.GetAllZoneStatuses()
+		if err != nil {
+			return statusMsg(fmt.Sprintf("Refresh Error: %v", err))
+		}
+		
 		results := make(refreshMsg)
-		for idx, itm := range m.list.Items() {
-			i := itm.(item)
-			if i.zoneHref != "" {
-				status, err := m.client.GetZoneStatus(i.zoneHref)
-				if err == nil {
-					results[idx] = status.Level
-				}
-			}
+		for _, s := range statuses {
+			results[s.Zone.Href] = s.Level
 		}
 		return results
 	}
 }
 
 func (m model) setLevel(level float64) tea.Cmd {
+	idx := m.list.Index()
 	i, ok := m.list.SelectedItem().(item)
 	if !ok {
 		return nil
+	}
+
+	i.level = level
+	m.list.SetItem(idx, i)
+	if i.isAll {
+		for j, itm := range m.list.Items() {
+			ii := itm.(item)
+			if ii.zoneHref != "" {
+				ii.level = level
+				m.list.SetItem(j, ii)
+			}
+		}
 	}
 
 	return func() tea.Msg {
@@ -146,10 +158,8 @@ func (m model) View() string {
 		return fmt.Sprintf("Error: %v", m.err)
 	}
 	
-	// Left side: List
 	listView := docStyle.Render(m.list.View())
 	
-	// Right side: Details
 	var detailView string
 	selected := m.list.SelectedItem()
 	if selected != nil {
@@ -165,7 +175,7 @@ func (m model) View() string {
 				i.title, i.device.DeviceType, i.device.ModelNumber, i.device.SerialNumber, i.device.Href,
 			)
 			if i.zoneHref != "" {
-				detailText += fmt.Sprintf("\nZone: %s\nLevel: %.0f%%", i.zoneHref, i.level)
+				detailText += fmt.Sprintf("\nZone Name: %s\nZone Href: %s\nLevel: %.0f%%", i.zoneName, i.zoneHref, i.level)
 			}
 			detailView = detailStyle.
 				Height(m.list.Height()).
@@ -222,6 +232,12 @@ func Start(client *leap.Client) error {
 		return err
 	}
 
+	zones, _ := client.GetZones()
+	zoneNames := make(map[string]string)
+	for _, z := range zones {
+		zoneNames[z.Href] = z.Name
+	}
+
 	prog := progress.New(progress.WithDefaultGradient())
 	
 	items := []list.Item{
@@ -229,13 +245,16 @@ func Start(client *leap.Client) error {
 	}
 	for _, d := range devices {
 		var zoneHref string
+		var zoneName string
 		if len(d.LocalZones) > 0 {
 			zoneHref = d.LocalZones[0].Href
+			zoneName = zoneNames[zoneHref]
 		}
 		items = append(items, item{
 			title:    d.Name,
 			desc:     fmt.Sprintf("%s (%s)", d.DeviceType, d.ModelNumber),
 			zoneHref: zoneHref,
+			zoneName: zoneName,
 			device:   d,
 		})
 	}
