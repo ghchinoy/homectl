@@ -1,0 +1,12 @@
+# Lutron Certificates
+lutron_ca.crt
+lutron_client.crt
+lutron_client.key
+
+# Python / uv
+.venv/
+__pycache__/
+
+# Go
+go_test/
+bin/
