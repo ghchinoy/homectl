@@ -24,8 +24,6 @@ type DiscoveryProvider struct{}
 func (p *DiscoveryProvider) Name() string { return "sonos" }
 
 func (p *DiscoveryProvider) Discover(ctx context.Context) ([]discovery.Device, error) {
-	// Use existing Discover but convert to discovery.Device
-	// We need to pass the timeout from context
 	deadline, ok := ctx.Deadline()
 	timeout := 5 * time.Second
 	if ok {
@@ -92,11 +90,8 @@ func Discover(timeout time.Duration) ([]Device, error) {
 			continue
 		}
 
-		// The Name in mDNS might be the serial number (e.g. RINCON_...)
-		// Let's try to get a better name from the XML description
 		name, rincon, modelName, modelNum, err := GetDeviceName(ip)
 		if err != nil {
-			// Fallback to mDNS Instance name which often includes "RINCON_SERIAL@Player Name"
 			name = entry.Instance
 			if atIdx := strings.Index(name, "@"); atIdx != -1 {
 				name = name[atIdx+1:]
@@ -113,7 +108,6 @@ func Discover(timeout time.Duration) ([]Device, error) {
 		foundIPs[ip] = true
 	}
 
-	// Sort devices by name for a consistent UI
 	sort.Slice(devices, func(i, j int) bool {
 		return devices[i].Name < devices[j].Name
 	})
@@ -127,35 +121,25 @@ func cacheFile() string {
 
 // SaveCache merges newly discovered devices with existing ones and persists them
 func SaveCache(newDevices []Device) error {
-	// Load existing first
 	existing, _ := LoadCache()
-	
-	// Create a map keyed by RinconID for merging
 	merged := make(map[string]Device)
 	for _, d := range existing {
 		if d.RinconID != "" {
 			merged[d.RinconID] = d
 		}
 	}
-	
-	// Update with new discovery results
 	for _, d := range newDevices {
 		if d.RinconID != "" {
 			merged[d.RinconID] = d
 		}
 	}
-	
-	// Convert back to slice
 	var result []Device
 	for _, d := range merged {
 		result = append(result, d)
 	}
-	
-	// Sort for consistency
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Name < result[j].Name
 	})
-
 	data, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		return err
@@ -224,24 +208,31 @@ func NewClient(ip string) *Client {
 	return &Client{
 		ip: ip,
 		httpClient: &http.Client{
-			Timeout: 5 * time.Second,
+			Timeout: 10 * time.Second,
 		},
 	}
 }
 
 // SOAPAction executes a SOAP command on the Sonos device
-func (c *Client) SOAPAction(controlURL, serviceType, action string, args map[string]interface{}) (io.ReadCloser, error) {
+func (c *Client) SOAPAction(controlURL, serviceType, action string, args map[string]string) (io.ReadCloser, error) {
 	url := fmt.Sprintf("http://%s:1400%s", c.ip, controlURL)
 	
-	// Construct the XML body
 	body := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
-<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
   <s:Body>
     <u:%s xmlns:u="%s">
 `, action, serviceType)
 
-	for k, v := range args {
-		body += fmt.Sprintf("      <%s>%v</%s>\n", k, v, k)
+	keys := make([]string, 0, len(args))
+	for k := range args {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		var escapedValue bytes.Buffer
+		xml.EscapeText(&escapedValue, []byte(args[k]))
+		body += fmt.Sprintf("      <%s>%s</%s>\n", k, escapedValue.String(), k)
 	}
 
 	body += fmt.Sprintf(`    </u:%s>
@@ -254,20 +245,68 @@ func (c *Client) SOAPAction(controlURL, serviceType, action string, args map[str
 	}
 
 	req.Header.Set("Content-Type", "text/xml; charset=utf-8")
-	req.Header.Set("SOAPAction", fmt.Sprintf("%s#%s", serviceType, action))
+	// The SOAPAction header must be quoted according to UPnP spec
+	req.Header.Set("SOAPAction", fmt.Sprintf("\"%s#%s\"", serviceType, action))
+
+	if sonosLogger != nil {
+		sonosLogger.Printf("SOAP OUT: %s#%s to %s\n", serviceType, action, url)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	if sonosLogger != nil {
+		sonosLogger.Printf("SOAP RESP (%d):\n%s\n", resp.StatusCode, string(b))
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		defer resp.Body.Close()
-		b, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("SOAP error (%d): %s", resp.StatusCode, string(b))
 	}
 
-	return resp.Body, nil
+	return io.NopCloser(bytes.NewBuffer(b)), nil
+}
+
+// GetCoordinatorIP returns the IP address of the coordinator for the group this speaker belongs to
+func (c *Client) GetCoordinatorIP() (string, error) {
+	state, err := c.GetZoneGroupState()
+	if err != nil {
+		return c.ip, err
+	}
+
+	var myRincon string
+	_, rincon, _, _, err := GetDeviceName(c.ip)
+	if err == nil {
+		myRincon = rincon
+	}
+
+	for _, g := range state.Groups {
+		isMember := false
+		for _, m := range g.Members {
+			if m.UUID == myRincon || strings.Contains(m.Location, c.ip) {
+				isMember = true
+				break
+			}
+		}
+		if isMember {
+			for _, m := range g.Members {
+				if m.UUID == g.Coordinator {
+					loc := m.Location
+					if strings.HasPrefix(loc, "http://") {
+						loc = loc[7:]
+					}
+					if idx := strings.Index(loc, ":"); idx != -1 {
+						return loc[:idx], nil
+					}
+					return loc, nil
+				}
+			}
+		}
+	}
+	return c.ip, nil
 }
 
 // SetVolume sets the volume (0-100)
@@ -276,10 +315,10 @@ func (c *Client) SetVolume(volume int) error {
 		"/MediaRenderer/RenderingControl/Control",
 		"urn:schemas-upnp-org:service:RenderingControl:1",
 		"SetVolume",
-		map[string]interface{}{
-			"InstanceID":    0,
+		map[string]string{
+			"InstanceID":    "0",
 			"Channel":       "Master",
-			"DesiredVolume": volume,
+			"DesiredVolume": fmt.Sprintf("%d", volume),
 		})
 	if err != nil {
 		return err
@@ -294,8 +333,8 @@ func (c *Client) GetVolume() (int, error) {
 		"/MediaRenderer/RenderingControl/Control",
 		"urn:schemas-upnp-org:service:RenderingControl:1",
 		"GetVolume",
-		map[string]interface{}{
-			"InstanceID": 0,
+		map[string]string{
+			"InstanceID": "0",
 			"Channel":    "Master",
 		})
 	if err != nil {
@@ -311,16 +350,79 @@ func (c *Client) GetVolume() (int, error) {
 	return resp.CurrentVolume, nil
 }
 
-// Play starts playback
-func (c *Client) Play() error {
+func (c *Client) GetQueueCount() (int, error) {
 	body, err := c.SOAPAction(
+		"/MediaServer/ContentDirectory/Control",
+		"urn:schemas-upnp-org:service:ContentDirectory:1",
+		"Browse",
+		map[string]string{
+			"ObjectID":         "Q:0",
+			"BrowseFlag":       "BrowseDirectChildren",
+			"Filter":           "*",
+			"StartingIndex":    "0",
+			"RequestedCount":   "1",
+			"SortCriteria":     "",
+		})
+	if err != nil {
+		return 0, err
+	}
+	defer body.Close()
+	data, _ := io.ReadAll(body)
+	var resp struct {
+		TotalMatches int `xml:"Body>BrowseResponse>TotalMatches"`
+	}
+	xml.Unmarshal(data, &resp)
+	return resp.TotalMatches, nil
+}
+
+// Play starts playback, routing to coordinator and handling fallbacks
+func (c *Client) Play() error {
+	coordIP, _ := c.GetCoordinatorIP()
+	client := c
+	if coordIP != c.ip {
+		client = NewClient(coordIP)
+	}
+
+	// 1. Try playing what's already there
+	body, err := client.SOAPAction(
 		"/MediaRenderer/AVTransport/Control",
 		"urn:schemas-upnp-org:service:AVTransport:1",
 		"Play",
-		map[string]interface{}{
-			"InstanceID": 0,
-			"Speed":      1,
+		map[string]string{
+			"InstanceID": "0",
+			"Speed":      "1",
 		})
+	
+	// 2. If it fails with 701 (Transition Not Available), try to load the queue
+	if err != nil && strings.Contains(err.Error(), "701") {
+		if sonosLogger != nil {
+			sonosLogger.Println("Play failed with 701, attempting queue restoration fallback...")
+		}
+		_, rincon, _, _, nameErr := GetDeviceName(client.ip)
+		if nameErr == nil {
+			count, _ := client.GetQueueCount()
+			if count > 0 {
+				queueURI := fmt.Sprintf("x-rincon-queue:%s#0", rincon)
+				client.SetAVTransportURI(queueURI, "")
+				time.Sleep(500 * time.Millisecond)
+			} else {
+				// Final fallback: Sonos Radio
+			radioURI := "x-sonosapi-radio:sonos:158288?sid=303&flags=0&sn=1"
+				client.SetAVTransportURI(radioURI, "")
+				time.Sleep(500 * time.Millisecond)
+			}
+			// Retry Play
+			body, err = client.SOAPAction(
+				"/MediaRenderer/AVTransport/Control",
+				"urn:schemas-upnp-org:service:AVTransport:1",
+				"Play",
+				map[string]string{
+					"InstanceID": "0",
+					"Speed":      "1",
+				})
+		}
+	}
+
 	if err != nil {
 		return err
 	}
@@ -330,12 +432,17 @@ func (c *Client) Play() error {
 
 // Pause pauses playback
 func (c *Client) Pause() error {
-	body, err := c.SOAPAction(
+	coordIP, _ := c.GetCoordinatorIP()
+	client := c
+	if coordIP != c.ip {
+		client = NewClient(coordIP)
+	}
+	body, err := client.SOAPAction(
 		"/MediaRenderer/AVTransport/Control",
 		"urn:schemas-upnp-org:service:AVTransport:1",
 		"Pause",
-		map[string]interface{}{
-			"InstanceID": 0,
+		map[string]string{
+			"InstanceID": "0",
 		})
 	if err != nil {
 		return err
@@ -346,12 +453,17 @@ func (c *Client) Pause() error {
 
 // Stop stops playback
 func (c *Client) Stop() error {
-	body, err := c.SOAPAction(
+	coordIP, _ := c.GetCoordinatorIP()
+	client := c
+	if coordIP != c.ip {
+		client = NewClient(coordIP)
+	}
+	body, err := client.SOAPAction(
 		"/MediaRenderer/AVTransport/Control",
 		"urn:schemas-upnp-org:service:AVTransport:1",
 		"Stop",
-		map[string]interface{}{
-			"InstanceID": 0,
+		map[string]string{
+			"InstanceID": "0",
 		})
 	if err != nil {
 		return err
@@ -360,14 +472,64 @@ func (c *Client) Stop() error {
 	return nil
 }
 
-// Next skips to the next track
+// Next skips to the next track, ignoring 711 (end of queue)
 func (c *Client) Next() error {
-	body, err := c.SOAPAction(
+	coordIP, _ := c.GetCoordinatorIP()
+	client := c
+	if coordIP != c.ip {
+		client = NewClient(coordIP)
+	}
+	body, err := client.SOAPAction(
 		"/MediaRenderer/AVTransport/Control",
 		"urn:schemas-upnp-org:service:AVTransport:1",
 		"Next",
-		map[string]interface{}{
-			"InstanceID": 0,
+		map[string]string{
+			"InstanceID": "0",
+		})
+	if err != nil {
+		if strings.Contains(err.Error(), "711") {
+			return nil
+		}
+		return err
+	}
+	body.Close()
+	return nil
+}
+
+// Previous skips to the previous track, ignoring 711 (start of queue)
+func (c *Client) Previous() error {
+	coordIP, _ := c.GetCoordinatorIP()
+	client := c
+	if coordIP != c.ip {
+		client = NewClient(coordIP)
+	}
+	body, err := client.SOAPAction(
+		"/MediaRenderer/AVTransport/Control",
+		"urn:schemas-upnp-org:service:AVTransport:1",
+		"Previous",
+		map[string]string{
+			"InstanceID": "0",
+		})
+	if err != nil {
+		if strings.Contains(err.Error(), "711") {
+			return nil
+		}
+		return err
+	}
+	body.Close()
+	return nil
+}
+
+// SetAVTransportURI sets the current media URI (e.g. for the queue)
+func (c *Client) SetAVTransportURI(uri, metadata string) error {
+	body, err := c.SOAPAction(
+		"/MediaRenderer/AVTransport/Control",
+		"urn:schemas-upnp-org:service:AVTransport:1",
+		"SetAVTransportURI",
+		map[string]string{
+			"InstanceID":         "0",
+			"CurrentURI":         uri,
+			"CurrentURIMetaData": metadata,
 		})
 	if err != nil {
 		return err
@@ -376,20 +538,23 @@ func (c *Client) Next() error {
 	return nil
 }
 
-// Previous skips to the previous track
-func (c *Client) Previous() error {
-	body, err := c.SOAPAction(
-		"/MediaRenderer/AVTransport/Control",
-		"urn:schemas-upnp-org:service:AVTransport:1",
-		"Previous",
-		map[string]interface{}{
-			"InstanceID": 0,
-		})
+// Subscribe registers a callback URL for GENA events from a specific service
+func (c *Client) Subscribe(serviceURL, callbackURL string, timeout int) (string, error) {
+	url := fmt.Sprintf("http://%s:1400%s", c.ip, serviceURL)
+	req, _ := http.NewRequest("SUBSCRIBE", url, nil)
+	req.Header.Set("CALLBACK", fmt.Sprintf("<%s>", callbackURL))
+	req.Header.Set("NT", "upnp:event")
+	req.Header.Set("TIMEOUT", fmt.Sprintf("Second-%d", timeout))
+
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return err
+		return "", err
 	}
-	body.Close()
-	return nil
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("subscribe error: %d", resp.StatusCode)
+	}
+	return resp.Header.Get("SID"), nil
 }
 
 type TransportInfo struct {
@@ -403,8 +568,8 @@ func (c *Client) GetTransportInfo() (TransportInfo, error) {
 		"/MediaRenderer/AVTransport/Control",
 		"urn:schemas-upnp-org:service:AVTransport:1",
 		"GetTransportInfo",
-		map[string]interface{}{
-			"InstanceID": 0,
+		map[string]string{
+			"InstanceID": "0",
 		})
 	if err != nil {
 		return TransportInfo{}, err
@@ -438,7 +603,7 @@ type TrackMetadata struct {
 	Artist        string `xml:"creator"`
 	Album         string `xml:"album"`
 	StreamContent string `xml:"streamContent"`
-	AudioFormat   string `xml:"res"` // ProtocolInfo attribute
+	AudioFormat   string `xml:"res"` 
 	AlbumArtURI   string `xml:"albumArtURI"`
 }
 
@@ -453,8 +618,8 @@ func (c *Client) GetMediaInfo() (MediaInfo, error) {
 		"/MediaRenderer/AVTransport/Control",
 		"urn:schemas-upnp-org:service:AVTransport:1",
 		"GetMediaInfo",
-		map[string]interface{}{
-			"InstanceID": 0,
+		map[string]string{
+			"InstanceID": "0",
 		})
 	if err != nil {
 		return MediaInfo{}, err
@@ -480,8 +645,8 @@ func (c *Client) GetPositionInfo() (PositionInfo, error) {
 		"/MediaRenderer/AVTransport/Control",
 		"urn:schemas-upnp-org:service:AVTransport:1",
 		"GetPositionInfo",
-		map[string]interface{}{
-			"InstanceID": 0,
+		map[string]string{
+			"InstanceID": "0",
 		})
 	if err != nil {
 		return PositionInfo{}, err
@@ -504,50 +669,6 @@ func (c *Client) GetPositionInfo() (PositionInfo, error) {
 		TrackURI:      resp.TrackURI,
 		RelTime:       resp.RelTime,
 	}, nil
-}
-
-type ZoneGroup struct {
-	ID          string            `xml:"ID,attr"`
-	Coordinator string            `xml:"Coordinator,attr"`
-	Members     []ZoneGroupMember `xml:"ZoneGroupMember"`
-}
-
-type ZoneGroupMember struct {
-	UUID            string `xml:"UUID,attr"`
-	Location        string `xml:"Location,attr"`
-	RoomName        string `xml:"ZoneName,attr"`
-	Invisible       bool   `xml:"Invisible,attr"`
-	IsZoneStandAlone bool   `xml:"IsZoneStandAlone,attr"`
-}
-
-type ZoneGroupState struct {
-	Groups []ZoneGroup `xml:"ZoneGroups>ZoneGroup"`
-}
-
-// Subscribe registers a callback URL for GENA events from a specific service
-func (c *Client) Subscribe(serviceURL, callbackURL string, timeout int) (string, error) {
-	url := fmt.Sprintf("http://%s:1400%s", c.ip, serviceURL)
-	
-	req, err := http.NewRequest("SUBSCRIBE", url, nil)
-	if err != nil {
-		return "", err
-	}
-
-	req.Header.Set("CALLBACK", fmt.Sprintf("<%s>", callbackURL))
-	req.Header.Set("NT", "upnp:event")
-	req.Header.Set("TIMEOUT", fmt.Sprintf("Second-%d", timeout))
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("subscribe error: %d", resp.StatusCode)
-	}
-
-	return resp.Header.Get("SID"), nil
 }
 
 func (c *Client) GetZoneGroupAttributes() (string, error) {
@@ -581,27 +702,38 @@ func (c *Client) GetZoneGroupState() (ZoneGroupState, error) {
 	defer body.Close()
 
 	data, _ := io.ReadAll(body)
-	
-	// The response has a ZoneGroupState XML string inside the SOAP response
 	var resp struct {
 		XML string `xml:"Body>GetZoneGroupStateResponse>ZoneGroupState"`
 	}
 	xml.Unmarshal(data, &resp)
-	
-	// Now parse the inner XML
 	var state ZoneGroupState
 	xml.Unmarshal([]byte(resp.XML), &state)
 	return state, nil
 }
 
-// ParseTrackMetadata extracts title, artist, album, and more from DIDL-Lite XML
+type ZoneGroup struct {
+	ID          string            `xml:"ID,attr"`
+	Coordinator string            `xml:"Coordinator,attr"`
+	Members     []ZoneGroupMember `xml:"ZoneGroupMember"`
+}
+
+type ZoneGroupMember struct {
+	UUID            string `xml:"UUID,attr"`
+	Location        string `xml:"Location,attr"`
+	RoomName        string `xml:"ZoneName,attr"`
+	Invisible       bool   `xml:"Invisible,attr"`
+	IsZoneStandAlone bool   `xml:"IsZoneStandAlone,attr"`
+}
+
+type ZoneGroupState struct {
+	Groups []ZoneGroup `xml:"ZoneGroups>ZoneGroup"`
+}
+
 func (c *Client) ParseTrackMetadata(xmlStr string) (TrackMetadata, error) {
 	if xmlStr == "" || xmlStr == "NOT_IMPLEMENTED" {
 		return TrackMetadata{}, nil
 	}
-
 	var meta TrackMetadata
-	
 	findTag := func(s, tag string) string {
 		start := strings.Index(s, "<"+tag+">")
 		if start == -1 {
@@ -615,17 +747,14 @@ func (c *Client) ParseTrackMetadata(xmlStr string) (TrackMetadata, error) {
 		if end == -1 { return "" }
 		return s[start : start+end]
 	}
-
 	meta.Title = findTag(xmlStr, "title")
 	meta.Artist = findTag(xmlStr, "creator")
 	meta.Album = findTag(xmlStr, "album")
 	meta.StreamContent = findTag(xmlStr, "streamContent")
 	meta.AlbumArtURI = findTag(xmlStr, "albumArtURI")
-
-	// Audio Format is in the protocolInfo attribute of the <res> tag
 	resIdx := strings.Index(xmlStr, "<res")
 	if resIdx != -1 {
-		protoIdx := strings.Index(xmlStr[resIdx:], "protocolInfo=\"")
+		protoIdx := strings.Index(xmlStr[resIdx:], "protocolInfo=")
 		if protoIdx != -1 {
 			protoIdx += resIdx + 14
 			endProto := strings.Index(xmlStr[protoIdx:], "\"")
@@ -634,6 +763,5 @@ func (c *Client) ParseTrackMetadata(xmlStr string) (TrackMetadata, error) {
 			}
 		}
 	}
-
 	return meta, nil
 }

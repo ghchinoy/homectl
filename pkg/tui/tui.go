@@ -82,7 +82,6 @@ type model struct {
 	areasList  list.Model
 	groupsList list.Model
 	leapClient *leap.Client
-	sonosListener *sonos.GENAListener
 	err        error
 	status     string
 	progress   progress.Model
@@ -658,6 +657,7 @@ func (m model) View() string {
 		return fmt.Sprintf("Error: %v", m.err)
 	}
 
+	// Tabs with clear markers
 	var lightsTab, musicTab, areasTab, groupsTab string
 	if m.mode == modeLights {
 		lightsTab = activeTabStyle.Render("[ LIGHTS ]")
@@ -757,11 +757,6 @@ func (m model) View() string {
 	if m.status != "" {
 		footer += "\n" + statusStyle.Render(m.status)
 	}
-	
-	if m.mode == modeMusic && m.sonosListener != nil {
-		footer += fmt.Sprintf("\nEvent Callback: %s", m.sonosListener.GetLocalIP())
-		footer += fmt.Sprintf("\nLog Path: %s", config.GetPath("sonos_events.log"))
-	}
 
 	controls := "1-9 (Level), 0 (Off), +/- (Adjust), Tab (Switch Mode), r (Refresh), q (Quit)"
 	if m.mode == modeMusic {
@@ -806,10 +801,12 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 }
 
 func Start(leapClient *leap.Client) error {
+	// Initialize Lists
 	prog := progress.New(progress.WithDefaultGradient())
 	delegate := itemDelegate{progress: prog}
 	nicknames := loadNicknames()
 
+	// Fetch Data
 	devices, err := leapClient.GetDevices()
 	if err != nil {
 		return fmt.Errorf("failed to get devices: %w", err)
@@ -827,6 +824,7 @@ func Start(leapClient *leap.Client) error {
 		zoneNames[z.Href] = z.Name
 	}
 
+	// Lights Items
 	lightItems := []list.Item{
 		item{title: "ALL LIGHTS", desc: "Master control", isAll: true},
 	}
@@ -844,6 +842,7 @@ func Start(leapClient *leap.Client) error {
 		}
 	}
 
+	// Music Items (loaded from cache, then discovered)
 	musicItems := []list.Item{}
 	cached, _ := sonos.LoadCache()
 	for _, s := range cached {
@@ -858,6 +857,7 @@ func Start(leapClient *leap.Client) error {
 		})
 	}
 
+	// Areas Items
 	areaItems := []list.Item{}
 	for _, a := range areas {
 		areaItems = append(areaItems, item{
@@ -894,34 +894,7 @@ func Start(leapClient *leap.Client) error {
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
-	if f, _ := os.OpenFile(config.GetPath("sonos_events.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666); f != nil {
-		fmt.Fprintf(f, "--- homectl started at %s ---\n", time.Now().Format(time.RFC3339))
-		f.Close()
-	}
-
-	listener := &sonos.GENAListener{
-		Handler: func(event sonos.EventMsg) {
-			p.Send(event)
-		},
-	}
-	callbackURL, _ := listener.Start()
-	m.sonosListener = listener
-
-	go func() {
-		for _, itm := range musicItems {
-			i := itm.(item)
-			client := sonos.NewClient(i.ip)
-			sid1, err1 := client.Subscribe("/MediaRenderer/AVTransport/Event", callbackURL, 300)
-			sid2, err2 := client.Subscribe("/MediaRenderer/RenderingControl/Event", callbackURL, 300)
-			if err1 == nil && err2 == nil {
-				if f, _ := os.OpenFile(config.GetPath("sonos_events.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666); f != nil {
-					fmt.Fprintf(f, "Subscribed %s: AV=%s, RC=%s\n", i.title, sid1, sid2)
-					f.Close()
-				}
-			}
-		}
-	}()
-
+	// Trigger discovery after startup
 	go func() {
 		speakers, _ := sonos.Discover(5 * time.Second)
 		if len(speakers) > 0 {
@@ -929,15 +902,6 @@ func Start(leapClient *leap.Client) error {
 			var items []list.Item
 			merged, _ := sonos.LoadCache()
 			for _, s := range merged {
-				client := sonos.NewClient(s.IP)
-				sid1, err1 := client.Subscribe("/MediaRenderer/AVTransport/Event", callbackURL, 300)
-				sid2, err2 := client.Subscribe("/MediaRenderer/RenderingControl/Event", callbackURL, 300)
-				if err1 == nil && err2 == nil {
-					if f, _ := os.OpenFile(config.GetPath("sonos_events.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666); f != nil {
-						fmt.Fprintf(f, "Subscribed (BG) %s: AV=%s, RC=%s\n", s.Name, sid1, sid2)
-						f.Close()
-					}
-				}
 				items = append(items, item{
 					title:     s.Name,
 					ip:        s.IP,
