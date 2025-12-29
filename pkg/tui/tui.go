@@ -12,9 +12,9 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ghchinoy/control/pkg/config"
-	"github.com/ghchinoy/control/pkg/leap"
-	"github.com/ghchinoy/control/pkg/sonos"
+	"github.com/ghchinoy/homectl/pkg/config"
+	"github.com/ghchinoy/homectl/pkg/leap"
+	"github.com/ghchinoy/homectl/pkg/sonos"
 )
 
 type sessionMode int

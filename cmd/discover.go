@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ghchinoy/control/pkg/discovery"
-	"github.com/ghchinoy/control/pkg/leap"
-	"github.com/ghchinoy/control/pkg/sonos"
+	"github.com/ghchinoy/homectl/pkg/discovery"
+	"github.com/ghchinoy/homectl/pkg/leap"
+	"github.com/ghchinoy/homectl/pkg/sonos"
 	"github.com/spf13/cobra"
 )
 

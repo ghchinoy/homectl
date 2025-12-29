@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/ghchinoy/control/pkg/config"
+	"github.com/ghchinoy/homectl/pkg/config"
 )
 
 var sonosLogger *log.Logger

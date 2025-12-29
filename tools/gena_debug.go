@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ghchinoy/control/pkg/sonos"
+	"github.com/ghchinoy/homectl/pkg/sonos"
 )
 
 func main() {

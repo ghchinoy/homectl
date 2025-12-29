@@ -14,8 +14,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ghchinoy/control/pkg/config"
-	"github.com/ghchinoy/control/pkg/discovery"
+	"github.com/ghchinoy/homectl/pkg/config"
+	"github.com/ghchinoy/homectl/pkg/discovery"
 	"github.com/grandcat/zeroconf"
 )
 

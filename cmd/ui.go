@@ -4,7 +4,7 @@ package cmd
 import (
 	"log"
 
-	"github.com/ghchinoy/control/pkg/tui"
+	"github.com/ghchinoy/homectl/pkg/tui"
 	"github.com/spf13/cobra"
 )
 

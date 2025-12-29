@@ -4,7 +4,6 @@ secrets/
 *.key
 
 # Binaries
-control
 homectl
 secrets/
 .beads/bd.sock

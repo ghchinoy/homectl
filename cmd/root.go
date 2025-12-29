@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/ghchinoy/control/pkg/config"
-	"github.com/ghchinoy/control/pkg/leap"
+	"github.com/ghchinoy/homectl/pkg/config"
+	"github.com/ghchinoy/homectl/pkg/leap"
 	"github.com/spf13/cobra"
 )
 

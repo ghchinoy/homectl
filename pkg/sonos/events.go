@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/ghchinoy/control/pkg/config"
+	"github.com/ghchinoy/homectl/pkg/config"
 )
 
 // EventMsg represents a processed event from a Sonos device

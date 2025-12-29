@@ -1,12 +1,24 @@
 import asyncio
 import logging
+import os
+from pathlib import Path
 from pylutron_caseta.pairing import async_pair
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
+def get_config_dir():
+    # Matches Go's os.UserConfigDir() behavior for Linux
+    config_home = os.environ.get("XDG_CONFIG_HOME")
+    if config_home:
+        return Path(config_home) / "homectl"
+    return Path.home() / ".config" / "homectl"
+
 async def pair():
     bridge_ip = "192.168.4.90"
+    config_dir = get_config_dir()
+    config_dir.mkdir(parents=True, exist_ok=True)
+    
     print(f"Connecting to Lutron Bridge at {bridge_ip}...")
     
     def on_ready():
@@ -21,17 +33,21 @@ async def pair():
         
         # The data returned is a dictionary-like object (PairingData)
         # Based on library source, it contains 'ca', 'cert', and 'key'
-        with open("secrets/lutron_ca.crt", "w") as f:
+        ca_path = config_dir / "lutron_ca.crt"
+        cert_path = config_dir / "lutron_client.crt"
+        key_path = config_dir / "lutron_client.key"
+
+        with open(ca_path, "w") as f:
             f.write(data["ca"])
-        with open("secrets/lutron_client.crt", "w") as f:
+        with open(cert_path, "w") as f:
             f.write(data["cert"])
-        with open("secrets/lutron_client.key", "w") as f:
+        with open(key_path, "w") as f:
             f.write(data["key"])
             
-        print("\nSUCCESS! Certificates have been saved to secrets/:")
-        print("- secrets/lutron_ca.crt")
-        print("- secrets/lutron_client.crt")
-        print("- secrets/lutron_client.key")
+        print(f"\nSUCCESS! Certificates have been saved to {config_dir}:")
+        print(f"- {ca_path.name}")
+        print(f"- {cert_path.name}")
+        print(f"- {key_path.name}")
         
     except Exception as e:
         print(f"\nError during pairing: {e}")
