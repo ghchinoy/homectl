@@ -9,6 +9,7 @@ import (
 // AppConfig represents the application configuration
 type AppConfig struct {
 	CallbackIP string `json:"callback_ip"` // Manual override for GENA listener
+	CameraAuth string `json:"camera_auth"` // global user:pass for cameras
 }
 
 // GetConfigDir returns the path to the configuration directory (~/.config/homectl)
@@ -39,4 +40,15 @@ func GetPath(filename string) string {
 // EnsureDir ensures the configuration directory exists
 func EnsureDir() error {
 	return os.MkdirAll(GetConfigDir(), 0755)
+}
+
+// LoadNicknames loads the device nicknames from nicknames.json
+func LoadNicknames() map[string]string {
+	data, err := os.ReadFile(GetPath("nicknames.json"))
+	if err != nil {
+		return make(map[string]string)
+	}
+	var nicknames map[string]string
+	json.Unmarshal(data, &nicknames)
+	return nicknames
 }

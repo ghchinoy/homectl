@@ -27,7 +27,20 @@ go build -o homectl main.go
 
 ### Configuration
 
-All certificates and discovery caches are stored in `~/.config/homectl/`:
+homectl uses a configuration file located at `~/.config/homectl/config.json`.
+
+```json
+{
+  "callback_ip": "192.168.4.80",
+  "camera_auth": "admin:yourpassword"
+}
+```
+
+*   **`callback_ip`**: The local IP of your machine that IoT devices (like Sonos) should send event notifications to. Required if you are behind a NAT or have multiple network interfaces.
+*   **`camera_auth`**: A global `username:password` string used to authenticate RTSP streams for security cameras.
+
+### Local Storage
+The configuration directory also stores:
 - `lutron_client.crt`, `lutron_client.key`, `lutron_ca.crt`: Lutron credentials.
 - `lutron_cache.json`, `sonos_cache.json`: Discovery results for fast startup.
 - `nicknames.json`: Custom device names.

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"os"
@@ -754,7 +755,7 @@ func (c *Client) ParseTrackMetadata(xmlStr string) (TrackMetadata, error) {
 		}
 		end := strings.Index(s[start:], "</")
 		if end == -1 { return "" }
-		return s[start : start+end]
+		return html.UnescapeString(s[start : start+end])
 	}
 	meta.Title = findTag(xmlStr, "title")
 	meta.Artist = findTag(xmlStr, "creator")

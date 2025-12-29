@@ -182,6 +182,7 @@ type AreaResponse struct {
 type Device struct {
 	Href           string     `json:"href"`
 	Name           string     `json:"Name"`
+	Nickname       string     `json:"Nickname,omitempty"`
 	DeviceType     string     `json:"DeviceType"`
 	SerialNumber   int        `json:"SerialNumber,omitempty"`
 	ModelNumber    string     `json:"ModelNumber,omitempty"`
