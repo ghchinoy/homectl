@@ -45,6 +45,9 @@ This project is a Go-based integration for Lutron Caseta/RA2 Select systems and 
 - **Identity Mapping:** The primary role of a Discovery Provider is to map raw network identifiers (IPs, MACs, Serial Numbers) to actionable metadata (Room Names, Capabilities, Control URLs).
 - **Unix Tool Synergy:** Use standard Unix tools (`avahi-browse`, `nmap`) for initial protocol reconnaissance and debugging. homectl leverages the same underlying protocols (mDNS, SSDP) but adds a layer of smart-home context.
 
+### 5. Network Locality
+- **Layer 2 Affinity:** IoT protocols (mDNS, SSDP, GENA) are designed for a shared physical network. Deployment in NATed containers or virtual machines without bridged networking is officially discouraged as it breaks inbound event notifications.
+
 ## Future Vision
 ...
 - **Unified Discovery Engine:** A background service to periodically scan for all supported devices.
@@ -72,6 +75,7 @@ This project is a Go-based integration for Lutron Caseta/RA2 Select systems and 
 - **Lutron 400 BadRequest:** Usually caused by a missing outer `Command` wrapper in the JSON body.
 - **Sonos 405 Method Not Allowed:** Usually caused by an incorrect `controlURL` path (e.g., using `/RenderingControl` instead of `/MediaRenderer/RenderingControl/Control`).
 - **I/O Timeouts:** Occur when polling too many IoT resources sequentially. Always prefer batch/collective endpoints.
+- **NAT/Container Callback Blocks:** Inbound event notifications (GENA) will fail silently if the app is behind a NAT (like Docker or ChromeOS Crostini) because the speaker cannot reach the internal container IP. Use `callback_ip` in `config.json` to override.
 
 ## Changelog Management
 To generate or update the `CHANGELOG.md` from completed tasks in `bd`, run:

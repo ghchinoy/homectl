@@ -1,4 +1,5 @@
 ## 2025-12-28
+- Debug and fix Sonos event logging (control-f1l.17)
 - Fix Sonos 402 SOAP error (control-us2)
 - Show 'Next Track' in TUI speaker details (control-f1l.16)
 - Implement robust XML parsing for Sonos LastChange events (control-f1l.15)
