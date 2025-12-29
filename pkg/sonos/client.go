@@ -546,11 +546,20 @@ func (c *Client) Subscribe(serviceURL, callbackURL string, timeout int) (string,
 	req.Header.Set("NT", "upnp:event")
 	req.Header.Set("TIMEOUT", fmt.Sprintf("Second-%d", timeout))
 
+	if sonosLogger != nil {
+		sonosLogger.Printf("SUBSCRIBE: %s to %s (Callback: %s)\n", serviceURL, url, callbackURL)
+	}
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
+
+	if sonosLogger != nil {
+		sonosLogger.Printf("SUBSCRIBE RESP (%d) from %s\n", resp.StatusCode, c.ip)
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("subscribe error: %d", resp.StatusCode)
 	}
