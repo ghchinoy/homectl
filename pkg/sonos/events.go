@@ -101,19 +101,27 @@ func (l *GENAListener) handleNotify(w http.ResponseWriter, r *http.Request) {
 	ip := strings.Split(r.RemoteAddr, ":")[0]
 	
 	if sonosLogger != nil {
-		sonosLogger.Printf("NOTIFY from %s\n", ip)
+		sonosLogger.Printf("NOTIFY from %s: %s\n", ip, string(body))
 	}
 
 	var outer struct {
 		LastChange string `xml:"property>LastChange"`
 	}
-	xml.Unmarshal(body, &outer)
+	if err := xml.Unmarshal(body, &outer); err != nil {
+		if sonosLogger != nil {
+			sonosLogger.Printf("XML Unmarshal Error (Outer): %v\n", err)
+		}
+	}
 
 	msg := EventMsg{IP: ip, Volume: -1}
 
 	if outer.LastChange != "" {
 		var lc LastChangeParser
-		xml.Unmarshal([]byte(outer.LastChange), &lc)
+		if err := xml.Unmarshal([]byte(outer.LastChange), &lc); err != nil {
+			if sonosLogger != nil {
+				sonosLogger.Printf("XML Unmarshal Error (LastChange): %v\n", err)
+			}
+		}
 
 		if len(lc.Volume) > 0 {
 			msg.Volume = lc.Volume[0].Val

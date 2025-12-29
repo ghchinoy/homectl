@@ -80,9 +80,10 @@ type model struct {
 	lightsList list.Model
 	musicList  list.Model
 	areasList  list.Model
-	groupsList list.Model
-	leapClient *leap.Client
-	err        error
+	groupsList    list.Model
+	leapClient    *leap.Client
+	sonosListener *sonos.GENAListener
+	err           error
 	status     string
 	progress   progress.Model
 	width      int
@@ -892,30 +893,102 @@ func Start(leapClient *leap.Client) error {
 	m.areasList.SetShowTitle(true)
 	m.groupsList.SetShowTitle(true)
 
-	p := tea.NewProgram(m, tea.WithAltScreen())
+		p := tea.NewProgram(m, tea.WithAltScreen())
 
-	// Trigger discovery after startup
-	go func() {
-		speakers, _ := sonos.Discover(5 * time.Second)
-		if len(speakers) > 0 {
-			sonos.SaveCache(speakers)
-			var items []list.Item
-			merged, _ := sonos.LoadCache()
-			for _, s := range merged {
-				items = append(items, item{
-					title:     s.Name,
-					ip:        s.IP,
-					isSonos:   true,
-					nickname:  nicknames[s.IP],
-					rinconID:  s.RinconID,
-					modelName: s.ModelName,
-					modelNum:  s.ModelNumber,
-				})
-			}
-			p.Send(rediscoverMusicMsg(items))
+	
+
+		// Initialize GENA listener
+
+		listener := &sonos.GENAListener{
+
+			Handler: func(event sonos.EventMsg) {
+
+				p.Send(event)
+
+			},
+
 		}
-	}()
+
+		callbackURL, err := listener.Start()
+
+		if err == nil {
+
+			m.sonosListener = listener
+
+			// Initial subscriptions for cached items
+
+			go func() {
+
+				for _, itm := range musicItems {
+
+					i := itm.(item)
+
+					if i.ip != "" {
+
+						client := sonos.NewClient(i.ip)
+
+						client.Subscribe("/MediaRenderer/AVTransport/Event", callbackURL, 300)
+
+						client.Subscribe("/MediaRenderer/RenderingControl/Event", callbackURL, 300)
+
+					}
+
+				}
+
+			}()
+
+		}
+
+	
+
+		// Trigger discovery after startup
+
+		go func() {
+
+			speakers, _ := sonos.Discover(5 * time.Second)
+
+			if len(speakers) > 0 {
+
+				sonos.SaveCache(speakers)
+
+				var items []list.Item
+
+				merged, _ := sonos.LoadCache()
+
+				for _, s := range merged {
+
+					if callbackURL != "" {
+
+						client := sonos.NewClient(s.IP)
+
+						client.Subscribe("/MediaRenderer/AVTransport/Event", callbackURL, 300)
+
+						client.Subscribe("/MediaRenderer/RenderingControl/Event", callbackURL, 300)
+
+					}
+
+										items = append(items, item{
+
+											title:    s.Name,
+
+											ip:       s.IP,
+
+											desc:     fmt.Sprintf("%s (%s)", s.ModelName, s.ModelNumber),
+
+											nickname: nicknames[s.IP],
+
+										})
+
+				}
+
+				p.Send(musicItemsMsg(items))
+
+			}
+
+		}()
 
 	_, err = p.Run()
 	return err
 }
+
+type musicItemsMsg []list.Item
