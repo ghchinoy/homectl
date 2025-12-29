@@ -68,6 +68,9 @@ func (l *GENAListener) Start() (string, error) {
 func (l *GENAListener) GetLocalIP() string {
 	cfg := config.LoadConfig()
 	if cfg.CallbackIP != "" {
+		if sonosLogger != nil {
+			sonosLogger.Printf("Using Callback IP from config: %s\n", cfg.CallbackIP)
+		}
 		return fmt.Sprintf("http://%s:%d", cfg.CallbackIP, l.Port)
 	}
 
@@ -75,6 +78,9 @@ func (l *GENAListener) GetLocalIP() string {
 	for _, addr := range addrs {
 		if ipnet, ok := addr.(*net.IPNet); ok {
 			ipStr := ipnet.IP.String()
+			if sonosLogger != nil {
+				sonosLogger.Printf("IP Discovery Candidate: %s\n", ipStr)
+			}
 			if !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil && strings.HasPrefix(ipStr, "192.168.") {
 				return fmt.Sprintf("http://%s:%d", ipStr, l.Port)
 			}

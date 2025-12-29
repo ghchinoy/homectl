@@ -759,6 +759,11 @@ func (m model) View() string {
 		footer += "\n" + statusStyle.Render(m.status)
 	}
 
+	if m.mode == modeMusic && m.sonosListener != nil {
+		footer += fmt.Sprintf("\nEvent Callback: %s", m.sonosListener.GetLocalIP())
+		footer += fmt.Sprintf("\nLog Path: %s", config.GetPath("sonos.log"))
+	}
+
 	controls := "1-9 (Level), 0 (Off), +/- (Adjust), Tab (Switch Mode), r (Refresh), q (Quit)"
 	if m.mode == modeMusic {
 		controls += ", Space (P/P), n (Next), p (Prev)"
