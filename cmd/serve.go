@@ -315,6 +315,44 @@ var serveCmd = &cobra.Command{
 			json.NewEncoder(w).Encode(devices)
 		})
 
+		http.HandleFunc("/api/cast/status", func(w http.ResponseWriter, r *http.Request) {
+			ip := r.URL.Query().Get("ip")
+			if ip == "" {
+				http.Error(w, "ip is required", http.StatusBadRequest)
+				return
+			}
+			status, err := cast.GetStatus(ip)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(status)
+		})
+
+		http.HandleFunc("/api/cast/control", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			var req struct {
+				IP     string  `json:"ip"`
+				Action string  `json:"action"`
+				Volume float64 `json:"volume"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
+			// Add control logic to pkg/cast/client.go and call it here
+			if err := cast.Control(req.IP, req.Action, req.Volume); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		})
+
 		uiDir, _ := cmd.Flags().GetString("ui")
 		http.Handle("/", http.FileServer(http.Dir(uiDir)))
 

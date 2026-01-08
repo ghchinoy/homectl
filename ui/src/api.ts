@@ -22,6 +22,14 @@ export interface CastDevice {
   model: string;
 }
 
+export interface CastStatus {
+  app_id: string;
+  display_name: string;
+  volume: number;
+  is_muted: boolean;
+  status_text: string;
+}
+
 export interface SonosStatus {
   status: string;
   volume: number;
@@ -58,6 +66,9 @@ export const homectlApi = {
 
   // Cast
   getCastDevices: () => api.get<CastDevice[]>('/cast/devices').then(r => r.data),
+  getCastStatus: (ip: string) => api.get<CastStatus>('/cast/status', { params: { ip } }).then(r => r.data),
+  controlCast: (ip: string, action: string, volume?: number) => 
+    api.post('/cast/control', { ip, action, volume }),
 
   // Utils
   getArtUrl: (ip: string, path: string) => {

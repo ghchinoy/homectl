@@ -1,11 +1,12 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { homectlApi } from './api';
-import type { LutronDevice, SonosDevice, SonosStatus, Camera, CastDevice } from './api';
+import type { LutronDevice, SonosDevice, SonosStatus, Camera, CastDevice, CastStatus } from './api';
 
 import './components/lutron-card';
 import './components/sonos-card';
 import './components/camera-card';
+import './components/cast-card';
 
 @customElement('homectl-dashboard')
 export class HomectlDashboard extends LitElement {
@@ -15,6 +16,7 @@ export class HomectlDashboard extends LitElement {
   @state() private sonosDevices: SonosDevice[] = [];
   @state() private sonosStatus: Record<string, SonosStatus> = {};
   @state() private castDevices: CastDevice[] = [];
+  @state() private castStatus: Record<string, CastStatus> = {};
   @state() private cameras: Camera[] = [];
   @state() private loading = true;
 
@@ -40,14 +42,6 @@ export class HomectlDashboard extends LitElement {
       grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
       gap: 25px;
       margin-bottom: 40px;
-    }
-
-    .badge-cast { background: #e8f5e9; color: #2e7d32; }
-    .card-cast {
-      background: white;
-      border-radius: 12px;
-      padding: 20px;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.05);
     }
   `;
 
@@ -92,6 +86,13 @@ export class HomectlDashboard extends LitElement {
         newLutronStatus[href] = s.Level;
       });
       this.lutronStatus = newLutronStatus;
+
+      // Fetch Cast statuses individually (backend limits concurrency)
+      for (const d of this.castDevices) {
+        homectlApi.getCastStatus(d.ip).then(status => {
+          this.castStatus = { ...this.castStatus, [d.ip]: status };
+        }).catch(e => console.warn('Cast status error for', d.ip, e));
+      }
     } catch (e) { console.error('Status error:', e); }
   }
 
@@ -134,6 +135,23 @@ export class HomectlDashboard extends LitElement {
     } catch (e) { console.error('Volume error:', e); }
   }
 
+  async handleCastControl(ip: string, action: string) {
+    try {
+      await homectlApi.controlCast(ip, action);
+      setTimeout(() => this.fetchStatus(), 1000);
+    } catch (e) { console.error('Cast control error:', e); }
+  }
+
+  async handleCastVolume(ip: string, volume: number) {
+    this.castStatus = { 
+      ...this.castStatus, 
+      [ip]: { ...this.castStatus[ip], volume } 
+    };
+    try {
+      await homectlApi.controlCast(ip, 'volume', volume);
+    } catch (e) { console.error('Cast volume error:', e); }
+  }
+
   render() {
     if (this.loading) return html`<div style="padding: 40px; text-align: center;">Loading homectl...</div>`;
 
@@ -141,15 +159,6 @@ export class HomectlDashboard extends LitElement {
       <div class="header">
         <h1>homectl</h1>
       </div>
-
-      <section>
-        <h2>Security Cameras</h2>
-        <div class="grid">
-          ${this.cameras.map(c => html`
-            <camera-card .name=${c.name} .ip=${c.ip}></camera-card>
-          `)}
-        </div>
-      </section>
 
       <section>
         <h2>Lighting</h2>
@@ -195,12 +204,22 @@ export class HomectlDashboard extends LitElement {
         <h2>Video & Cast</h2>
         <div class="grid">
           ${this.castDevices.map(d => html`
-            <div class="card-cast">
-              <span class="badge badge-cast" style="display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; margin-bottom: 12px; width: fit-content;">Google Cast</span>
-              <h3>${d.name}</h3>
-              <p style="font-size: 0.8rem; color: #7f8c8d;">${d.model}</p>
-              <p style="font-size: 0.8rem; color: #bdc3c7;">IP: ${d.ip}</p>
-            </div>
+            <cast-card 
+              .name=${d.name} 
+              .model=${d.model} 
+              .status=${this.castStatus[d.ip]}
+              @control-change=${(e: any) => this.handleCastControl(d.ip, e.detail.action)}
+              @volume-change=${(e: any) => this.handleCastVolume(d.ip, e.detail.volume)}>
+            </cast-card>
+          `)}
+        </div>
+      </section>
+
+      <section>
+        <h2>Security Cameras</h2>
+        <div class="grid">
+          ${this.cameras.map(c => html`
+            <camera-card .name=${c.name} .ip=${c.ip}></camera-card>
           `)}
         </div>
       </section>
