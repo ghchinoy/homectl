@@ -13,8 +13,19 @@ bd sync               # Sync with git
 ```
 
 ## Developer Guidelines
+
+### 1. IoT & Discovery
 - **Efficient Polling:** Never poll multiple IoT resources sequentially if a collective/batch endpoint exists (e.g., use `/zone/status` instead of querying each zone individually).
 - **Resilient Connections:** Assume all IoT connections will eventually reset; implement auto-reconnection logic.
+- **Library Safety:** Avoid raw struct instantiation for external library clients (e.g., `go-chromecast`). Always use provided constructors (e.g., `NewApplication`) to ensure internal fields like storage/cache are initialized and avoid nil-pointer panics.
+- **Port Probing:** If mDNS is unavailable or hidden, use throttled TCP port probes (e.g., 554 for RTSP) to identify live IoT hosts on the subnet.
+
+### 2. Web UI (Lit + Vite)
+- **Component Isolation:** Keep Lit components atomic and isolated (e.g., `lutron-card`, `sonos-card`). Use properties for data-in and custom events for data-out.
+- **Centralized API:** All HTTP calls must go through a centralized service utility (e.g., `ui/src/api.ts`) to maintain consistency and ease of maintenance.
+- **Type Safety:** Use `import type` when importing interfaces in TypeScript to avoid `verbatimModuleSyntax` build errors.
+- **Proxy Pattern:** Use the Go backend as a proxy/transcoder for protocols browsers cannot handle (RTSP, UPnP Art). 
+- **Metadata Handling:** Always use `html.UnescapeString` on IoT-provided metadata before using it in the UI or proxy requests to avoid issues with escaped characters (e.g., `&amp;`).
 
 ## Landing the Plane (Session Completion)
 
@@ -41,4 +52,3 @@ bd sync               # Sync with git
 - NEVER stop before pushing - that leaves work stranded locally
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
-
