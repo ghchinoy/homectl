@@ -27,6 +27,11 @@ bd sync               # Sync with git
 - **Proxy Pattern:** Use the Go backend as a proxy/transcoder for protocols browsers cannot handle (RTSP, UPnP Art). 
 - **Metadata Handling:** Always use `html.UnescapeString` on IoT-provided metadata before using it in the UI or proxy requests to avoid issues with escaped characters (e.g., `&amp;`).
 
+### 3. Deployment & Standards
+- **XDG Compliance:** Always use `pkg/config.GetPath(filename)` for all persistent configuration, certificates, logs, and state files. Never hardcode home directory paths.
+- **Service Deployment:** Maintain `scripts/install.sh` as the primary installation and update method for Linux. The service runs the `serve` command and points to `/usr/local/share/homectl/ui` by default.
+- **State Persistence:** Use `pkg/config` utilities like `LoadNicknames` and `SaveNicknames` to manage user-defined metadata consistently across CLI, TUI, and Web UI.
+
 ## Landing the Plane (Session Completion)
 
 **When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.

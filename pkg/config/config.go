@@ -52,3 +52,12 @@ func LoadNicknames() map[string]string {
 	json.Unmarshal(data, &nicknames)
 	return nicknames
 }
+
+// SaveNicknames saves the device nicknames to nicknames.json
+func SaveNicknames(nicknames map[string]string) error {
+	data, err := json.MarshalIndent(nicknames, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(GetPath("nicknames.json"), data, 0644)
+}

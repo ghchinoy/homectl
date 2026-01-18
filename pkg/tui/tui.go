@@ -1,10 +1,8 @@
 package tui
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -97,8 +95,7 @@ type model struct {
 func (m model) saveNicknames() {
 	nicknames := make(map[string]string)
 // ... (keep logic)
-	data, _ := json.MarshalIndent(nicknames, "", "  ")
-	os.WriteFile(config.GetPath("nicknames.json"), data, 0644)
+	config.SaveNicknames(nicknames)
 }
 
 func (m model) Init() tea.Cmd {

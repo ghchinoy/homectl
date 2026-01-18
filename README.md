@@ -18,12 +18,65 @@ A modern, Go-powered toolkit for local smart home management, specializing in Lu
 - **Go:** 1.25+
 - **Lutron Certificates:** Required for LEAP communication. See [NETWORK_DISCOVERY.md](./NETWORK_DISCOVERY.md) for pairing instructions.
 
-### Installation
+## Installation
+
+To install `homectl` as a system-wide service (Linux):
 
 ```bash
-go build -o homectl main.go
-./homectl ui
+./scripts/install.sh
 ```
+
+This script:
+1. Builds the Go binary and Lit Web UI.
+2. Installs the binary to `/usr/local/bin/homectl`.
+3. Installs UI assets to `/usr/local/share/homectl/ui`.
+4. Configures and starts a `systemd` service.
+
+To update an existing installation, simply run the script again.
+
+### Service Management
+
+Once installed, you can manage the `homectl` service using standard systemd commands:
+
+```bash
+# Start/Stop/Restart the service
+sudo systemctl start homectl
+sudo systemctl stop homectl
+sudo systemctl restart homectl
+
+# Check status
+systemctl status homectl
+
+# View real-time logs
+journalctl -u homectl -f
+
+# View logs since a specific time
+journalctl -u homectl --since "1 hour ago"
+```
+
+## Development
+
+### Running Locally
+For rapid development, you can run the application without installing:
+
+```bash
+# Start the API server and serve UI from source
+go run main.go serve --ui ./ui/dist
+```
+
+### UI Development
+The Web UI is built with Lit and Vite.
+```bash
+cd ui
+npm install
+npm run dev   # Start Vite dev server for hot-reloading
+npm run build # Build for production
+```
+
+### Code Structure
+- `cmd/`: CLI commands (Cobra).
+- `pkg/`: Core logic (leap, sonos, camera, config).
+- `ui/`: Web interface (Lit + TypeScript).
 
 ### Configuration
 
