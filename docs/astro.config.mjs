@@ -2,6 +2,7 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import catppuccin from '@catppuccin/starlight';
+import starlightImageZoom from 'starlight-image-zoom';
 
 export default defineConfig({
   site: 'https://ghchinoy.github.io',
@@ -18,6 +19,7 @@ export default defineConfig({
           dark: { flavor: 'mocha', accent: 'sky' },
           light: { flavor: 'latte', accent: 'sky' },
         }),
+        starlightImageZoom(),
       ],
       social: [
         {
