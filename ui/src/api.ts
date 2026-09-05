@@ -39,6 +39,37 @@ export interface SonosStatus {
   album_art: string;
 }
 
+export interface SonosFavorite {
+  id: string;
+  title: string;
+  type: string;
+  resource_uri: string;
+  metadata?: string;
+  album_art_uri?: string;
+  description?: string;
+}
+
+export interface SonosFavoritesResult {
+  count: number;
+  favorites: SonosFavorite[];
+}
+
+export interface SonosService {
+  id: string;
+  name: string;
+  version?: string;
+  uri?: string;
+  secure_uri?: string;
+  capabilities?: string;
+  is_default?: boolean;
+}
+
+export interface SonosServicesResult {
+  count: number;
+  default?: SonosService;
+  services: SonosService[];
+}
+
 export interface Camera {
   name: string;
   ip: string;
@@ -60,6 +91,16 @@ export const homectlApi = {
   getSonosStatus: () => api.get<Record<string, SonosStatus>>('/sonos/status').then(r => r.data),
   controlSonos: (ip: string, action: string, volume?: number) => 
     api.post('/sonos/control', { ip, action, volume }),
+  getSonosFavorites: (ip?: string) => 
+    api.get<SonosFavoritesResult>('/sonos/favorites', { params: ip ? { ip } : {} }).then(r => r.data),
+  playSonosFavorite: (ip: string, favoriteId: string) => 
+    api.post('/sonos/play-favorite', { ip, favorite_id: favoriteId }).then(r => r.data),
+  getSonosServices: (ip?: string) => 
+    api.get<SonosServicesResult>('/sonos/services', { params: ip ? { ip } : {} }).then(r => r.data),
+  playSonosStream: (ip: string, url: string, title?: string) => 
+    api.post('/sonos/play-stream', { ip, url, title }).then(r => r.data),
+  addSonosToQueue: (ip: string, uri: string, asNext?: boolean) => 
+    api.post('/sonos/queue-add', { ip, uri, as_next: asNext }).then(r => r.data),
 
   // Cameras
   getCameras: () => api.get<Camera[]>('/security/cameras').then(r => r.data),

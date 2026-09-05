@@ -1,10 +1,11 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { homectlApi } from './api';
-import type { LutronDevice, SonosDevice, SonosStatus, Camera, CastDevice, CastStatus } from './api';
+import type { LutronDevice, SonosDevice, SonosStatus, Camera, CastDevice, CastStatus, SonosFavorite, SonosService } from './api';
 
 import './components/lutron-card';
 import './components/sonos-card';
+import './components/sonos-source-panel';
 import './components/camera-card';
 import './components/cast-card';
 
@@ -15,6 +16,10 @@ export class HomectlDashboard extends LitElement {
   @state() private allLightsLevel = 0;
   @state() private sonosDevices: SonosDevice[] = [];
   @state() private sonosStatus: Record<string, SonosStatus> = {};
+  @state() private selectedSpeakerIp = '';
+  @state() private sonosFavorites: SonosFavorite[] = [];
+  @state() private sonosServices: SonosService[] = [];
+  @state() private sonosDefaultService?: SonosService;
   @state() private castDevices: CastDevice[] = [];
   @state() private castStatus: Record<string, CastStatus> = {};
   @state() private cameras: Camera[] = [];
@@ -64,6 +69,10 @@ export class HomectlDashboard extends LitElement {
       this.sonosDevices = sonos;
       this.cameras = cameras;
       this.castDevices = cast;
+      if (this.sonosDevices.length > 0 && !this.selectedSpeakerIp) {
+        this.selectedSpeakerIp = this.sonosDevices[0].IP;
+        await this.fetchSonosSourceData(this.selectedSpeakerIp);
+      }
       await this.fetchStatus();
     } catch (error) {
       console.error('Fetch error:', error);
@@ -135,6 +144,53 @@ export class HomectlDashboard extends LitElement {
     } catch (e) { console.error('Volume error:', e); }
   }
 
+  async fetchSonosSourceData(ip: string) {
+    if (!ip) return;
+    try {
+      const [favResult, svcResult] = await Promise.all([
+        homectlApi.getSonosFavorites(ip).catch(() => ({ count: 0, favorites: [] })),
+        homectlApi.getSonosServices(ip).catch(() => ({ count: 0, services: [], default: undefined }))
+      ]);
+      this.sonosFavorites = favResult.favorites || [];
+      this.sonosServices = svcResult.services || [];
+      this.sonosDefaultService = svcResult.default;
+    } catch (e) {
+      console.warn('Failed to load Sonos source data for', ip, e);
+    }
+  }
+
+  async handleSpeakerChange(ip: string) {
+    this.selectedSpeakerIp = ip;
+    await this.fetchSonosSourceData(ip);
+  }
+
+  async handlePlayFavorite(ip: string, favoriteId: string) {
+    try {
+      await homectlApi.playSonosFavorite(ip, favoriteId);
+      setTimeout(() => this.fetchStatus(), 1000);
+    } catch (e) {
+      console.error('Play favorite error:', e);
+    }
+  }
+
+  async handlePlayStream(ip: string, url: string, title?: string) {
+    try {
+      await homectlApi.playSonosStream(ip, url, title);
+      setTimeout(() => this.fetchStatus(), 1000);
+    } catch (e) {
+      console.error('Play stream error:', e);
+    }
+  }
+
+  async handleQueueAdd(ip: string, uri: string, asNext?: boolean) {
+    try {
+      await homectlApi.addSonosToQueue(ip, uri, asNext);
+      setTimeout(() => this.fetchStatus(), 1000);
+    } catch (e) {
+      console.error('Queue add error:', e);
+    }
+  }
+
   async handleCastControl(ip: string, action: string) {
     try {
       await homectlApi.controlCast(ip, action);
@@ -187,6 +243,21 @@ export class HomectlDashboard extends LitElement {
 
       <section>
         <h2>Music</h2>
+
+        ${this.sonosDevices.length > 0 ? html`
+          <sonos-source-panel
+            .devices=${this.sonosDevices}
+            .selectedSpeakerIp=${this.selectedSpeakerIp}
+            .favorites=${this.sonosFavorites}
+            .services=${this.sonosServices}
+            .defaultService=${this.sonosDefaultService}
+            @speaker-change=${(e: any) => this.handleSpeakerChange(e.detail.ip)}
+            @play-favorite=${(e: any) => this.handlePlayFavorite(e.detail.ip, e.detail.favoriteId)}
+            @play-stream=${(e: any) => this.handlePlayStream(e.detail.ip, e.detail.url, e.detail.title)}
+            @queue-add=${(e: any) => this.handleQueueAdd(e.detail.ip, e.detail.uri, e.detail.asNext)}>
+          </sonos-source-panel>
+        ` : ''}
+
         <div class="grid">
           ${this.sonosDevices.map(d => html`
             <sonos-card 

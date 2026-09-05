@@ -206,6 +206,179 @@ var serveCmd = &cobra.Command{
 			w.WriteHeader(http.StatusOK)
 		})
 
+		http.HandleFunc("/api/sonos/favorites", func(w http.ResponseWriter, r *http.Request) {
+			ip := r.URL.Query().Get("ip")
+			if ip == "" {
+				devices, _ := sonos.LoadCache()
+				if len(devices) > 0 {
+					ip = devices[0].IP
+				}
+			}
+			if ip == "" {
+				http.Error(w, "ip parameter required (no speakers in cache)", http.StatusBadRequest)
+				return
+			}
+
+			client := sonos.NewClient(ip)
+			favs, err := client.BrowseFavorites()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"count":     len(favs),
+				"favorites": favs,
+			})
+		})
+
+		http.HandleFunc("/api/sonos/play-favorite", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			var req struct {
+				IP         string `json:"ip"`
+				FavoriteID string `json:"favorite_id"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if req.IP == "" || req.FavoriteID == "" {
+				http.Error(w, "ip and favorite_id are required", http.StatusBadRequest)
+				return
+			}
+
+			client := sonos.NewClient(req.IP)
+			if err := client.PlayFavorite(req.FavoriteID); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"status":      "ok",
+				"action":      "play_favorite",
+				"ip":          req.IP,
+				"favorite_id": req.FavoriteID,
+			})
+		})
+
+		http.HandleFunc("/api/sonos/services", func(w http.ResponseWriter, r *http.Request) {
+			ip := r.URL.Query().Get("ip")
+			if ip == "" {
+				devices, _ := sonos.LoadCache()
+				if len(devices) > 0 {
+					ip = devices[0].IP
+				}
+			}
+			if ip == "" {
+				http.Error(w, "ip parameter required (no speakers in cache)", http.StatusBadRequest)
+				return
+			}
+
+			client := sonos.NewClient(ip)
+			services, err := client.ListMusicServices()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			cfg := config.LoadConfig()
+			defSvc, hasDef := sonos.ResolveDefaultService(services, cfg.SonosDefaultService)
+			var defPtr *sonos.MusicService
+			if hasDef {
+				defPtr = &defSvc
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"count":    len(services),
+				"default":  defPtr,
+				"services": services,
+			})
+		})
+
+		http.HandleFunc("/api/sonos/play-stream", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			var req struct {
+				IP    string `json:"ip"`
+				URL   string `json:"url"`
+				Title string `json:"title"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if req.IP == "" || req.URL == "" {
+				http.Error(w, "ip and url are required", http.StatusBadRequest)
+				return
+			}
+
+			u, err := url.Parse(strings.TrimSpace(req.URL))
+			if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+				http.Error(w, "invalid stream url: scheme must be http or https", http.StatusBadRequest)
+				return
+			}
+
+			client := sonos.NewClient(req.IP)
+			if err := client.PlayStream(req.URL, req.Title); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"status": "ok",
+				"action": "play_stream",
+				"ip":     req.IP,
+				"url":    req.URL,
+				"title":  req.Title,
+			})
+		})
+
+		http.HandleFunc("/api/sonos/queue-add", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			var req struct {
+				IP     string `json:"ip"`
+				URI    string `json:"uri"`
+				AsNext bool   `json:"as_next"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if req.IP == "" || req.URI == "" {
+				http.Error(w, "ip and uri are required", http.StatusBadRequest)
+				return
+			}
+
+			client := sonos.NewClient(req.IP)
+			pos, err := client.AddURIToQueue(req.URI, "", req.AsNext)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"status":         "ok",
+				"action":         "queue_add",
+				"ip":             req.IP,
+				"uri":            req.URI,
+				"track_position": pos,
+				"as_next":        req.AsNext,
+			})
+		})
+
 		http.HandleFunc("/api/security/cameras", func(w http.ResponseWriter, r *http.Request) {
 			manager := discovery.NewManager()
 			manager.AddProvider(&camera.DiscoveryProvider{})

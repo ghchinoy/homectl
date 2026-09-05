@@ -140,3 +140,15 @@ To configure the correct callback IP, add `callback_ip` to `~/.config/homectl/co
 ```
 
 See the [Network Topology Reference](/homectl/reference/network-topology/) for diagnostic procedures using `tools/gena_debug.go`.
+
+---
+
+## Web UI Source Control
+
+When running `homectl serve`, the dashboard includes a shared **Sonos Source Panel**:
+* **Target Speaker Selector:** Choose which speaker or stereo pair to control.
+* **Favorites Search & Filter:** Real-time search across all pinned favorites, playlists, and stations with album art and one-click playback.
+* **Direct Audio Stream Player:** Stream arbitrary HTTP/HTTPS audio streams or insert into queue.
+* **Music Services Catalog:** View registered streaming providers and verify the configured default service.
+
+For architecture details on extending ad-hoc track search via Spotify Web API or Apple MusicKit, see the [Music Service OAuth Research Spike](/homectl/reference/music-service-oauth-spike/).
