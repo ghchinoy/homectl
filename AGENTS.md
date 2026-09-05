@@ -5,11 +5,12 @@ This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get sta
 ## Quick Reference
 
 ```bash
-bd ready              # Find available work
+bd prime              # Show full workflow context & commands (SSOT)
+bd ready              # Find available work (no blockers)
 bd show <id>          # View issue details
-bd update <id> --status in_progress  # Claim work
+bd update <id> --claim # Claim work atomically
 bd close <id>         # Complete work
-bd sync               # Sync with git
+bd dolt push          # Push issues to remote when authorized
 ```
 
 ## Developer Guidelines
@@ -102,37 +103,37 @@ Whenever a new feature, CLI command, or MCP tool is added or modified, the imple
    - Architecture Page: Update `docs/src/content/docs/architecture/<svc>.md`.
    - Graphviz Diagram: If tool surface or protocol changed, update `docs/src/assets/architecture/<svc>.dot` and recompile via `make diagrams`.
 
-## Landing the Plane (Session Completion)
+## Session Close Protocol
 
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+Before concluding a work session or declaring a task complete, run the following protocol:
 
-**MANDATORY WORKFLOW:**
+### 1. Task Tracking & Hygiene
+* File any discovered follow-up work or bugs: `bd create --title="..." -t task -p 2`.
+* Close completed issues in batch: `bd close <id1> <id2> ... --reason="..."`.
+* Persist cross-session architectural insights via `bd remember "insight"` (do NOT create ad-hoc `MEMORY.md` files).
 
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed):
-   ```bash
-   make test                   # Go tests across workspace & modules
-   make check-skills           # Asserts zero drift in plugin bundles & valid script paths
-   npm --prefix docs run build # Asserts zero broken links or markdown errors in docs
-   git diff                    # Asserts zero real MACs or unmasked private IPs are staged
-   ```
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd sync
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
+### 2. Quality Gates Execution
+Run the project quality verification commands:
+```bash
+make test                   # Go tests across workspace & modules
+make check-skills           # Asserts zero drift in plugin bundles & valid script paths
+npm --prefix docs run build # Asserts zero broken links or markdown errors in docs
+git diff                    # Asserts zero real MACs or unmasked private IPs are staged
+```
 
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
+### 3. Policy-Controlled Git Handoff
+Git authority follows the active profile:
+* **Default (Conservative):** Report status, changed files, test results, and proposed next commands; do not commit, push, or run `bd dolt push` without explicit user or orchestrator authorization.
+* **When Commit / Push is Explicitly Authorized:**
+  ```bash
+  git status
+  git add <intended-files>
+  git commit -m "..."
+  git pull --rebase
+  bd dolt push
+  git push
+  git status  # MUST show "up to date with origin"
+  ```
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:46cd31e7 -->
 ## Beads Issue Tracker
