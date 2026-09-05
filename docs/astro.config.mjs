@@ -39,6 +39,18 @@ export default defineConfig({
           ],
         },
         {
+          label: 'Architecture Deep Dives',
+          items: [
+            { label: 'System Architecture (Overall)', slug: 'architecture' },
+            { label: 'Sonos Audio Vertical', slug: 'architecture/sonos' },
+            { label: 'Lutron Lighting Vertical', slug: 'architecture/lutron' },
+            { label: 'Qolsys Security Vertical', slug: 'architecture/qolsys' },
+            { label: 'Google Cast Vertical', slug: 'architecture/google-cast' },
+            { label: 'Security Camera Vertical', slug: 'architecture/cameras' },
+            { label: 'Maintaining Diagrams & Docs', slug: 'architecture/maintenance' },
+          ],
+        },
+        {
           label: 'Hardware Integrations',
           items: [
             { label: 'Lutron Caseta & RA2 Select', slug: 'integrations/lutron' },

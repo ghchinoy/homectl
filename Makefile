@@ -1,4 +1,4 @@
-.PHONY: all build test clean sync-skills check-skills bin-homectl bin-mcp-sonos bin-sync-skills install-mcp
+.PHONY: all build test clean sync-skills check-skills bin-homectl bin-mcp-sonos bin-sync-skills install-mcp diagrams
 
 BIN_DIR := ./bin
 
@@ -6,6 +6,10 @@ all: build
 
 # Build all binaries into ./bin (gitignored)
 build: bin-homectl bin-mcp-sonos bin-sync-skills
+
+# Compile Graphviz architecture diagrams (.dot -> .webp)
+diagrams:
+	@./scripts/build-diagrams.sh
 
 bin-homectl:
 	@mkdir -p $(BIN_DIR)

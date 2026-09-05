@@ -1,0 +1,348 @@
+digraph HomectlOverallArchitecture {
+  graph [
+    bgcolor="#ffffff",
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=14,
+    rankdir=TB,
+    splines=spline,
+    nodesep=0.5,
+    ranksep=0.7,
+    pad="0.4,0.4"
+  ];
+
+  node [
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=10,
+    fontcolor="#0f172a",
+    style="filled,rounded",
+    shape=box,
+    penwidth=1.5,
+    margin="0.2,0.14"
+  ];
+
+  edge [
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=9,
+    fontcolor="#64748b",
+    color="#94a3b8",
+    penwidth=1.2,
+    arrowsize=0.75
+  ];
+
+  // Header
+  subgraph cluster_header {
+    style="invis";
+    title_node [
+      shape=plaintext,
+      fontcolor="#0f172a",
+      fontsize=16,
+      label=<<table border="0" cellborder="0" cellspacing="4">
+        <tr><td><font point-size="18" color="#0f172a"><b>homectl System-Wide Architecture</b></font></td></tr>
+        <tr><td><font point-size="11" color="#64748b">Unified Smart Home Management: Interfaces, Go Monorepo Modules, MCP Servers &amp; IoT Hardware</font></td></tr>
+      </table>>
+    ];
+  }
+
+  // Tier 1: User & Agent Interfaces
+  subgraph cluster_interfaces {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#0284c7" point-size="12"><b>1. INTERACTION TIER (Agents &amp; Humans)</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#bae6fd";
+    bgcolor="#f0f9ff";
+
+    agent [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#0284c7"><b>AI Coding Agent</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">OpenCode / Claude / Gemini</font></td></tr>
+        <tr><td><font color="#0369a1" point-size="8"><b>Drives MCP Tools &amp; Skills</b></font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#0284c7"
+    ];
+
+    cli [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#0f172a"><b>Cobra CLI</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">homectl &lt;command&gt;</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">--json &amp; --dry-run</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#0284c7"
+    ];
+
+    tui [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#0f172a"><b>Bubble Tea TUI</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">homectl ui</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">Multi-mode Hub &amp; Live Bar</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#0284c7"
+    ];
+
+    webui [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#0f172a"><b>Lit Web UI</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Vite SPA (:8080)</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">Modular Card Dashboard</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#0284c7"
+    ];
+  }
+
+  // Tier 2: Agent Plugins & Skill Packs
+  subgraph cluster_plugins {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#7c3aed" point-size="12"><b>2. AGENT PLUGINS &amp; SKILL BUNDLES (plugins/*)</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#ddd6fe";
+    bgcolor="#f5f3ff";
+
+    plugin_sonos [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#7c3aed"><b>plugins/sonos</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">sonos-soundscape SKILL</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">plugin.json &amp; opencode.jsonc</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#7c3aed"
+    ];
+
+    plugin_lutron [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#7c3aed"><b>plugins/lutron</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">lutron-lighting SKILL</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">plugin.json &amp; opencode.jsonc</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#7c3aed"
+    ];
+
+    plugin_qolsys [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#7c3aed"><b>plugins/qolsys</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">qolsys-guard SKILL</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">plugin.json &amp; opencode.jsonc</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#7c3aed"
+    ];
+
+    plugin_cast [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#7c3aed"><b>plugins/cast</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">cast-media-director SKILL</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">plugin.json &amp; opencode.jsonc</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#7c3aed"
+    ];
+
+    plugin_camera [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#7c3aed"><b>plugins/camera</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">camera-inspector SKILL</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">plugin.json &amp; opencode.jsonc</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#7c3aed"
+    ];
+  }
+
+  // Tier 3: Gateway & Standalone Executables
+  subgraph cluster_gateways {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#059669" point-size="12"><b>3. EXECUTABLES &amp; SERVERS (bin/*)</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#a7f3d0";
+    bgcolor="#ecfdf5";
+
+    homectl_server [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#059669"><b>homectl serve</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">HTTP REST API &amp; Web Static</font></td></tr>
+        <tr><td><font color="#059669" point-size="8">Port 8080 / 8086 (systemd)</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#059669"
+    ];
+
+    mcp_sonos [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#059669"><b>mcp-sonos</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">MCP Stdio Server (Go SDK)</font></td></tr>
+        <tr><td><font color="#047857" point-size="8">Tools: list, play, vol, favs</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#059669"
+    ];
+
+    mcp_others [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#059669"><b>mcp-(lutron|qolsys|cast|camera)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Dedicated MCP Stdio Servers</font></td></tr>
+        <tr><td><font color="#047857" point-size="8">Separation of Concerns</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#059669"
+    ];
+  }
+
+  // Tier 4: Disaggregated Go Modules
+  subgraph cluster_modules {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#d97706" point-size="12"><b>4. GO MONOREPO WORKSPACE (modules/* &amp; go.work)</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#fde68a";
+    bgcolor="#fffbeb";
+
+    mod_core [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#b45309"><b>modules/core</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Interfaces: Storage, Logger, Settings</font></td></tr>
+        <tr><td><font color="#b45309" point-size="8">Zero external dependencies</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#d97706"
+    ];
+
+    mod_sonos [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#b45309"><b>modules/sonos</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">UPnP / SOAP / SSDP / GENA</font></td></tr>
+        <tr><td><font color="#b45309" point-size="8">Coordinator &amp; Group Resolver</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#d97706"
+    ];
+
+    mod_lutron [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#b45309"><b>modules/lutron</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">LEAP Mutual TLS (8081)</font></td></tr>
+        <tr><td><font color="#b45309" point-size="8">Zones, Areas &amp; Command Processor</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#d97706"
+    ];
+
+    mod_qolsys [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#b45309"><b>modules/qolsys</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Secure WebSocket (12345)</font></td></tr>
+        <tr><td><font color="#b45309" point-size="8">Arming, Nonce, Event Stream</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#d97706"
+    ];
+
+    mod_cast [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#b45309"><b>modules/cast</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Cast V2 &amp; mDNS</font></td></tr>
+        <tr><td><font color="#b45309" point-size="8">Volume, Apps &amp; Transport</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#d97706"
+    ];
+
+    mod_camera [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#b45309"><b>modules/camera</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">RTSP &amp; ONVIF WS-Discovery</font></td></tr>
+        <tr><td><font color="#b45309" point-size="8">FFmpeg MJPEG Transcoding</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#d97706"
+    ];
+  }
+
+  // Tier 5: Local IoT Hardware
+  subgraph cluster_hardware {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#dc2626" point-size="12"><b>5. LOCAL PHYSICAL SUBNET (192.168.x.x / LAN)</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#fecaca";
+    bgcolor="#fef2f2";
+
+    hw_sonos [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#dc2626"><b>Sonos Speakers</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">UPnP SOAP :1400</font></td></tr>
+        <tr><td><font color="#dc2626" point-size="8">GENA NOTIFY &amp; SSDP 1900</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#dc2626"
+    ];
+
+    hw_lutron [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#dc2626"><b>Lutron Smart Bridge</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">LEAP Port :8081 (TLS)</font></td></tr>
+        <tr><td><font color="#dc2626" point-size="8">mDNS _leap._tcp</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#dc2626"
+    ];
+
+    hw_qolsys [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#dc2626"><b>Qolsys IQ Panel 4</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">WSS Port :12345</font></td></tr>
+        <tr><td><font color="#dc2626" point-size="8">Control4 Integration</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#dc2626"
+    ];
+
+    hw_cast [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#dc2626"><b>Chromecast / Nest</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">TLS Port :8009</font></td></tr>
+        <tr><td><font color="#dc2626" point-size="8">mDNS _googlecast._tcp</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#dc2626"
+    ];
+
+    hw_camera [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#dc2626"><b>Security Cameras</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">RTSP :554 &amp; OV Ready :6080</font></td></tr>
+        <tr><td><font color="#dc2626" point-size="8">ONVIF WS-Discovery :3702</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#dc2626"
+    ];
+  }
+
+  // Cross-Tier Connections
+  title_node -> agent [style="invis"];
+
+  agent -> plugin_sonos [label="loads skill", color="#7c3aed"];
+  agent -> mcp_sonos [label="stdio tool call", color="#059669"];
+  plugin_sonos -> mcp_sonos [label="manifest references", style="dotted", color="#7c3aed"];
+
+  cli -> homectl_server [style="invis"];
+  cli -> mod_sonos [label="direct call", color="#0284c7"];
+  cli -> mod_lutron [label="direct call", color="#0284c7"];
+  tui -> mod_sonos [label="direct call", color="#0284c7"];
+  webui -> homectl_server [label="HTTP REST", color="#0284c7"];
+
+  homectl_server -> mod_sonos [color="#059669"];
+  homectl_server -> mod_lutron [color="#059669"];
+  homectl_server -> mod_camera [color="#059669"];
+
+  mcp_sonos -> mod_sonos [label="imports", color="#059669"];
+  mcp_others -> mod_lutron [color="#059669"];
+  mcp_others -> mod_qolsys [color="#059669"];
+
+  mod_sonos -> mod_core [label="implements", color="#d97706"];
+  mod_lutron -> mod_core [color="#d97706"];
+  mod_qolsys -> mod_core [color="#d97706"];
+  mod_cast -> mod_core [color="#d97706"];
+  mod_camera -> mod_core [color="#d97706"];
+
+  mod_sonos -> hw_sonos [label="SOAP & GENA", color="#dc2626"];
+  mod_lutron -> hw_lutron [label="LEAP TLS", color="#dc2626"];
+  mod_qolsys -> hw_qolsys [label="WSS JSON", color="#dc2626"];
+  mod_cast -> hw_cast [label="TLS V2", color="#dc2626"];
+  mod_camera -> hw_camera [label="RTSP & Port 554", color="#dc2626"];
+}

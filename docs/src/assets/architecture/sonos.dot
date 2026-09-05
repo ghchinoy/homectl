@@ -1,0 +1,246 @@
+digraph SonosVerticalArchitecture {
+  graph [
+    bgcolor="#ffffff",
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=14,
+    rankdir=TB,
+    splines=spline,
+    nodesep=0.55,
+    ranksep=0.7,
+    pad="0.4,0.4"
+  ];
+
+  node [
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=10,
+    fontcolor="#0f172a",
+    style="filled,rounded",
+    shape=box,
+    penwidth=1.5,
+    margin="0.2,0.14"
+  ];
+
+  edge [
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=9,
+    fontcolor="#64748b",
+    color="#94a3b8",
+    penwidth=1.2,
+    arrowsize=0.75
+  ];
+
+  // Header
+  subgraph cluster_header {
+    style="invis";
+    title_node [
+      shape=plaintext,
+      fontcolor="#0f172a",
+      fontsize=16,
+      label=<<table border="0" cellborder="0" cellspacing="4">
+        <tr><td><font point-size="18" color="#ea580c"><b>Sonos Audio Vertical Architecture</b></font></td></tr>
+        <tr><td><font point-size="11" color="#64748b">End-to-End Flow: Agent Skill, MCP Stdio Server, modules/sonos Go Engine &amp; Hardware Protocols</font></td></tr>
+      </table>>
+    ];
+  }
+
+  // 1. Agent & Skill Layer
+  subgraph cluster_skill {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#7c3aed" point-size="12"><b>1. AGENT SKILL &amp; TOKEN ECONOMICS</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#ddd6fe";
+    bgcolor="#f5f3ff";
+
+    agent_node [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#7c3aed"><b>AI Coding Agent</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">OpenCode / Claude Code</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#7c3aed"
+    ];
+
+    skill_doc [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#7c3aed"><b>skills/sonos-soundscape/SKILL.md</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Compact JSON transform (~94% token savings)</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Volume guardrails (15-40% safe, &gt;60% gated)</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Error 701 queue restoration recovery loop</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#7c3aed"
+    ];
+
+    summarizer [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#7c3aed"><b>summarize_metadata.py</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Deterministic XML ➔ JSON helper</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Strips namespaces &amp; unescapes entities</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#7c3aed"
+    ];
+  }
+
+  // 2. Plugin & MCP Stdio Server Layer
+  subgraph cluster_mcp {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#0284c7" point-size="12"><b>2. AGENT PLUGIN &amp; MCP SERVER (cmd/mcp-sonos)</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#bae6fd";
+    bgcolor="#f0f9ff";
+
+    manifests [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#0284c7"><b>Plugin Manifests (plugins/sonos/)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">plugin.json (Agent Plugins Spec 1.0.0)</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">mcp.json &amp; opencode.jsonc</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#0284c7"
+    ];
+
+    mcp_ro_tools [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#0284c7"><b>🔒 Read-Only MCP Tools</b></font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• <b>sonos_list_speakers</b> (cached / refresh)</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• <b>sonos_get_now_playing</b> (compact status)</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• <b>sonos_get_topology</b> (groups &amp; pairs)</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• <b>sonos_list_favorites</b> (pinned cloud media)</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• <b>sonos_list_services</b> (catalog)</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#0284c7"
+    ];
+
+    mcp_mut_tools [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#dc2626"><b>⚡ Mutating MCP Tools</b></font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• <b>sonos_control</b> (play/pause/stop/next/prev)</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• <b>sonos_set_volume</b> (absolute / delta)</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• <b>sonos_play_favorite</b> (launch favorite)</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• <b>sonos_play_stream</b> (direct web URL)</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• <b>sonos_add_to_queue</b> (enqueue track)</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#dc2626"
+    ];
+  }
+
+  // 3. Go Module & Core Layer
+  subgraph cluster_module {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#059669" point-size="12"><b>3. GO ENGINE (modules/sonos &amp; modules/core)</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#a7f3d0";
+    bgcolor="#ecfdf5";
+
+    sonos_client [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#059669"><b>modules/sonos Client</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Functional Options: WithLogger, WithStorage, WithHTTPClient</font></td></tr>
+        <tr><td><font color="#047857" point-size="8">Zero log.Fatalf / Zero init() side-effects</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#059669"
+    ];
+
+    follower_resolver [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#059669"><b>Coordinator / Follower Resolver</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Detects 'x-rincon:' follower track URIs</font></td></tr>
+        <tr><td><font color="#047857" point-size="8">Resolves authorative Coordinator IP</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#059669"
+    ];
+
+    gena_listener [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#059669"><b>GENAListener (events.go)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Embedded HTTP server on dynamic port</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Parses 'LastChange' XML event fragments</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#059669"
+    ];
+
+    core_deps [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#059669"><b>Injected core Interfaces</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• core.Storage (XDG ~/.config/homectl/)</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• core.Logger (Structured / Std / No-op)</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• core.Settings (Callback IP override)</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#059669"
+    ];
+  }
+
+  // 4. Physical Network Protocols
+  subgraph cluster_protocols {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#ea580c" point-size="12"><b>4. PHYSICAL PROTOCOL LAYER (LAN &amp; Cloud)</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#fed7aa";
+    bgcolor="#fff7ed";
+
+    proto_soap [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#ea580c"><b>Outbound SOAP (Port 1400)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">AVTransport, RenderingControl, ContentDirectory</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#ea580c"
+    ];
+
+    proto_ssdp [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#ea580c"><b>SSDP M-SEARCH (UDP 1900)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Multicast: 239.255.255.250:1900</font></td></tr>
+        <tr><td><font color="#16a34a" point-size="8"><b>Bypasses macOS port 5353 mDNS blocks</b></font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#ea580c"
+    ];
+
+    proto_gena [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#ea580c"><b>Inbound GENA NOTIFY</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Speaker posts state events back to homectl</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#ea580c"
+    ];
+
+    speaker_hw [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#ea580c"><b>Physical Sonos Speakers</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Arc, Move 2, One, Play:3, Amp, Port</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Cloud SMAPI: Spotify, Apple, YouTube Music</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#ea580c"
+    ];
+  }
+
+  // Connections
+  title_node -> agent_node [style="invis"];
+
+  agent_node -> skill_doc [label="reads rules", color="#7c3aed"];
+  skill_doc -> summarizer [label="delegates to", color="#7c3aed"];
+  agent_node -> mcp_ro_tools [label="calls tool", color="#0284c7"];
+  agent_node -> mcp_mut_tools [label="calls tool", color="#dc2626"];
+  manifests -> mcp_ro_tools [style="dotted", color="#0284c7"];
+
+  mcp_ro_tools -> sonos_client [color="#059669"];
+  mcp_mut_tools -> sonos_client [color="#059669"];
+
+  sonos_client -> follower_resolver [label="checks target", color="#059669"];
+  sonos_client -> core_deps [label="uses", color="#059669"];
+  gena_listener -> sonos_client [label="updates state", color="#059669"];
+
+  sonos_client -> proto_soap [label="HTTP POST", color="#ea580c"];
+  sonos_client -> proto_ssdp [label="UDP broadcast", color="#ea580c"];
+  proto_gena -> gena_listener [label="HTTP NOTIFY", color="#ea580c"];
+
+  proto_soap -> speaker_hw [color="#ea580c"];
+  proto_ssdp -> speaker_hw [color="#ea580c"];
+  speaker_hw -> proto_gena [color="#ea580c"];
+}

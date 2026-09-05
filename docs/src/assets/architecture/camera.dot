@@ -1,0 +1,195 @@
+digraph CameraVerticalArchitecture {
+  graph [
+    bgcolor="#ffffff",
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=14,
+    rankdir=TB,
+    splines=spline,
+    nodesep=0.55,
+    ranksep=0.7,
+    pad="0.4,0.4"
+  ];
+
+  node [
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=10,
+    fontcolor="#0f172a",
+    style="filled,rounded",
+    shape=box,
+    penwidth=1.5,
+    margin="0.2,0.14"
+  ];
+
+  edge [
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=9,
+    fontcolor="#64748b",
+    color="#94a3b8",
+    penwidth=1.2,
+    arrowsize=0.75
+  ];
+
+  // Header
+  subgraph cluster_header {
+    style="invis";
+    title_node [
+      shape=plaintext,
+      fontcolor="#0f172a",
+      fontsize=16,
+      label=<<table border="0" cellborder="0" cellspacing="4">
+        <tr><td><font point-size="18" color="#d97706"><b>Security Camera &amp; Transcoding Vertical Architecture</b></font></td></tr>
+        <tr><td><font point-size="11" color="#64748b">Concurrent Discovery, RTSP / ONVIF Probing, FFmpeg MJPEG Transcoding &amp; Multimodal Snapshots</font></td></tr>
+      </table>>
+    ];
+  }
+
+  // 1. Agent & Skill Layer
+  subgraph cluster_skill {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#7c3aed" point-size="12"><b>1. AGENT SKILL &amp; MULTIMODAL VISION</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#ddd6fe";
+    bgcolor="#f5f3ff";
+
+    agent_node [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#7c3aed"><b>Multimodal AI Agent</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">OpenCode / Gemini 2.5/3 Pro Vision</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#7c3aed"
+    ];
+
+    skill_doc [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#7c3aed"><b>skills/camera-inspector/SKILL.md</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Single-frame JPEG snapshot extraction</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Visual inspection (package detection, driveway status)</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Low token overhead (on-demand frame grabs)</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#7c3aed"
+    ];
+  }
+
+  // 2. Plugin & MCP Stdio Server Layer
+  subgraph cluster_mcp {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#d97706" point-size="12"><b>2. AGENT PLUGIN &amp; MCP SERVER (cmd/mcp-camera)</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#fde68a";
+    bgcolor="#fffbeb";
+
+    manifests [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#d97706"><b>Plugin Manifests (plugins/camera/)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">plugin.json &amp; opencode.jsonc</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#d97706"
+    ];
+
+    mcp_tools [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#d97706"><b>Registered MCP Tools</b></font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• 🔒 <b>camera_list</b> (all discovered RTSP/ONVIF cameras)</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• 🔒 <b>camera_stream_url</b> (authenticated local RTSP URL)</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• 🔒 <b>camera_snapshot</b> (captures 1 JPEG frame via FFmpeg)</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#d97706"
+    ];
+  }
+
+  // 3. Go Module & Transcoding Engine
+  subgraph cluster_module {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#059669" point-size="12"><b>3. GO ENGINE (modules/camera &amp; pkg/camera)</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#a7f3d0";
+    bgcolor="#ecfdf5";
+
+    concurrent_discovery [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#059669"><b>Concurrent Discovery Pipeline</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• mDNS resolver (_rtsp._tcp, _axis-video._tcp)</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• ONVIF WS-Discovery Probe (UDP 3702)</font></td></tr>
+        <tr><td><font color="#16a34a" point-size="8"><b>• Parallel Subnet Port 554 Scanner (50 workers)</b></font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#059669"
+    ];
+
+    ffmpeg_proxy [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#059669"><b>On-Demand FFmpeg Proxy (serve.go)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Spawns: ffmpeg -rtsp_transport tcp -i rtsp://... -f mpjpeg</font></td></tr>
+        <tr><td><font color="#047857" point-size="8">Pipes to multipart/x-mixed-replace</font></td></tr>
+        <tr><td><font color="#16a34a" point-size="8"><b>Context cancellation kills process on browser disconnect</b></font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#059669"
+    ];
+
+    camera_auth [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#059669"><b>Camera Auth (~/.config/homectl/config.json)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Prepends user:pass to rtsp://... URLs</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#059669"
+    ];
+  }
+
+  // 4. Physical Cameras & Protocols
+  subgraph cluster_hardware {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#dc2626" point-size="12"><b>4. PHYSICAL IP CAMERAS &amp; PROTOCOLS</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#fecaca";
+    bgcolor="#fef2f2";
+
+    proto_rtsp [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#dc2626"><b>RTSP Stream (TCP Port 554)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Raw H.264 / H.265 transport</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#dc2626"
+    ];
+
+    proto_ov [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#dc2626"><b>Omnivision HTTP (Port 6080)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">HTTP/1.1 401 Server: OV Ready</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#dc2626"
+    ];
+
+    camera_hw [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#dc2626"><b>Security Cameras on LAN</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Alarm.com ADC-VDB770 Doorbell</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Alarm.com ADC-V723x Outdoor Cameras</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Generic ONVIF Profile S IP Cameras</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#dc2626"
+    ];
+  }
+
+  // Connections
+  title_node -> agent_node [style="invis"];
+
+  agent_node -> skill_doc [label="loads rules", color="#7c3aed"];
+  agent_node -> mcp_tools [label="tool calls", color="#d97706"];
+  manifests -> mcp_tools [style="dotted", color="#d97706"];
+
+  mcp_tools -> concurrent_discovery [color="#059669"];
+  mcp_tools -> ffmpeg_proxy [color="#059669"];
+  camera_auth -> ffmpeg_proxy [label="injects credentials", color="#059669"];
+
+  concurrent_discovery -> proto_rtsp [label="probes port 554", color="#dc2626"];
+  concurrent_discovery -> proto_ov [label="probes port 6080", color="#dc2626"];
+  ffmpeg_proxy -> proto_rtsp [label="TCP Stream Pull", color="#dc2626"];
+
+  proto_rtsp -> camera_hw [color="#dc2626"];
+  proto_ov -> camera_hw [color="#dc2626"];
+}

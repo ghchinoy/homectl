@@ -1,0 +1,188 @@
+digraph LutronVerticalArchitecture {
+  graph [
+    bgcolor="#ffffff",
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=14,
+    rankdir=TB,
+    splines=spline,
+    nodesep=0.55,
+    ranksep=0.7,
+    pad="0.4,0.4"
+  ];
+
+  node [
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=10,
+    fontcolor="#0f172a",
+    style="filled,rounded",
+    shape=box,
+    penwidth=1.5,
+    margin="0.2,0.14"
+  ];
+
+  edge [
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=9,
+    fontcolor="#64748b",
+    color="#94a3b8",
+    penwidth=1.2,
+    arrowsize=0.75
+  ];
+
+  // Header
+  subgraph cluster_header {
+    style="invis";
+    title_node [
+      shape=plaintext,
+      fontcolor="#0f172a",
+      fontsize=16,
+      label=<<table border="0" cellborder="0" cellspacing="4">
+        <tr><td><font point-size="18" color="#0284c7"><b>Lutron Caseta &amp; RA2 Select Vertical Architecture</b></font></td></tr>
+        <tr><td><font point-size="11" color="#64748b">Mutual TLS (LEAP), Batch Status Optimization, MCP Tools &amp; Hardware Bridge Control</font></td></tr>
+      </table>>
+    ];
+  }
+
+  // 1. Agent & Skill Layer
+  subgraph cluster_skill {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#7c3aed" point-size="12"><b>1. AGENT SKILL &amp; AUTOMATION POLICIES</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#ddd6fe";
+    bgcolor="#f5f3ff";
+
+    agent_node [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#7c3aed"><b>AI Coding Agent</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">OpenCode / Claude Code</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#7c3aed"
+    ];
+
+    skill_doc [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#7c3aed"><b>skills/lutron-lighting/SKILL.md</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Circadian curve dimming policies</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Master blackout &amp; scene restoration</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Pre-flight range validation (0-100%)</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#7c3aed"
+    ];
+  }
+
+  // 2. Plugin & MCP Stdio Server Layer
+  subgraph cluster_mcp {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#0284c7" point-size="12"><b>2. AGENT PLUGIN &amp; MCP SERVER (cmd/mcp-lutron)</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#bae6fd";
+    bgcolor="#f0f9ff";
+
+    manifests [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#0284c7"><b>Plugin Manifests (plugins/lutron/)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">plugin.json &amp; opencode.jsonc</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Dry-run flag registration</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#0284c7"
+    ];
+
+    mcp_tools [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#0284c7"><b>Registered MCP Tools</b></font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• 🔒 <b>lutron_list_devices</b> (device details &amp; zones)</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• 🔒 <b>lutron_list_zones</b> (all dimmer/switch zones)</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• 🔒 <b>lutron_list_areas</b> (rooms &amp; physical areas)</font></td></tr>
+        <tr><td><font color="#dc2626" point-size="8">• ⚡ <b>lutron_set_level</b> (dim zone with --dry-run)</font></td></tr>
+        <tr><td><font color="#dc2626" point-size="8">• ⚡ <b>lutron_set_all</b> (master control with --dry-run)</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#0284c7"
+    ];
+  }
+
+  // 3. Go Module & Client Engine
+  subgraph cluster_module {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#059669" point-size="12"><b>3. GO ENGINE (modules/lutron / pkg/leap)</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#a7f3d0";
+    bgcolor="#ecfdf5";
+
+    leap_client [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#059669"><b>LEAP Client (client.go)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Mutual TLS with custom CertPool</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Atomic Tag Sequence Counter (ClientTag)</font></td></tr>
+        <tr><td><font color="#047857" point-size="8">Auto-reconnect with isNetErr classification</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#059669"
+    ];
+
+    batch_optimizer [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#059669"><b>Batch Status Optimizer</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">GET /zone/status (1 roundtrip)</font></td></tr>
+        <tr><td><font color="#047857" point-size="8"><b>Eliminates N sequential network queries</b></font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#059669"
+    ];
+
+    credentials [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#059669"><b>XDG Credentials (~/.config/homectl/)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• lutron_client.crt</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• lutron_client.key</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• lutron_ca.crt</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#059669"
+    ];
+  }
+
+  // 4. Physical Bridge & Protocols
+  subgraph cluster_hardware {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#0284c7" point-size="12"><b>4. PHYSICAL BRIDGE &amp; LEAP PROTOCOL</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#bae6fd";
+    bgcolor="#f0f9ff";
+
+    proto_leap [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#0284c7"><b>LEAP Protocol (Port 8081 TLS)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Newline-delimited JSON communique</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">CreateRequest: /zone/X/commandprocessor</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Command: GoToLevel (Level: 0-100)</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#0284c7"
+    ];
+
+    bridge_hw [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#0284c7"><b>Lutron Smart Bridge Pro</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Hardware Model: Smart Bridge 2</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Clear Connect RF (434 MHz)</font></td></tr>
+        <tr><td><font color="#0369a1" point-size="8">Caseta Dimmers, Switches &amp; Serena Shades</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#0284c7"
+    ];
+  }
+
+  // Connections
+  title_node -> agent_node [style="invis"];
+
+  agent_node -> skill_doc [label="loads rules", color="#7c3aed"];
+  agent_node -> mcp_tools [label="tool calls", color="#0284c7"];
+  manifests -> mcp_tools [style="dotted", color="#0284c7"];
+
+  mcp_tools -> leap_client [color="#059669"];
+  leap_client -> batch_optimizer [color="#059669"];
+  credentials -> leap_client [label="TLS handshake", color="#059669"];
+
+  leap_client -> proto_leap [label="TLS Stream :8081", color="#0284c7"];
+  proto_leap -> bridge_hw [color="#0284c7"];
+}

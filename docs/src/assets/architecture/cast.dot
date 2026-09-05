@@ -1,0 +1,173 @@
+digraph CastVerticalArchitecture {
+  graph [
+    bgcolor="#ffffff",
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=14,
+    rankdir=TB,
+    splines=spline,
+    nodesep=0.55,
+    ranksep=0.7,
+    pad="0.4,0.4"
+  ];
+
+  node [
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=10,
+    fontcolor="#0f172a",
+    style="filled,rounded",
+    shape=box,
+    penwidth=1.5,
+    margin="0.2,0.14"
+  ];
+
+  edge [
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=9,
+    fontcolor="#64748b",
+    color="#94a3b8",
+    penwidth=1.2,
+    arrowsize=0.75
+  ];
+
+  // Header
+  subgraph cluster_header {
+    style="invis";
+    title_node [
+      shape=plaintext,
+      fontcolor="#0f172a",
+      fontsize=16,
+      label=<<table border="0" cellborder="0" cellspacing="4">
+        <tr><td><font point-size="18" color="#059669"><b>Google Cast Media Vertical Architecture</b></font></td></tr>
+        <tr><td><font point-size="11" color="#64748b">Cast V2 Protocol, mDNS TXT Parsing, MCP Media Tools &amp; Display Synchronization</font></td></tr>
+      </table>>
+    ];
+  }
+
+  // 1. Agent & Skill Layer
+  subgraph cluster_skill {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#7c3aed" point-size="12"><b>1. AGENT SKILL &amp; CASTING POLICIES</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#ddd6fe";
+    bgcolor="#f5f3ff";
+
+    agent_node [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#7c3aed"><b>AI Coding Agent</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">OpenCode / Claude Code</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#7c3aed"
+    ];
+
+    skill_doc [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#7c3aed"><b>skills/cast-media-director/SKILL.md</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Active receiver discovery and routing</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Volume normalization (0.0-1.0 mapping)</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Display status extraction &amp; app tracking</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#7c3aed"
+    ];
+  }
+
+  // 2. Plugin & MCP Stdio Server Layer
+  subgraph cluster_mcp {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#059669" point-size="12"><b>2. AGENT PLUGIN &amp; MCP SERVER (cmd/mcp-cast)</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#a7f3d0";
+    bgcolor="#ecfdf5";
+
+    manifests [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#059669"><b>Plugin Manifests (plugins/cast/)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">plugin.json &amp; opencode.jsonc</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#059669"
+    ];
+
+    mcp_tools [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#059669"><b>Registered MCP Tools</b></font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• 🔒 <b>cast_list_devices</b> (IPv4 preferred)</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• 🔒 <b>cast_get_status</b> (active app, title, vol)</font></td></tr>
+        <tr><td><font color="#dc2626" point-size="8">• ⚡ <b>cast_control</b> (play, pause, stop, volume, mute)</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#059669"
+    ];
+  }
+
+  // 3. Go Module & Cast Client
+  subgraph cluster_module {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#0284c7" point-size="12"><b>3. GO ENGINE (modules/cast / pkg/cast)</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#bae6fd";
+    bgcolor="#f0f9ff";
+
+    cast_client [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#0284c7"><b>Cast Client (client.go)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Wraps go-chromecast Application constructor</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">TLS Channel on port 8009</font></td></tr>
+        <tr><td><font color="#0369a1" point-size="8">Safe teardown (app.Close(false))</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#0284c7"
+    ];
+
+    mdns_parser [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#0284c7"><b>mDNS TXT Record Parser (discovery.go)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Extracts: fn (Friendly Name), md (Model), id</font></td></tr>
+        <tr><td><font color="#16a34a" point-size="8"><b>IPv4 Prioritization: filters unroutable IPv6</b></font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#0284c7"
+    ];
+  }
+
+  // 4. Physical Devices & Protocols
+  subgraph cluster_hardware {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#ea580c" point-size="12"><b>4. PHYSICAL HARDWARE &amp; PROTOCOLS</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#fed7aa";
+    bgcolor="#fff7ed";
+
+    proto_cast [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#ea580c"><b>Cast V2 Protocol (Port 8009 TLS)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Protobuf over TLS connection</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Media Channel &amp; Receiver Channel</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#ea580c"
+    ];
+
+    cast_hw [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#ea580c"><b>Cast Receivers on LAN</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Chromecast with Google TV</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Google Nest Hub Max Displays</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Pixel Tablet (Hub Mode)</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#ea580c"
+    ];
+  }
+
+  // Connections
+  title_node -> agent_node [style="invis"];
+
+  agent_node -> skill_doc [label="loads rules", color="#7c3aed"];
+  agent_node -> mcp_tools [label="tool calls", color="#059669"];
+  manifests -> mcp_tools [style="dotted", color="#059669"];
+
+  mcp_tools -> cast_client [color="#0284c7"];
+  mcp_tools -> mdns_parser [color="#0284c7"];
+
+  cast_client -> proto_cast [label="TLS Socket :8009", color="#ea580c"];
+  mdns_parser -> cast_hw [label="mDNS _googlecast._tcp", color="#ea580c"];
+  proto_cast -> cast_hw [color="#ea580c"];
+}

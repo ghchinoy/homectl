@@ -1,0 +1,186 @@
+digraph QolsysVerticalArchitecture {
+  graph [
+    bgcolor="#ffffff",
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=14,
+    rankdir=TB,
+    splines=spline,
+    nodesep=0.55,
+    ranksep=0.7,
+    pad="0.4,0.4"
+  ];
+
+  node [
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=10,
+    fontcolor="#0f172a",
+    style="filled,rounded",
+    shape=box,
+    penwidth=1.5,
+    margin="0.2,0.14"
+  ];
+
+  edge [
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=9,
+    fontcolor="#64748b",
+    color="#94a3b8",
+    penwidth=1.2,
+    arrowsize=0.75
+  ];
+
+  // Header
+  subgraph cluster_header {
+    style="invis";
+    title_node [
+      shape=plaintext,
+      fontcolor="#0f172a",
+      fontsize=16,
+      label=<<table border="0" cellborder="0" cellspacing="4">
+        <tr><td><font point-size="18" color="#dc2626"><b>Qolsys IQ Panel Security Vertical Architecture</b></font></td></tr>
+        <tr><td><font point-size="11" color="#64748b">Encrypted WebSockets, Sensor Telemetry, Gated Arming Tools &amp; Hardware Event Monitoring</font></td></tr>
+      </table>>
+    ];
+  }
+
+  // 1. Agent & Skill Layer
+  subgraph cluster_skill {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#7c3aed" point-size="12"><b>1. AGENT SKILL &amp; SAFETY GATING</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#ddd6fe";
+    bgcolor="#f5f3ff";
+
+    agent_node [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#7c3aed"><b>AI Coding Agent</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">OpenCode / Claude Code</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#7c3aed"
+    ];
+
+    skill_doc [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#7c3aed"><b>skills/qolsys-guard/SKILL.md</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Perimeter check pre-flight before arming</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Mandatory PIN confirmation gate</font></td></tr>
+        <tr><td><font color="#dc2626" point-size="8"><b>• Forbids autonomous disarm without human user</b></font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#7c3aed"
+    ];
+  }
+
+  // 2. Plugin & MCP Stdio Server Layer
+  subgraph cluster_mcp {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#dc2626" point-size="12"><b>2. AGENT PLUGIN &amp; MCP SERVER (cmd/mcp-qolsys)</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#fecaca";
+    bgcolor="#fef2f2";
+
+    manifests [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#dc2626"><b>Plugin Manifests (plugins/qolsys/)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">plugin.json &amp; opencode.jsonc</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Strict mutation token policy</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#dc2626"
+    ];
+
+    mcp_tools [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#dc2626"><b>Registered MCP Tools</b></font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• 🔒 <b>qolsys_status</b> (partition state: armed/disarmed)</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• 🔒 <b>qolsys_list_sensors</b> (doors, windows, motion)</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• 🔒 <b>qolsys_monitor</b> (stream event telemetry)</font></td></tr>
+        <tr><td><font color="#dc2626" point-size="8">• ⚡ <b>qolsys_arm</b> (gated arming with PIN check)</font></td></tr>
+        <tr><td><font color="#dc2626" point-size="8">• ⚡ <b>qolsys_disarm</b> (strictly gated with PIN)</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#dc2626"
+    ];
+  }
+
+  // 3. Go Module & WebSocket Client
+  subgraph cluster_module {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#059669" point-size="12"><b>3. GO ENGINE (modules/qolsys / pkg/qolsys)</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#a7f3d0";
+    bgcolor="#ecfdf5";
+
+    qolsys_client [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#059669"><b>Qolsys WebSocket Client (client.go)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Secure WebSocket (wss://&lt;host&gt;:12345)</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Self-signed TLS transport config</font></td></tr>
+        <tr><td><font color="#047857" point-size="8">Concurrent Send / ReadLoop with mutex</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#059669"
+    ];
+
+    payload_builder [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#059669"><b>Payload &amp; Nonce Builder</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Injects timestamp nonce &amp; user PIN</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Source identifier: "homectl"</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#059669"
+    ];
+
+    event_dispatcher [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#059669"><b>OnEvent Callback Channel</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Decodes JSON messages (ARMING, ZONE_EVENT)</font></td></tr>
+        <tr><td><font color="#047857" point-size="8">Dispatches to CLI monitor / MCP event stream</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#059669"
+    ];
+  }
+
+  // 4. Physical Panel & Sensors
+  subgraph cluster_hardware {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#dc2626" point-size="12"><b>4. PHYSICAL ALARM HARDWARE</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#fecaca";
+    bgcolor="#fef2f2";
+
+    panel_hw [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#dc2626"><b>Qolsys IQ Panel 4</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Android-based touchscreen hub</font></td></tr>
+        <tr><td><font color="#dc2626" point-size="8">Port 12345 (Control4 Integration Service)</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#dc2626"
+    ];
+
+    rf_sensors [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#dc2626"><b>Perimeter &amp; Interior Sensors</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">PowerG Encrypted RF / 319.5 MHz</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Door contacts, glass break, PIR motion, smoke</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#dc2626"
+    ];
+  }
+
+  // Connections
+  title_node -> agent_node [style="invis"];
+
+  agent_node -> skill_doc [label="loads policies", color="#7c3aed"];
+  agent_node -> mcp_tools [label="tool calls", color="#dc2626"];
+  manifests -> mcp_tools [style="dotted", color="#dc2626"];
+
+  mcp_tools -> qolsys_client [color="#059669"];
+  qolsys_client -> payload_builder [color="#059669"];
+  qolsys_client -> event_dispatcher [color="#059669"];
+
+  qolsys_client -> panel_hw [label="WSS JSON :12345", color="#dc2626"];
+  rf_sensors -> panel_hw [label="RF Telemetry", color="#dc2626"];
+  panel_hw -> qolsys_client [label="Event Stream", color="#dc2626"];
+}

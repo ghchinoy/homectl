@@ -32,6 +32,7 @@ go_test/
 docs/node_modules/
 docs/dist/
 docs/.astro/
+docs/src/assets/architecture/*.png
 
 # Agent Tool Scaffolding (use AGENTS.md as single source of truth)
 .claude/
