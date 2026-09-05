@@ -18,6 +18,8 @@ type ClientInterface interface {
 	GetTransportInfo() (sonos.TransportInfo, error)
 	GetPositionInfo() (sonos.PositionInfo, error)
 	ParseTrackMetadata(xmlStr string) (sonos.TrackMetadata, error)
+	GetCoordinatorIP() (string, error)
+	GetZoneGroupState() (sonos.ZoneGroupState, error)
 	Play() error
 	Pause() error
 	Stop() error
@@ -137,6 +139,54 @@ type NowPlayingResult struct {
 	Duration      string `json:"duration,omitempty"`
 	Progress      string `json:"progress,omitempty"`
 	StreamContent string `json:"stream_content,omitempty"`
+	// TrackURI is the raw transport URI. For a stereo-pair/group follower this is
+	// an "x-rincon:<coordinator-rincon>" reference rather than real media.
+	TrackURI string `json:"track_uri,omitempty"`
+	// IsFollower is true when the queried speaker was a stereo-pair/group follower
+	// whose transport merely mirrors the coordinator; in that case the reported
+	// fields are resolved from CoordinatorIP.
+	IsFollower bool `json:"is_follower,omitempty"`
+	// CoordinatorIP is the IP of the group coordinator whose playback state is
+	// authoritative. Populated (and playback re-queried from it) when IsFollower.
+	CoordinatorIP string `json:"coordinator_ip,omitempty"`
+}
+
+// TopologyMember describes a single speaker within a zone group.
+type TopologyMember struct {
+	UUID          string `json:"uuid"`
+	RoomName      string `json:"room_name"`
+	IP            string `json:"ip,omitempty"`
+	IsCoordinator bool   `json:"is_coordinator"`
+	Invisible     bool   `json:"invisible,omitempty"`
+}
+
+// TopologyGroup describes a zone group (a standalone speaker, a stereo pair, or a
+// multi-room group), identifying its coordinator and members.
+type TopologyGroup struct {
+	ID          string           `json:"id"`
+	Coordinator string           `json:"coordinator_uuid"`
+	IsPair      bool             `json:"is_pair"`
+	Members     []TopologyMember `json:"members"`
+}
+
+// TopologyResult is the object-wrapped output of sonos_get_topology.
+type TopologyResult struct {
+	Count  int             `json:"count"`
+	Groups []TopologyGroup `json:"groups"`
+}
+
+// locationToIP extracts the host portion from a Sonos device Location URL
+// (e.g. "http://192.168.4.99:1400/xml/device_description.xml" -> "192.168.4.99").
+func locationToIP(loc string) string {
+	loc = strings.TrimPrefix(loc, "http://")
+	loc = strings.TrimPrefix(loc, "https://")
+	if idx := strings.Index(loc, ":"); idx != -1 {
+		return loc[:idx]
+	}
+	if idx := strings.Index(loc, "/"); idx != -1 {
+		return loc[:idx]
+	}
+	return loc
 }
 
 // CreateMCPServer constructs and registers all Sonos tools on an MCP server.
@@ -195,21 +245,39 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 	// Tool 2: sonos_get_now_playing (Read-Only, compact JSON)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "sonos_get_now_playing",
-		Description: "Retrieves the current playback state, track metadata, progress, and volume for a Sonos speaker as compact JSON.",
+		Description: "Retrieves the current playback state, track metadata, progress, and volume for a Sonos speaker as compact JSON. Automatically resolves stereo-pair/group followers to their coordinator so playback state is authoritative (see is_follower/coordinator_ip in the result).",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args NowPlayingParams) (*mcp.CallToolResult, any, error) {
 		if strings.TrimSpace(args.IP) == "" {
 			return nil, nil, fmt.Errorf("ip parameter is required")
 		}
 
-		client := cfg.ClientFactory(args.IP)
+		targetIP := args.IP
+		client := cfg.ClientFactory(targetIP)
+
+		pos, _ := client.GetPositionInfo()
+
+		// Stereo-pair / group followers report their transport as PLAYING with an
+		// "x-rincon:<coordinator-rincon>" TrackURI and no real metadata. Redirect
+		// to the coordinator so we report authoritative playback state instead of a
+		// false-positive "PLAYING with no track". See control-84r.
+		isFollower := false
+		coordinatorIP := ""
+		if strings.HasPrefix(pos.TrackURI, "x-rincon:") {
+			if coord, err := client.GetCoordinatorIP(); err == nil && coord != "" && coord != targetIP {
+				isFollower = true
+				coordinatorIP = coord
+				targetIP = coord
+				client = cfg.ClientFactory(targetIP)
+				pos, _ = client.GetPositionInfo()
+			}
+		}
 
 		transport, _ := client.GetTransportInfo()
 		vol, _ := client.GetVolume()
-		pos, _ := client.GetPositionInfo()
 		meta, _ := client.ParseTrackMetadata(pos.TrackMetaData)
 
 		res := NowPlayingResult{
-			IP:            args.IP,
+			IP:            targetIP,
 			State:         transport.CurrentTransportState,
 			Volume:        vol,
 			Title:         meta.Title,
@@ -218,6 +286,9 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 			Duration:      pos.TrackDuration,
 			Progress:      pos.RelTime,
 			StreamContent: meta.StreamContent,
+			TrackURI:      pos.TrackURI,
+			IsFollower:    isFollower,
+			CoordinatorIP: coordinatorIP,
 		}
 
 		jsonData, err := json.Marshal(res)
@@ -231,6 +302,9 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		} else if res.Title == "" {
 			summary = fmt.Sprintf("[%s] No track loaded", res.State)
 		}
+		if res.IsFollower {
+			summary = fmt.Sprintf("%s (resolved from stereo-pair/group coordinator %s)", summary, res.CoordinatorIP)
+		}
 
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
@@ -240,7 +314,57 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		}, res, nil
 	})
 
-	// Tool 3: sonos_control (Mutating)
+	// Tool 3: sonos_get_topology (Read-Only) — exposes group/stereo-pair structure
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "sonos_get_topology",
+		Description: "Returns the Sonos zone-group topology (standalone speakers, stereo pairs, and multi-room groups), identifying the coordinator and members of each group. Use this to understand which speaker is authoritative before controlling playback.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args NowPlayingParams) (*mcp.CallToolResult, any, error) {
+		if strings.TrimSpace(args.IP) == "" {
+			return nil, nil, fmt.Errorf("ip parameter is required (any speaker on the household)")
+		}
+
+		client := cfg.ClientFactory(args.IP)
+		state, err := client.GetZoneGroupState()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to read zone group state from %s: %w", args.IP, err)
+		}
+
+		result := TopologyResult{}
+		for _, g := range state.Groups {
+			group := TopologyGroup{
+				ID:          g.ID,
+				Coordinator: g.Coordinator,
+			}
+			for _, m := range g.Members {
+				group.Members = append(group.Members, TopologyMember{
+					UUID:          m.UUID,
+					RoomName:      m.RoomName,
+					IP:            locationToIP(m.Location),
+					IsCoordinator: m.UUID == g.Coordinator,
+					Invisible:     m.Invisible,
+				})
+			}
+			// A stereo pair presents as a single group of exactly two bonded members.
+			group.IsPair = len(group.Members) == 2
+			result.Groups = append(result.Groups, group)
+		}
+		result.Count = len(result.Groups)
+
+		jsonData, err := json.Marshal(result)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to encode topology: %w", err)
+		}
+
+		summary := fmt.Sprintf("Found %d Sonos zone group(s)", result.Count)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: summary},
+				&mcp.TextContent{Text: string(jsonData)},
+			},
+		}, result, nil
+	})
+
+	// Tool 4: sonos_control (Mutating)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "sonos_control",
 		Description: "Controls playback on a Sonos speaker: 'play', 'pause', 'stop', 'next', 'previous'.",
@@ -283,7 +407,7 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		}, map[string]string{"status": "ok", "action": action, "ip": args.IP}, nil
 	})
 
-	// Tool 4: sonos_set_volume (Mutating)
+	// Tool 5: sonos_set_volume (Mutating)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "sonos_set_volume",
 		Description: "Sets the volume of a Sonos speaker (0-100) or applies a relative delta (e.g. +5, -10).",

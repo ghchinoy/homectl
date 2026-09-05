@@ -19,6 +19,7 @@ bd sync               # Sync with git
 - **Resilient Connections:** Assume all IoT connections will eventually reset; implement auto-reconnection logic.
 - **Library Safety:** Avoid raw struct instantiation for external library clients (e.g., `go-chromecast`). Always use provided constructors (e.g., `NewApplication`) to ensure internal fields like storage/cache are initialized and avoid nil-pointer panics.
 - **Port Probing:** If mDNS is unavailable or hidden, use throttled TCP port probes (e.g., 554 for RTSP) to identify live IoT hosts on the subnet.
+- **Sonos Stereo-Pair/Group Followers:** A stereo-pair or group *follower* reports its transport as `PLAYING` with a `TrackURI` of `x-rincon:<coordinator-rincon>` and empty track metadata — a false positive. Never report a speaker's playback state directly; if `TrackURI` starts with `x-rincon:`, resolve the group coordinator via `Client.GetCoordinatorIP()` (or inspect `Client.GetZoneGroupState()`) and re-query the coordinator for authoritative state. The `sonos_get_now_playing` MCP tool does this automatically and returns `is_follower`/`coordinator_ip`; `sonos_get_topology` exposes the full group/pair structure.
 
 ### 2. Web UI (Lit + Vite)
 - **Component Isolation:** Keep Lit components atomic and isolated (e.g., `lutron-card`, `sonos-card`). Use properties for data-in and custom events for data-out.
