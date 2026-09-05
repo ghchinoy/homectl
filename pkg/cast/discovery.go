@@ -2,12 +2,29 @@ package cast
 
 import (
 	"context"
+	"net"
 	"strings"
 	"time"
 
 	"github.com/ghchinoy/homectl/pkg/discovery"
 	"github.com/grandcat/zeroconf"
 )
+
+// SelectBestIP selects the most appropriate IP address from mDNS service addresses.
+// It prioritizes IPv4 addresses and rejects link-local (fe80::) or loopback IPv6 addresses.
+func SelectBestIP(ipv4 []net.IP, ipv6 []net.IP) string {
+	for _, ip := range ipv4 {
+		if ip.To4() != nil && !ip.IsLoopback() && !ip.IsUnspecified() {
+			return ip.String()
+		}
+	}
+	for _, ip := range ipv6 {
+		if ip != nil && !ip.IsLinkLocalUnicast() && !ip.IsLinkLocalMulticast() && !ip.IsLoopback() && !ip.IsUnspecified() {
+			return ip.String()
+		}
+	}
+	return ""
+}
 
 // DiscoveryProvider implements discovery.Provider for Google Cast
 type DiscoveryProvider struct{}
@@ -38,13 +55,7 @@ func (p *DiscoveryProvider) Discover(ctx context.Context) ([]discovery.Device, e
 	foundIPs := make(map[string]bool)
 
 	for entry := range entries {
-		var ip string
-		if len(entry.AddrIPv4) > 0 {
-			ip = entry.AddrIPv4[0].String()
-		} else if len(entry.AddrIPv6) > 0 {
-			ip = entry.AddrIPv6[0].String()
-		}
-
+		ip := SelectBestIP(entry.AddrIPv4, entry.AddrIPv6)
 		if ip == "" || foundIPs[ip] {
 			continue
 		}

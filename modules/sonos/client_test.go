@@ -3,6 +3,7 @@ package sonos
 import (
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -235,5 +236,84 @@ func TestCachePersistenceWithMemoryStorage(t *testing.T) {
 	}
 	if loaded[1].Name != "Living Room" {
 		t.Errorf("expected second device 'Living Room', got %s", loaded[1].Name)
+	}
+}
+
+
+func TestParseSSDPLocation(t *testing.T) {
+	tests := []struct {
+		name     string
+		response string
+		expected string
+	}{
+		{
+			name: "standard Sonos SSDP response",
+			response: "HTTP/1.1 200 OK\r\n" +
+				"CACHE-CONTROL: max-age = 1800\r\n" +
+				"EXT:\r\n" +
+				"LOCATION: http://192.168.4.99:1400/xml/device_description.xml\r\n" +
+				"SERVER: Linux UPnP/1.0 Sonos/84.2-61240 (ZPS21)\r\n" +
+				"ST: urn:schemas-upnp-org:device:ZonePlayer:1\r\n" +
+				"USN: uuid:RINCON_000E58CF418201400::urn:schemas-upnp-org:device:ZonePlayer:1\r\n\r\n",
+			expected: "192.168.4.99",
+		},
+		{
+			name: "LOCATION with path only",
+			response: "HTTP/1.1 200 OK\r\n" +
+				"LOCATION: http://10.0.0.15/desc.xml\r\n\r\n",
+			expected: "10.0.0.15",
+		},
+		{
+			name: "lowercase location header",
+			response: "HTTP/1.1 200 OK\r\n" +
+				"location: http://192.168.1.55:1400/\r\n\r\n",
+			expected: "192.168.1.55",
+		},
+		{
+			name: "no LOCATION header",
+			response: "HTTP/1.1 200 OK\r\n" +
+				"SERVER: Sonos\r\n\r\n",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseSSDPLocation(tt.response)
+			if got != tt.expected {
+				t.Errorf("parseSSDPLocation() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestSelectBestIP(t *testing.T) {
+	tests := []struct {
+		name     string
+		ipv4     []net.IP
+		ipv6     []net.IP
+		expected string
+	}{
+		{
+			name:     "prefer IPv4 over IPv6",
+			ipv4:     []net.IP{net.ParseIP("192.168.1.10")},
+			ipv6:     []net.IP{net.ParseIP("2001:db8::1")},
+			expected: "192.168.1.10",
+		},
+		{
+			name:     "reject link-local IPv6",
+			ipv4:     nil,
+			ipv6:     []net.IP{net.ParseIP("fe80::1ff:fe00:1")},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := selectBestIP(tt.ipv4, tt.ipv6)
+			if got != tt.expected {
+				t.Errorf("selectBestIP() = %q, want %q", got, tt.expected)
+			}
+		})
 	}
 }

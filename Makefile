@@ -1,4 +1,4 @@
-.PHONY: all build test clean sync-skills check-skills bin-homectl bin-mcp-sonos bin-sync-skills
+.PHONY: all build test clean sync-skills check-skills bin-homectl bin-mcp-sonos bin-sync-skills install-mcp
 
 BIN_DIR := ./bin
 
@@ -33,3 +33,7 @@ test:
 
 clean:
 	rm -rf $(BIN_DIR)
+
+# Install MCP servers to ~/.local/bin and register in OpenCode configuration
+install-mcp:
+	./scripts/install-mcp.sh

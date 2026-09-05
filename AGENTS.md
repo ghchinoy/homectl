@@ -18,7 +18,9 @@ bd sync               # Sync with git
 - **Efficient Polling:** Never poll multiple IoT resources sequentially if a collective/batch endpoint exists (e.g., use `/zone/status` instead of querying each zone individually).
 - **Resilient Connections:** Assume all IoT connections will eventually reset; implement auto-reconnection logic.
 - **Library Safety:** Avoid raw struct instantiation for external library clients (e.g., `go-chromecast`). Always use provided constructors (e.g., `NewApplication`) to ensure internal fields like storage/cache are initialized and avoid nil-pointer panics.
-- **Port Probing:** If mDNS is unavailable or hidden, use throttled TCP port probes (e.g., 554 for RTSP) to identify live IoT hosts on the subnet.
+- **Port Probing & Concurrent Discovery:** Camera discovery runs mDNS browsing and throttled TCP port 554 subnet scanning concurrently under bounded timeouts to prevent mDNS from starving RTSP probes.
+- **SSDP M-SEARCH Fallback:** When mDNS yields zero Sonos speakers (common on macOS or segmented LANs), fallback to UPnP SSDP M-SEARCH (`urn:schemas-upnp-org:device:ZonePlayer:1`) ensures device discovery.
+- **IPv4 Preference & Link-Local Rejection:** Always prioritize usable IPv4 addresses over IPv6 during mDNS discovery, and explicitly reject link-local IPv6 addresses (`fe80::`) which fail without interface zone indices.
 - **Sonos Stereo-Pair/Group Followers:** A stereo-pair or group *follower* reports its transport as `PLAYING` with a `TrackURI` of `x-rincon:<coordinator-rincon>` and empty track metadata — a false positive. Never report a speaker's playback state directly; if `TrackURI` starts with `x-rincon:`, resolve the group coordinator via `Client.GetCoordinatorIP()` (or inspect `Client.GetZoneGroupState()`) and re-query the coordinator for authoritative state. The `sonos_get_now_playing` MCP tool does this automatically and returns `is_follower`/`coordinator_ip`; `sonos_get_topology` exposes the full group/pair structure.
 
 ### 2. Web UI (Lit + Vite)
@@ -53,6 +55,7 @@ bd list --status closed --json | jq -r 'sort_by(.closed_at) | reverse | map(sele
 - **CI Consistency Gate:** Run `make check-skills` (or `go run ./cmd/sync-skills --check`). CI verifies that all plugin skills match canonical sources and asserts that all `scripts/...` paths referenced in `SKILL.md` exist inside the bundle.
 - **MCP Tool Output Schemas:** Per MCP SEP-2106 and OpenCode schema validation, tool `Out` types MUST be Go structs/records (JSON objects), never bare slices/arrays. For list operations, always return a wrapping struct (e.g. `type ListResult struct { Count int; Items []T }`).
 - **Binary Artifacts:** All compiled binaries (`homectl`, `mcp-sonos`, `sync-skills`) build into `./bin/` via `make build`. The `./bin` directory is strictly gitignored.
+- **Global MCP Installation:** Run `make install-mcp` (or `./scripts/install-mcp.sh`) to install MCP binaries to `~/.local/bin/homectl-mcp-<svc>` and register them into `~/.config/opencode/opencode.jsonc` with absolute executable paths, decoupling agent invocations from the repository working directory.
 
 ### 7. Privacy, PII & Hardware Redaction
 - **Local State Isolation (`local/`):** Real physical hardware MAC addresses, static LAN IP allocations, physical camera entryway placements, and device serial numbers belong **ONLY in the gitignored `local/` directory** (e.g., `local/NETWORK_DISCOVERY.md`, `local/config.json`). Never commit or stage files under `local/`.

@@ -14,7 +14,8 @@ SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
 echo "Building ${APP_NAME}..."
 
 # 1. Build Go binary
-go build -o "${APP_NAME}" .
+mkdir -p bin
+go build -o "bin/${APP_NAME}" .
 
 # 2. Build UI
 echo "Building UI..."
@@ -30,7 +31,7 @@ sudo mkdir -p "${UI_DEST}"
 
 # 4. Install files
 echo "Installing files..."
-sudo mv "${APP_NAME}" "${BINARY_DEST}"
+sudo cp "bin/${APP_NAME}" "${BINARY_DEST}"
 sudo cp -r ui/dist/* "${UI_DEST}/"
 
 # 5. Create systemd unit file

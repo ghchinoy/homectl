@@ -1,8 +1,14 @@
 package camera
 
 import (
+	"context"
+	"errors"
 	"net"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/ghchinoy/homectl/pkg/discovery"
 )
 
 func TestIsPrivateIPv4(t *testing.T) {
@@ -32,5 +38,47 @@ func TestIsPrivateIPv4(t *testing.T) {
 		if got != tt.expected {
 			t.Errorf("isPrivateIPv4(%s) = %v; want %v", tt.ip, got, tt.expected)
 		}
+	}
+}
+
+
+func TestScanSubnetRTSP(t *testing.T) {
+	provider := &DiscoveryProvider{}
+	foundIPs := make(map[string]bool)
+	var devices []discovery.Device
+	var mu sync.Mutex
+
+	// Mock dialer that succeeds only for 192.168.1.42:554
+	mockDialer := func(ctx context.Context, network, address string) (net.Conn, error) {
+		if address == "192.168.1.42:554" {
+			client, server := net.Pipe()
+			_ = server.Close()
+			return client, nil
+		}
+		return nil, errors.New("connection refused")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	provider.scanSubnetRTSP(ctx, "192.168.1.", mockDialer, foundIPs, &devices, &mu)
+
+	if len(devices) != 1 {
+		t.Fatalf("expected 1 device, got %d", len(devices))
+	}
+	if devices[0].IP != "192.168.1.42" {
+		t.Errorf("expected IP 192.168.1.42, got %s", devices[0].IP)
+	}
+	if devices[0].Provider != "camera" || devices[0].Type != "Camera" {
+		t.Errorf("unexpected device metadata: %+v", devices[0])
+	}
+	if !foundIPs["192.168.1.42"] {
+		t.Errorf("expected 192.168.1.42 to be recorded in foundIPs")
+	}
+
+	// Test deduplication
+	provider.scanSubnetRTSP(ctx, "192.168.1.", mockDialer, foundIPs, &devices, &mu)
+	if len(devices) != 1 {
+		t.Errorf("expected still 1 device after deduplication, got %d", len(devices))
 	}
 }

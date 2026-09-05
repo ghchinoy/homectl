@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"net"
 	"net/http"
 	"sort"
 	"strings"
@@ -58,6 +59,22 @@ type Device struct {
 	ModelNumber string `json:"ModelNumber"`
 }
 
+// selectBestIP selects the most appropriate IP address from mDNS service addresses.
+// It prioritizes IPv4 addresses and rejects link-local (fe80::) or loopback IPv6 addresses.
+func selectBestIP(ipv4 []net.IP, ipv6 []net.IP) string {
+	for _, ip := range ipv4 {
+		if ip.To4() != nil && !ip.IsLoopback() && !ip.IsUnspecified() {
+			return ip.String()
+		}
+	}
+	for _, ip := range ipv6 {
+		if ip != nil && !ip.IsLinkLocalUnicast() && !ip.IsLinkLocalMulticast() && !ip.IsLoopback() && !ip.IsUnspecified() {
+			return ip.String()
+		}
+	}
+	return ""
+}
+
 // Discover performs mDNS discovery to find Sonos devices
 func Discover(timeout time.Duration) ([]Device, error) {
 	resolver, err := zeroconf.NewResolver(nil)
@@ -78,13 +95,7 @@ func Discover(timeout time.Duration) ([]Device, error) {
 	foundIPs := make(map[string]bool)
 
 	for entry := range entries {
-		var ip string
-		if len(entry.AddrIPv4) > 0 {
-			ip = entry.AddrIPv4[0].String()
-		} else if len(entry.AddrIPv6) > 0 {
-			ip = entry.AddrIPv6[0].String()
-		}
-
+		ip := selectBestIP(entry.AddrIPv4, entry.AddrIPv6)
 		if ip == "" || foundIPs[ip] {
 			continue
 		}
@@ -107,11 +118,117 @@ func Discover(timeout time.Duration) ([]Device, error) {
 		foundIPs[ip] = true
 	}
 
+	// Fallback: If mDNS found zero devices, query via UPnP SSDP M-SEARCH (e.g. for macOS or segmented LANs)
+	if len(devices) == 0 {
+		ssdpTimeout := timeout
+		if ssdpTimeout > 2*time.Second {
+			ssdpTimeout = 2 * time.Second
+		}
+		if ssdpIPs, err := DiscoverSSDP(ssdpTimeout); err == nil {
+			for _, ip := range ssdpIPs {
+				if foundIPs[ip] {
+					continue
+				}
+				name, rincon, modelName, modelNum, err := GetDeviceName(ip)
+				if err != nil {
+					name = fmt.Sprintf("Sonos %s", ip)
+				}
+				devices = append(devices, Device{
+					IP:          ip,
+					Name:        name,
+					RinconID:    rincon,
+					ModelName:   modelName,
+					ModelNumber: modelNum,
+				})
+				foundIPs[ip] = true
+			}
+		}
+	}
+
 	sort.Slice(devices, func(i, j int) bool {
 		return devices[i].Name < devices[j].Name
 	})
 
 	return devices, nil
+}
+
+// parseSSDPLocation extracts the host or IP address from an SSDP response LOCATION header.
+func parseSSDPLocation(resp string) string {
+	lines := strings.Split(resp, "\r\n")
+	for _, line := range lines {
+		if idx := strings.Index(line, ":"); idx != -1 {
+			header := strings.TrimSpace(line[:idx])
+			if strings.EqualFold(header, "LOCATION") {
+				val := strings.TrimSpace(line[idx+1:])
+				val = strings.TrimPrefix(val, "http://")
+				val = strings.TrimPrefix(val, "https://")
+				if colonIdx := strings.Index(val, ":"); colonIdx != -1 {
+					return val[:colonIdx]
+				}
+				if slashIdx := strings.Index(val, "/"); slashIdx != -1 {
+					return val[:slashIdx]
+				}
+				return val
+			}
+		}
+	}
+	return ""
+}
+
+// DiscoverSSDP searches for Sonos devices using UPnP SSDP M-SEARCH (multicast UDP on 239.255.255.250:1900).
+func DiscoverSSDP(timeout time.Duration) ([]string, error) {
+	ssdpAddr, err := net.ResolveUDPAddr("udp4", "239.255.255.250:1900")
+	if err != nil {
+		return nil, err
+	}
+
+	conn, err := net.ListenPacket("udp4", ":0")
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	msg := "M-SEARCH * HTTP/1.1\r\n" +
+		"HOST: 239.255.255.250:1900\r\n" +
+		"MAN: \"ssdp:discover\"\r\n" +
+		"MX: 2\r\n" +
+		"ST: urn:schemas-upnp-org:device:ZonePlayer:1\r\n" +
+		"\r\n"
+
+	if _, err := conn.WriteTo([]byte(msg), ssdpAddr); err != nil {
+		return nil, err
+	}
+
+	_ = conn.SetReadDeadline(time.Now().Add(timeout))
+
+	var ips []string
+	seen := make(map[string]bool)
+	buf := make([]byte, 4096)
+
+	for {
+		n, addr, err := conn.ReadFrom(buf)
+		if err != nil {
+			break // timeout or closed
+		}
+
+		raw := string(buf[:n])
+		ip := parseSSDPLocation(raw)
+		if ip == "" {
+			if udp, ok := addr.(*net.UDPAddr); ok && udp.IP.To4() != nil {
+				ip = udp.IP.String()
+			}
+		}
+
+		if ip != "" && !seen[ip] {
+			parsed := net.ParseIP(ip)
+			if parsed != nil && !parsed.IsLoopback() && !parsed.IsUnspecified() {
+				seen[ip] = true
+				ips = append(ips, ip)
+			}
+		}
+	}
+
+	return ips, nil
 }
 
 func cacheFile() string {
