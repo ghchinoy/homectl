@@ -66,6 +66,17 @@ bd list --status closed --json | jq -r 'sort_by(.closed_at) | reverse | map(sele
   - **Device Serials & UDNs:** Mask hardware serial numbers and Sonos Rincon IDs (`RINCON_XXXXXXXXXXXXXXXXX`).
 - **Pre-Commit Verification:** Before staging or committing, assert no real MAC addresses or physical residence details are included (`git diff`). If a leak occurs, purge it via `git-filter-repo` before pushing to public remotes.
 
+### 8. Architecture Documentation & Diagrams (Graphviz DOT ➔ WebP)
+- **Canonical Diagram Source:** All architecture diagrams are authored as Graphviz DOT files in `docs/src/assets/architecture/<name>.dot`.
+- **Compilation Toolchain (`make diagrams`):** Run `make diagrams` (or `./scripts/build-diagrams.sh`) to recompile all `.dot` files into high-efficiency `.webp` images via Graphviz (`dot -Twebp`). The script automatically mirrors service diagrams into `plugins/<svc>/assets/architecture.webp`.
+- **Starlight Documentation Pages:** Deep-dive documentation lives in `docs/src/content/docs/architecture/<service>.md` and is registered in the sidebar via `docs/astro.config.mjs`.
+- **Diagram Aesthetic Conventions:**
+  - **Typography:** `fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"`.
+  - **Node Style:** `shape=box, style="filled,rounded"`, HTML-like table labels with subtitle rows.
+  - **Color Palette:** Blue (`#0284c7`) for clients/Lutron, Purple (`#7c3aed`) for plugins/skills, Green (`#059669`) for gateways/Cast, Amber/Orange (`#d97706`/`#ea580c`) for modules/Sonos, Red (`#dc2626`) for physical hardware/Qolsys.
+- **Git Hygiene:** Always commit `.dot` source files and compiled `.webp` images together in the same commit. Intermediate `*.png` files are strictly gitignored.
+- **Documentation Verification Gate:** Before completing an architecture change, assert that `npm --prefix docs run build` succeeds with zero errors and zero broken links.
+
 ## Landing the Plane (Session Completion)
 
 **When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
