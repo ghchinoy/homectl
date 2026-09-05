@@ -70,6 +70,24 @@ export interface SonosServicesResult {
   services: SonosService[];
 }
 
+export interface QueueItem {
+  position: number;
+  track_id: string;
+  title: string;
+  artist: string;
+  album: string;
+  duration: string;
+  uri: string;
+  album_art_uri?: string;
+}
+
+export interface SonosQueueResult {
+  items: QueueItem[];
+  returned: number;
+  total_matches: number;
+  start_index: number;
+}
+
 export interface Camera {
   name: string;
   ip: string;
@@ -101,6 +119,12 @@ export const homectlApi = {
     api.post('/sonos/play-stream', { ip, url, title }).then(r => r.data),
   addSonosToQueue: (ip: string, uri: string, asNext?: boolean, metadata?: string) => 
     api.post('/sonos/queue-add', { ip, uri, as_next: asNext, metadata }).then(r => r.data),
+  getSonosQueue: (ip?: string, start?: number, count?: number) =>
+    api.get<SonosQueueResult>('/sonos/queue', { params: { ip, start, count } }).then(r => r.data),
+  seekSonosTrack: (ip: string, track: number) =>
+    api.post('/sonos/control', { ip, action: 'seek_track', track }),
+  seekSonosTime: (ip: string, target: string) =>
+    api.post('/sonos/control', { ip, action: 'seek_time', target }),
 
   // Cameras
   getCameras: () => api.get<Camera[]>('/security/cameras').then(r => r.data),

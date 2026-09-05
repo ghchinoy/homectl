@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -175,6 +176,8 @@ var serveCmd = &cobra.Command{
 				IP     string `json:"ip"`
 				Action string `json:"action"`
 				Volume int    `json:"volume"`
+				Track  int    `json:"track"`
+				Target string `json:"target"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -194,6 +197,10 @@ var serveCmd = &cobra.Command{
 				err = client.Previous()
 			case "volume":
 				err = client.SetVolume(req.Volume)
+			case "seek_track":
+				err = client.SeekTrack(req.Track)
+			case "seek_time":
+				err = client.SeekTime(req.Target)
 			default:
 				http.Error(w, "Unknown action", http.StatusBadRequest)
 				return
@@ -378,6 +385,43 @@ var serveCmd = &cobra.Command{
 				"track_position": pos,
 				"as_next":        req.AsNext,
 			})
+		})
+
+		http.HandleFunc("/api/sonos/queue", func(w http.ResponseWriter, r *http.Request) {
+			ip := r.URL.Query().Get("ip")
+			if ip == "" {
+				devices, _ := sonos.LoadCache()
+				if len(devices) > 0 {
+					ip = devices[0].IP
+				}
+			}
+			if ip == "" {
+				http.Error(w, "ip parameter required (no speakers in cache)", http.StatusBadRequest)
+				return
+			}
+
+			start := 0
+			if sStr := r.URL.Query().Get("start"); sStr != "" {
+				if s, err := strconv.Atoi(sStr); err == nil && s >= 0 {
+					start = s
+				}
+			}
+			count := 20
+			if cStr := r.URL.Query().Get("count"); cStr != "" {
+				if c, err := strconv.Atoi(cStr); err == nil && c > 0 {
+					count = c
+				}
+			}
+
+			client := sonos.NewClient(ip)
+			qRes, err := client.GetQueue(start, count)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(qRes)
 		})
 
 		http.HandleFunc("/api/security/cameras", func(w http.ResponseWriter, r *http.Request) {

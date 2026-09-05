@@ -92,6 +92,9 @@ homectl sonos volume 192.168.1.100 25
 homectl sonos now-playing 192.168.1.100
 homectl sonos favorites
 homectl sonos play-stream 192.168.1.100 http://stream.somafm.com/groovesalad-128-mp3
+homectl sonos seek 192.168.1.100 --track 3
+homectl sonos seek 192.168.1.100 --time 1:30
+homectl sonos queue 192.168.1.100
 
 # Stream Qolsys alarm panel telemetry
 homectl qolsys monitor --host 192.168.1.30 --token 123456
@@ -125,7 +128,7 @@ Open `http://localhost:8080` in your browser to access the responsive Lit card d
 ## Features
 
 - **Lutron Caséta & RA2 Select:** Local encrypted LEAP protocol communication over mutual TLS (port 8081). Single-roundtrip batch status queries.
-- **Sonos Whole-Home Audio:** Transport control, UPnP GENA real-time push events, album art reverse proxying, Sonos Favorites (Spotify/Apple Music) playback, and direct web audio streaming.
+- **Sonos Whole-Home Audio:** Transport control (play/pause/stop/next/prev/seek), paginated queue inspection, UPnP GENA real-time push events, album art reverse proxying, Sonos Favorites (Spotify/Apple Music) playback, and direct web audio streaming.
 - **Google Cast:** Zero-config mDNS discovery (`_googlecast._tcp`) with IPv4 preference, receiver app tracking, and playback/volume control.
 - **Security Cameras:** Concurrent mDNS and subnet port 554 RTSP probing with on-demand, context-managed FFmpeg MJPEG transcoding.
 - **Qolsys IQ Panel 4:** Encrypted WebSocket telemetry (`wss://:12345`) with token authentication and anti-replay nonce tracking.

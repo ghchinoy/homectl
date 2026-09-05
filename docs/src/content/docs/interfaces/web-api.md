@@ -22,13 +22,14 @@ When running `homectl serve`, the application exposes a REST API on the configur
 | :--- | :--- | :--- |
 | `GET` | `/api/sonos/devices` | Returns discovered Sonos speakers with custom nicknames |
 | `GET` | `/api/sonos/status` | Returns playback state, volume, track title, artist, album, and art URL |
-| `POST` | `/api/sonos/control` | Control transport or volume. Body: `{"ip": "192.168.1.120", "action": "play"}` |
+| `POST` | `/api/sonos/control` | Control transport, volume, or seek. Actions: `play`, `pause`, `stop`, `next`, `prev`, `volume`, `seek_track`, `seek_time` |
 | `GET` | `/api/sonos/art` | Proxies and caches album art. Query params: `?ip=192.168.1.120&path=/getaa?...` |
 | `GET` | `/api/sonos/favorites` | Returns pinned cloud favorites (playlists, albums, radio). Query param: `?ip=...` |
 | `POST` | `/api/sonos/play-favorite` | Plays a pinned favorite by ID. Body: `{"ip": "...", "favorite_id": "FV:2/1"}` |
 | `GET` | `/api/sonos/services` | Returns music services catalog and configured default. Query param: `?ip=...` |
 | `POST` | `/api/sonos/play-stream` | Plays direct HTTP/HTTPS audio stream. Body: `{"ip": "...", "url": "...", "title": "..."}` |
-| `POST` | `/api/sonos/queue-add` | Enqueues track URI to queue. Body: `{"ip": "...", "uri": "...", "as_next": true}` |
+| `POST` | `/api/sonos/queue-add` | Enqueues track URI to queue. Body: `{"ip": "...", "uri": "...", "as_next": true, "metadata": "..."}` |
+| `GET` | `/api/sonos/queue` | Returns paginated tracks from the playback queue. Query params: `?ip=...&start=0&count=20` |
 
 ### Google Cast Endpoints
 

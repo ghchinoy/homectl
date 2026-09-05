@@ -67,6 +67,9 @@ Control your devices directly from the command line:
 
 # View detailed playback metadata
 ./homectl sonos details 192.168.1.120
+
+# Jump to track 3 in the queue
+./homectl sonos seek 192.168.1.120 --track 3
 ```
 
 ### 5. Launch the Web UI & API Server
