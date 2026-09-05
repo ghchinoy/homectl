@@ -10,7 +10,7 @@ Smart home automation is evolving from static screen-based dashboards to natural
 Controlling physical smart home hardware through Large Language Models (LLMs) presents unique engineering challenges:
 1. **Physical Actuator Impact:** Sending the wrong command or volume spike to an amplifier or alarm system has immediate, irreversible acoustic and real-world consequences.
 2. **Context Window Inflation:** IoT protocols (like UPnP/SOAP) emit verbose XML payloads (DIDL-Lite fragments) that can consume **1,200–2,000 prompt tokens** on a single status query.
-3. **Tool Sprawl:** Naively exposing every granular device action as a separate MCP tool floods the model's system prompt with massive JSON schemas (e.g. 60 tools consuming 14,000 tokens on every conversational turn), degrading model reasoning.
+3. **Tool Sprawl:** Naively exposing every granular device action as a separate MCP tool floods the model's system prompt with massive JSON schemas (e.g. 50+ tools consuming 12,000+ tokens on every conversational turn), degrading model reasoning.
 
 `homectl` solves these challenges through an integrated architecture built around **The Three Pillars**.
 
@@ -53,16 +53,16 @@ The distribution and interoperability packaging conforming to the **Agent Plugin
 
 ---
 
-## Token Economics Comparison
+## Token Economics & Efficiency
 
-A comparison of prompt overhead between standard granular implementations and `homectl`'s token-budgeted architecture:
+A comparison of prompt overhead between unoptimized 1:1 protocol exposure and `homectl`'s intent-budgeted architecture:
 
-| Metric | Granular UPnP Port (e.g. `sonos-ts-mcp`) | `homectl` Agent Ecosystem | Savings |
+| Metric | Direct 1:1 Action Mapping | homectl Intent-Based Architecture | Efficiency Gain |
 | :--- | :---: | :---: | :---: |
-| **Tool Count** | 60 individual tools | **10 consolidated tools** | **-83%** tool count |
-| **Schema Prompt Overhead** | ~45 KB (~13,000 tokens) | **~4.5 KB (~1,500 tokens)** | **~88%** token savings |
+| **Tool Count** | 50+ individual tools | **10 consolidated tools** | **~80%** fewer tools |
+| **Schema Prompt Overhead** | ~40 KB (~12,000 tokens) | **~4.5 KB (~1,500 tokens)** | **~88%** token savings |
 | **Track Metadata Inspection** | ~1,800 tokens (raw XML) | **~40 bytes (compact JSON)** | **~94%** token savings |
-| **Cold Start Latency** | 1,500ms – 4,000ms (`npx`) | **< 5ms (Go binary)** | **>99%** faster boot |
+| **Cold Start Latency** | 1,500ms – 4,000ms (interpreted) | **< 5ms (Go binary)** | **>99%** faster boot |
 
 ---
 

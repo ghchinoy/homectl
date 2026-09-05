@@ -9,9 +9,9 @@ description: Complete tool definitions, parameter schemas, and SEP-2106 output s
 
 ## 1. Runtime Architecture
 
-Unlike TypeScript or Python MCP servers that require runtime environments (`npx`, `python -m`, virtualenvs) and large dependency trees, `homectl`'s MCP servers compile into **single static binaries**:
+`homectl`'s MCP servers compile into **single static binaries** with minimal operational overhead:
 
-* **Instant Cold Starts:** Boots and emits tool definitions over stdio in **<5ms** (vs. 1,500ms–4,000ms for Node.js `npx` wrappers).
+* **Instant Cold Starts:** Boots and emits tool definitions over stdio in **<5ms** with zero interpreter or package resolution latency.
 * **Low Memory Footprint:** Consumes ~12–18 MB RSS during active operation.
 * **Hermetic Execution:** Operates without ambient environment dependencies or uncommitted runtime caches.
 

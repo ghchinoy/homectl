@@ -84,9 +84,20 @@ To use `homectl`'s MCP servers with Anthropic's Claude Desktop application:
 
 ---
 
-## 4. Cursor / VS Code Copilot / Windsurf
+## 4. Antigravity, Cursor & VS Code Copilot
 
-For editor-based AI coding agents:
+For agentic IDEs and developer environments:
+
+### Antigravity (`~/.config/antigravity/mcp_config.json` or `.antigravity/mcp.json`):
+```json
+{
+  "mcpServers": {
+    "homectl-sonos": {
+      "command": "/Users/<your-username>/.local/bin/homectl-mcp-sonos"
+    }
+  }
+}
+```
 
 ### Cursor (`.cursor/mcp.json` or `~/.cursor/mcp.json`):
 ```json
