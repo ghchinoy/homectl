@@ -226,7 +226,7 @@ type TopologyResult struct {
 }
 
 // locationToIP extracts the host portion from a Sonos device Location URL
-// (e.g. "http://192.168.4.99:1400/xml/device_description.xml" -> "192.168.4.99").
+// (e.g. "http://192.168.1.100:1400/xml/device_description.xml" -> "192.168.1.100").
 func locationToIP(loc string) string {
 	loc = strings.TrimPrefix(loc, "http://")
 	loc = strings.TrimPrefix(loc, "https://")

@@ -121,10 +121,10 @@ To enable zero-credential ad-hoc playback of YouTube tracks without relying on S
                                                                      |
                                                                      | 2. Extract direct audio stream
                                                                      v
-+-----------------------+     4. HTTP GET /api/audio/stream?id=..  +----------------------------+
-| Sonos Speaker (Office)| ---------------------------------------> | homectl HTTP Audio Relay   |
-| (192.168.4.99)        | <--------------------------------------- | (homectl serve on :<port>)  |
-+-----------------------+     5. Direct AAC / MP3 audio stream     +----------------------------+
++-----------------------------+     4. HTTP GET /api/audio/stream?id=..  +----------------------------+
+| Sonos Speaker (Living Room) | ---------------------------------------> | homectl HTTP Audio Relay   |
+| (192.168.1.100)             | <--------------------------------------- | (homectl serve on :<port>)  |
++-----------------------------+     5. Direct AAC / MP3 audio stream     +----------------------------+
             ^                                                                |
             |                 3. PlayStream(url, title)                      |
             +----------------------------------------------------------------+
@@ -159,11 +159,11 @@ For agent workflows, two complementary tool designs exist:
      {
        "name": "sonos_search_and_play",
        "description": "Searches for a music track or audio stream and begins immediate playback on the specified Sonos speaker or room.",
-       "parameters": {
-         "ip": "192.168.4.99",
-         "query": "Tom Sawyer Rush",
-         "service": "youtube"
-       }
+        "parameters": {
+          "ip": "192.168.1.100",
+          "query": "Tom Sawyer Rush",
+          "service": "youtube"
+        }
      }
      ```
    * Resolves the stream, registers it with the local relay, and dispatches playback to the speaker coordinator in a single operation.

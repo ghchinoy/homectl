@@ -30,7 +30,7 @@ func TestParseTrackMetadata(t *testing.T) {
 		},
 		{
 			name:  "standard DIDL-Lite metadata",
-			input: `<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item><dc:title>So What</dc:title><dc:creator>Miles Davis</dc:creator><upnp:album>Kind of Blue</upnp:album><res protocolInfo="http-get:*:audio/flac:*">http://192.168.4.10:8000/track.flac</res></item></DIDL-Lite>`,
+			input: `<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item><dc:title>So What</dc:title><dc:creator>Miles Davis</dc:creator><upnp:album>Kind of Blue</upnp:album><res protocolInfo="http-get:*:audio/flac:*">http://192.168.1.10:8000/track.flac</res></item></DIDL-Lite>`,
 			expected: TrackMetadata{
 				Title:       "So What",
 				Artist:      "Miles Davis",
@@ -251,11 +251,11 @@ func TestParseSSDPLocation(t *testing.T) {
 			response: "HTTP/1.1 200 OK\r\n" +
 				"CACHE-CONTROL: max-age = 1800\r\n" +
 				"EXT:\r\n" +
-				"LOCATION: http://192.168.4.99:1400/xml/device_description.xml\r\n" +
+				"LOCATION: http://192.168.1.99:1400/xml/device_description.xml\r\n" +
 				"SERVER: Linux UPnP/1.0 Sonos/84.2-61240 (ZPS21)\r\n" +
 				"ST: urn:schemas-upnp-org:device:ZonePlayer:1\r\n" +
-				"USN: uuid:RINCON_000E58CF418201400::urn:schemas-upnp-org:device:ZonePlayer:1\r\n\r\n",
-			expected: "192.168.4.99",
+				"USN: uuid:RINCON_000E5800000000001::urn:schemas-upnp-org:device:ZonePlayer:1\r\n\r\n",
+			expected: "192.168.1.99",
 		},
 		{
 			name: "LOCATION with path only",

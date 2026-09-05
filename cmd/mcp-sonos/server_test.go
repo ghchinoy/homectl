@@ -155,7 +155,7 @@ func setupTestSessionWithFactory(t *testing.T, factory ClientFactory) (*mcp.Clie
 		WithClientFactory(factory),
 		WithCacheLoader(func() ([]sonos.Device, error) {
 			return []sonos.Device{
-				{Name: "Office Speaker", IP: "192.168.4.120", RinconID: "RINCON_001", ModelName: "Sonos One"},
+				{Name: "Office Speaker", IP: "192.168.1.120", RinconID: "RINCON_001", ModelName: "Sonos One"},
 			}, nil
 		}),
 	)
@@ -278,7 +278,7 @@ func TestSonosGetNowPlayingTool(t *testing.T) {
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "sonos_get_now_playing",
 		Arguments: map[string]any{
-			"ip": "192.168.4.120",
+			"ip": "192.168.1.120",
 		},
 	})
 	if err != nil {
@@ -312,7 +312,7 @@ func TestSonosControlTool(t *testing.T) {
 	_, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "sonos_control",
 		Arguments: map[string]any{
-			"ip":     "192.168.4.120",
+			"ip":     "192.168.1.120",
 			"action": "play",
 		},
 	})
@@ -327,7 +327,7 @@ func TestSonosControlTool(t *testing.T) {
 	_, err = session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "sonos_control",
 		Arguments: map[string]any{
-			"ip":     "192.168.4.120",
+			"ip":     "192.168.1.120",
 			"action": "pause",
 		},
 	})
@@ -342,7 +342,7 @@ func TestSonosControlTool(t *testing.T) {
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "sonos_control",
 		Arguments: map[string]any{
-			"ip":     "192.168.4.120",
+			"ip":     "192.168.1.120",
 			"action": "invalid_action",
 		},
 	})
@@ -363,7 +363,7 @@ func TestSonosSetVolumeTool(t *testing.T) {
 	_, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "sonos_set_volume",
 		Arguments: map[string]any{
-			"ip":     "192.168.4.120",
+			"ip":     "192.168.1.120",
 			"volume": 45,
 		},
 	})
@@ -378,7 +378,7 @@ func TestSonosSetVolumeTool(t *testing.T) {
 	_, err = session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "sonos_set_volume",
 		Arguments: map[string]any{
-			"ip":    "192.168.4.120",
+			"ip":    "192.168.1.120",
 			"delta": 10,
 		},
 	})
@@ -393,7 +393,7 @@ func TestSonosSetVolumeTool(t *testing.T) {
 	_, err = session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "sonos_set_volume",
 		Arguments: map[string]any{
-			"ip":     "192.168.4.120",
+			"ip":     "192.168.1.120",
 			"volume": 150,
 		},
 	})
@@ -410,14 +410,14 @@ func TestSonosSetVolumeTool(t *testing.T) {
 // metadata) transparently redirects to the coordinator and reports the
 // coordinator's authoritative state. Regression for control-84r.
 func TestSonosGetNowPlayingFollowerRedirect(t *testing.T) {
-	const followerIP = "192.168.4.98"
-	const coordinatorIP = "192.168.4.99"
+	const followerIP = "192.168.1.98"
+	const coordinatorIP = "192.168.1.99"
 
 	follower := &MockClient{
 		ip:            followerIP,
 		volume:        15,
 		state:         "PLAYING", // false-positive transport state of a follower
-		trackURI:      "x-rincon:RINCON_000E58CF418201400",
+		trackURI:      "x-rincon:RINCON_000E5800000000001",
 		coordinatorIP: coordinatorIP,
 	}
 	coordinator := &MockClient{
@@ -482,22 +482,22 @@ func TestSonosGetNowPlayingFollowerRedirect(t *testing.T) {
 // structure with coordinator identification. Regression for control-rs9.
 func TestSonosGetTopologyTool(t *testing.T) {
 	mock := &MockClient{
-		ip: "192.168.4.99",
+		ip: "192.168.1.99",
 		zoneGroupState: sonos.ZoneGroupState{
 			Groups: []sonos.ZoneGroup{
 				{
-					ID:          "RINCON_000E58CF418201400:1",
-					Coordinator: "RINCON_000E58CF418201400",
+					ID:          "RINCON_000E5800000000001:1",
+					Coordinator: "RINCON_000E5800000000001",
 					Members: []sonos.ZoneGroupMember{
-						{UUID: "RINCON_000E58CF418201400", RoomName: "Office", Location: "http://192.168.4.99:1400/xml/device_description.xml"},
-						{UUID: "RINCON_000E58CF418200400", RoomName: "Office", Location: "http://192.168.4.98:1400/xml/device_description.xml"},
+						{UUID: "RINCON_000E5800000000001", RoomName: "Office", Location: "http://192.168.1.99:1400/xml/device_description.xml"},
+						{UUID: "RINCON_000E5800000000002", RoomName: "Office", Location: "http://192.168.1.98:1400/xml/device_description.xml"},
 					},
 				},
 				{
 					ID:          "RINCON_ABC:2",
 					Coordinator: "RINCON_ABC",
 					Members: []sonos.ZoneGroupMember{
-						{UUID: "RINCON_ABC", RoomName: "Kitchen", Location: "http://192.168.4.50:1400/xml/device_description.xml"},
+						{UUID: "RINCON_ABC", RoomName: "Kitchen", Location: "http://192.168.1.50:1400/xml/device_description.xml"},
 					},
 				},
 			},
@@ -513,7 +513,7 @@ func TestSonosGetTopologyTool(t *testing.T) {
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "sonos_get_topology",
 		Arguments: map[string]any{
-			"ip": "192.168.4.99",
+			"ip": "192.168.1.99",
 		},
 	})
 	if err != nil {
@@ -547,8 +547,8 @@ func TestSonosGetTopologyTool(t *testing.T) {
 			if !m.IsCoordinator {
 				t.Errorf("coordinator member %s not flagged IsCoordinator", m.UUID)
 			}
-			if m.IP != "192.168.4.99" {
-				t.Errorf("expected coordinator IP 192.168.4.99, got %q", m.IP)
+			if m.IP != "192.168.1.99" {
+				t.Errorf("expected coordinator IP 192.168.1.99, got %q", m.IP)
 			}
 			coordFound = true
 		}
@@ -571,7 +571,7 @@ func TestSonosGetTopologyTool(t *testing.T) {
 
 
 func TestSonosListFavoritesTool(t *testing.T) {
-	mock := &MockClient{ip: "192.168.4.120"}
+	mock := &MockClient{ip: "192.168.1.120"}
 	session, cleanup := setupTestSession(t, mock)
 	defer cleanup()
 
@@ -580,7 +580,7 @@ func TestSonosListFavoritesTool(t *testing.T) {
 
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "sonos_list_favorites",
-		Arguments: map[string]any{"ip": "192.168.4.120"},
+		Arguments: map[string]any{"ip": "192.168.1.120"},
 	})
 	if err != nil {
 		t.Fatalf("CallTool sonos_list_favorites failed: %v", err)
@@ -615,7 +615,7 @@ func TestSonosListFavoritesTool(t *testing.T) {
 }
 
 func TestSonosPlayFavoriteTool(t *testing.T) {
-	mock := &MockClient{ip: "192.168.4.120", state: "STOPPED"}
+	mock := &MockClient{ip: "192.168.1.120", state: "STOPPED"}
 	session, cleanup := setupTestSession(t, mock)
 	defer cleanup()
 
@@ -625,7 +625,7 @@ func TestSonosPlayFavoriteTool(t *testing.T) {
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "sonos_play_favorite",
 		Arguments: map[string]any{
-			"ip":          "192.168.4.120",
+			"ip":          "192.168.1.120",
 			"favorite_id": "FV:2/1",
 		},
 	})
@@ -641,7 +641,7 @@ func TestSonosPlayFavoriteTool(t *testing.T) {
 }
 
 func TestSonosPlayStreamTool(t *testing.T) {
-	mock := &MockClient{ip: "192.168.4.120", state: "STOPPED"}
+	mock := &MockClient{ip: "192.168.1.120", state: "STOPPED"}
 	session, cleanup := setupTestSession(t, mock)
 	defer cleanup()
 
@@ -652,7 +652,7 @@ func TestSonosPlayStreamTool(t *testing.T) {
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "sonos_play_stream",
 		Arguments: map[string]any{
-			"ip":    "192.168.4.120",
+			"ip":    "192.168.1.120",
 			"url":   "https://stream.example.com/live.mp3",
 			"title": "Live Radio",
 		},
@@ -671,7 +671,7 @@ func TestSonosPlayStreamTool(t *testing.T) {
 	badRes, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "sonos_play_stream",
 		Arguments: map[string]any{
-			"ip":  "192.168.4.120",
+			"ip":  "192.168.1.120",
 			"url": "ftp://example.com/audio.mp3",
 		},
 	})
@@ -681,7 +681,7 @@ func TestSonosPlayStreamTool(t *testing.T) {
 }
 
 func TestSonosAddToQueueTool(t *testing.T) {
-	mock := &MockClient{ip: "192.168.4.120"}
+	mock := &MockClient{ip: "192.168.1.120"}
 	session, cleanup := setupTestSession(t, mock)
 	defer cleanup()
 
@@ -691,7 +691,7 @@ func TestSonosAddToQueueTool(t *testing.T) {
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "sonos_add_to_queue",
 		Arguments: map[string]any{
-			"ip":      "192.168.4.120",
+			"ip":      "192.168.1.120",
 			"uri":     "x-file-cifs://nas/track.flac",
 			"as_next": true,
 		},
@@ -705,7 +705,7 @@ func TestSonosAddToQueueTool(t *testing.T) {
 }
 
 func TestSonosListServicesTool(t *testing.T) {
-	mock := &MockClient{ip: "192.168.4.120"}
+	mock := &MockClient{ip: "192.168.1.120"}
 	session, cleanup := setupTestSession(t, mock)
 	defer cleanup()
 
@@ -714,7 +714,7 @@ func TestSonosListServicesTool(t *testing.T) {
 
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "sonos_list_services",
-		Arguments: map[string]any{"ip": "192.168.4.120"},
+		Arguments: map[string]any{"ip": "192.168.1.120"},
 	})
 	if err != nil {
 		t.Fatalf("CallTool sonos_list_services failed: %v", err)

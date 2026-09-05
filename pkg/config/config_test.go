@@ -24,7 +24,7 @@ func TestNicknamesSaveAndLoad(t *testing.T) {
 	}
 
 	testNicknames := map[string]string{
-		"192.168.4.100": "Living Room Sonos",
+		"192.168.1.100": "Living Room Sonos",
 		"/zone/1":       "Kitchen Pendant",
 	}
 
@@ -37,8 +37,8 @@ func TestNicknamesSaveAndLoad(t *testing.T) {
 		t.Fatalf("expected 2 nicknames, got %d", len(loaded))
 	}
 
-	if loaded["192.168.4.100"] != "Living Room Sonos" {
-		t.Errorf("expected 'Living Room Sonos', got '%s'", loaded["192.168.4.100"])
+	if loaded["192.168.1.100"] != "Living Room Sonos" {
+		t.Errorf("expected 'Living Room Sonos', got '%s'", loaded["192.168.1.100"])
 	}
 	if loaded["/zone/1"] != "Kitchen Pendant" {
 		t.Errorf("expected 'Kitchen Pendant', got '%s'", loaded["/zone/1"])

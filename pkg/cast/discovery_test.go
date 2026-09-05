@@ -44,9 +44,9 @@ func TestSelectBestIP(t *testing.T) {
 		},
 		{
 			name:     "skip invalid/loopback IPv4 to valid IPv4",
-			ipv4:     []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("192.168.4.15")},
+			ipv4:     []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("192.168.1.15")},
 			ipv6:     nil,
-			expected: "192.168.4.15",
+			expected: "192.168.1.15",
 		},
 	}
 

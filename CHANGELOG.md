@@ -1,56 +1,83 @@
-## 2025-12-31
-- Compose Video/Cast section with real-time status (control-wlu)
-- Add Google Cast controls to Web UI (control-aqv)
-- Implement Google Cast 'Now Playing' status (control-tkc)
+# Changelog
 
-## 2025-12-28
-- Reorder Web UI sections (control-70u)
-- Extract Web UI API service (control-x5w)
-- Refactor Web UI into atomic components (control-sv0)
-- Dynamic card themes for light levels (control-26a)
-- Add Sonos transport controls to Web UI (control-f5z)
-- Show Lutron light levels in Web UI (control-gj2)
-- Explore ONVIF discovery for IP cameras (control-f1l.8)
-- Explore Google Cast (mdns) discovery (control-f1l.9)
-- Integrate Sonos Album Art into Web UI (control-9d7.1)
-- Develop Lit Web UI (control-9d7)
-- Expand Sonos metadata extraction (control-449.1)
-- Implement Sonos 'Restore Queue' logic (control-f1l.18)
-- Build Bubble Tea TUI (control-ibt)
-- Migrate configuration to standard XDG paths (control-4ye)
-- Debug and fix Sonos event logging (control-f1l.17)
-- Fix Sonos 402 SOAP error (control-us2)
-- Show 'Next Track' in TUI speaker details (control-f1l.16)
-- Implement robust XML parsing for Sonos LastChange events (control-f1l.15)
-- Expand GENA listener to include track metadata (control-f1l.14)
-- Implement atomic item merging in TUI (control-f1l.13)
-- Implement Sonos event subscriptions (control-f1l.12)
-- Implement UPnP GENA event listener (control-f1l.11)
-- Increase TUI volume/dimming granularity (control-f3o)
-- Fix Sonos volume flicker/reset in TUI refresh (control-9os)
-- Implement unified Go-native discovery engine (control-f1l.4)
-- Reorganize CLI: move list/set under lutron command (control-14s)
-- Enhance Sonos GROUPS view with group names (control-f1l.7)
-- Implement Sonos grouping support (control-f1l.6)
-- Improve Sonos discovery cache stability (control-f1l.5)
-- Migrate secrets and cache to ~/.config/control/ (control-tco)
-- Investigate and fix 'All Lights' control in TUI (control-na6)
-- Fix concurrency panic in LEAP client during batch requests (control-1nq)
-- Integrate Sonos into TUI (control-ae6)
-- Expand Sonos transport controls (control-x7o)
-- Refactor TUI for multi-mode navigation (control-j6c)
-- Add 'sonos details' command (control-4kt)
-- Implement Sonos 'Now Playing' metadata (control-9ne)
-- Add Sonos CLI commands (control-xy1)
-- Implement core Sonos UPnP client (control-ufd)
-- Implement split-screen detail view in TUI (control-1cg)
-- Add progress bar indicators to TUI (control-dsj)
-- Show device status (on/off/level) in listing (control-5us)
+All notable changes to this project will be documented in this file.
 
-## 2025-12-27
-- Add 'All Lights' control (control-45p)
-- Scaffold Cobra CLI (control-bm3)
-- Implement core Go LEAP client (control-z3s)
-- Evaluate Go SDK for Lutron LEAP (control-ymh)
-- Obtain Lutron Bridge Certificates (control-unc)
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+and [Common Changelog](https://common-changelog.org/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.2.0] - 2026-09-05
+
+_Major architectural release introducing disaggregated Go modules, standalone Agent Plugins (MCP), Catppuccin Astro Starlight documentation, and robust audio stream management._
+
+### Added
+- **Agent Plugins & MCP Server:** Implemented standalone `cmd/mcp-sonos` stdio server with 10 token-optimized tools (`sonos_list_speakers`, `sonos_get_now_playing`, `sonos_get_topology`, `sonos_control`, `sonos_set_volume`, `sonos_list_favorites`, `sonos_play_favorite`, `sonos_play_stream`, `sonos_add_to_queue`, `sonos_list_services`) adhering to MCP SEP-2106 object return schemas ([control-ro4.7], [control-ro4.10], [control-18l.6]).
+- **Sonos Soundscape Skill:** Packaged canonical `skills/sonos-soundscape/` with deterministic metadata compression script (`summarize_metadata.py`) delivering ~94% prompt token savings, volume boundaries, and error recovery protocols ([control-ro4.8]).
+- **Astro Starlight Documentation Site:** Scaffolded complete documentation site under `docs/` themed with official `@catppuccin/starlight` (Mocha + Sky), featuring 25 documentation pages and automated GitHub Pages deployment on push.
+- **Architecture Diagrams (Graphviz):** Added 6 system and vertical `.dot` diagrams with automated `.webp` compilation toolchain via `make diagrams`.
+- **Audio Streaming & Cloud Favorites:** Enabled browsing and launching cloud playlists/stations from Spotify, Apple Music, and Sonos Radio via `ContentDirectory:Browse("FV:2")`, plus direct web audio streaming via `SetAVTransportURI` ([control-18l.1], [control-18l.3]).
+- **Structured JSON & Dry-Run Flags:** Added `--json` flag to `list`, `sonos`, and `discover` commands and `--dry-run` simulation to mutating actions (`set level`, `set all`, `sonos volume`) ([control-4iw.4], [control-4iw.5]).
+- **Dual Manifests & Packaging Tooling:** Automated skill mirroring via `cmd/sync-skills` generating dual `mcp.json` and `opencode.jsonc` manifests with CI consistency verification gate (`make check-skills`) ([control-ro4.19], [control-ro4.21]).
+- **License:** Added official Apache License Version 2.0 (`LICENSE`).
+
+### Changed
+- **Monorepo Architecture:** Disaggregated monolithic structure into a multi-module workspace (`go.work`) with interface-only `modules/core` and domain `modules/sonos` ([control-ro4.1], [control-ro4.3]).
+- **Stereo-Pair Follower Resolution:** Automatically redirects follower speaker queries to authoritative group coordinators, eliminating false-positive empty track status ([control-84r]).
+- **Bridge IP Resolution:** Replaced hardcoded default IP with strict precedence: CLI flag > env var > config.json > cache > mDNS discovery ([control-4iw.6]).
+- **Concurrency & Discovery:** Converted camera discovery to concurrent port 554 scanning to prevent mDNS starvation ([control-g50]), and added SSDP M-SEARCH fallback for Sonos on macOS ([control-ra2]).
+- **Error Propagation:** Converted Cobra CLI commands from `log.Fatalf` to idiomatic `RunE` returning wrapped errors (`%w`).
+
+### Fixed
+- **TUI Data-Loss Bug:** Fixed `saveNicknames()` in `pkg/tui/tui.go` which previously initialized an empty map and wiped `nicknames.json`.
+- **Format String Error:** Corrected `cmd/list.go` printf formatting to properly display zone brightness percentages.
+- **Error 701 Self-Healing:** Added automatic local queue and radio restoration when resuming stopped or unjoined speakers ([control-f1l.18]).
+- **SSRF Hardening in Art Proxy:** Added strict IP parsing, loopback/link-local/metadata blocking, and 5-second timeouts to `/api/sonos/art`.
+- **Tool Package Collision:** Added `//go:build ignore` to one-off diagnostic tools in `tools/` resolving `go vet ./...` package conflicts.
+
+### Security
+- **PII Scrubbing & State Isolation:** Purged all historical MAC addresses, serial numbers, and physical entryway placements across 57 commits using `git-filter-repo`. Established gitignored `local/` directory for physical hardware inventories ([control-b81]).
+- **Config Permissions:** Hardened directory permissions in `pkg/config.EnsureDir()` to `0700`.
+
+---
+
+## [0.1.0] - 2025-12-31
+
+### Added
+- Compose Video/Cast section with real-time status in Web UI ([control-wlu]).
+- Google Cast playback and volume controls in Web UI ([control-aqv]).
+- Google Cast "Now Playing" status parsing ([control-tkc]).
+
+---
+
+## [0.0.1] - 2025-12-28
+
+### Added
+- Lit Web UI dashboard with dynamic card themes for light levels ([control-9d7], [control-26a]).
+- Sonos transport and volume controls in Web UI ([control-f5z]).
+- Bubble Tea interactive Terminal UI (TUI) with split-screen details ([control-ibt], [control-1cg]).
+- Real-time UPnP GENA event listener and subscriptions for Sonos ([control-f1l.11], [control-f1l.12]).
+- Unified Go-native discovery engine for mDNS, SSDP, and RTSP ([control-f1l.4]).
+- XDG Base Directory configuration storage under `~/.config/homectl/` ([control-4ye]).
+
+### Fixed
+- Fixed concurrency panic in LEAP client during batch requests ([control-1nq]).
+- Fixed Sonos volume progress bar flicker on TUI refresh ([control-9os]).
+- Resolved Sonos 402 Invalid Args SOAP error ([control-us2]).
+
+---
+
+## [0.0.0] - 2025-12-27
+
+### Added
+- Core Go LEAP client for Lutron Caseta / RA2 Select ([control-z3s]).
+- Scaffolded Cobra CLI (`list`, `set`, `discover`) ([control-bm3]).
+- Master "All Lights" control in CLI and TUI ([control-45p]).
+- Lutron pairing scripts and certificate helpers ([control-unc]).
+
+[Unreleased]: https://github.com/ghchinoy/homectl/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/ghchinoy/homectl/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/ghchinoy/homectl/compare/v0.0.1...v0.1.0
+[0.0.1]: https://github.com/ghchinoy/homectl/compare/v0.0.0...v0.0.1
+[0.0.0]: https://github.com/ghchinoy/homectl/releases/tag/v0.0.0

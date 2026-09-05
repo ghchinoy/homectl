@@ -19,7 +19,7 @@ import (
 )
 
 func main() {
-	targetIP := flag.String("ip", "", "Sonos speaker IP (e.g. 192.168.4.120)")
+	targetIP := flag.String("ip", "", "Sonos speaker IP (e.g. 192.168.1.120)")
 	callbackIP := flag.String("callback-ip", "", "Manual callback IP (if NATed/Container)")
 	port := flag.Int("port", 0, "Manual port (0 for random)")
 	flag.Parse()

@@ -17,7 +17,7 @@ func TestIsPrivateIPv4(t *testing.T) {
 		expected bool
 	}{
 		{"192.168.1.1", true},
-		{"192.168.4.80", true},
+		{"192.168.2.80", true},
 		{"10.0.0.1", true},
 		{"10.254.0.15", true},
 		{"172.16.0.1", true},

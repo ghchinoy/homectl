@@ -1,6 +1,11 @@
 # homectl
 
-A modern, Go-powered toolkit for local smart home management, providing unified control of Lutron Caseta/RA2 Select lighting, Sonos speakers, Google Cast devices, and RTSP security cameras via CLI, Terminal UI (TUI), and Web UI.
+[![Docs](https://img.shields.io/badge/docs-Starlight-blue)](https://ghchinoy.github.io/homectl/)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
+A modern, Go-powered toolkit for local smart home management, providing unified control of Lutron Caseta/RA2 Select lighting, Sonos speakers, Google Cast devices, and RTSP security cameras via CLI, Terminal UI (TUI), Web UI, and Model Context Protocol (MCP) Agent Plugins.
+
+📖 **Full Documentation & Architecture Deep Dives:** [https://ghchinoy.github.io/homectl/](https://ghchinoy.github.io/homectl/)
 
 ## Table of Contents
 
@@ -49,6 +54,7 @@ go build -o homectl .
 - **Google Cast:** Discover Chromecasts and Nest Audio devices to view status and adjust volume/playback.
 - **RTSP Security Cameras:** mDNS discovery and subnet port scanning with on-demand MJPEG stream transcoding via `ffmpeg`.
 - **Zero-Config Discovery:** Automatically discovers IoT devices on the local subnet via mDNS/zeroconf and SSDP.
+- **Agent Plugins & MCP Servers:** Native Model Context Protocol (MCP) stdio micro-servers (`mcp-sonos`) and Agent Skills (`skills/sonos-soundscape`) conforming to the Agent Plugins Spec 1.0.0 for autonomous AI agents.
 - **Multi-Interface Access:**
   - **Terminal UI (TUI):** Responsive Bubble Tea dashboard with tab navigation, progress bars, and live volume/lighting feedback.
   - **CLI (Cobra):** Scriptable commands for home automation scripts and terminal workflows.
@@ -168,6 +174,24 @@ Start the REST API server and serve the built Web UI:
 
 Open `http://localhost:8080` in your browser to access the control dashboard.
 
+### Agent Plugins & MCP Servers
+
+`homectl` provides standalone MCP stdio servers under `./bin/` (buildable via `make build`):
+
+```bash
+# Build all binaries (homectl, mcp-sonos, sync-skills)
+make build
+
+# Install MCP binaries to ~/.local/bin and register in OpenCode config
+make install-mcp
+```
+
+#### Running `mcp-sonos` Directly
+```bash
+./bin/mcp-sonos
+```
+Exposes tools for speaker listing, compact now-playing status, volume, cloud favorites, direct audio streaming, and group topology. See [Architecture Documentation](https://ghchinoy.github.io/homectl/architecture/sonos/) for full specifications.
+
 ---
 
 ## Configuration
@@ -250,3 +274,9 @@ Contributions, issue reports, and pull requests are welcome!
 4. Push to your branch and open a Pull Request.
 
 Issue tracking in this repository is managed with [Beads (`bd`)](https://github.com/gastownhall/beads). Run `bd ready` to inspect open tasks.
+
+---
+
+## License
+
+This project is licensed under the [Apache License, Version 2.0](LICENSE).
