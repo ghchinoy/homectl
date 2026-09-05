@@ -26,6 +26,7 @@ type ClientInterface interface {
 	PlayFavorite(idOrTitle string) error
 	PlayStream(streamURL, title string) error
 	AddURIToQueue(uri, metadata string, asNext bool) (int, error)
+	GetQueue(start, count int) (sonos.QueueResult, error)
 	ListMusicServices() ([]sonos.MusicService, error)
 	Play() error
 	Pause() error
@@ -158,6 +159,13 @@ type AddToQueueParams struct {
 // ListServicesParams defines parameters for sonos_list_services.
 type ListServicesParams struct {
 	IP string `json:"ip" jsonschema:"IP address of the Sonos speaker (required)"`
+}
+
+// GetQueueParams defines parameters for sonos_get_queue.
+type GetQueueParams struct {
+	IP    string `json:"ip" jsonschema:"IP address of the Sonos speaker (required)"`
+	Start int    `json:"start,omitempty" jsonschema:"0-based starting index for pagination (default 0)"`
+	Count int    `json:"count,omitempty" jsonschema:"Maximum number of queue items to return (default 100)"`
 }
 
 // ListFavoritesResult represents the structured, object-wrapped output of sonos_list_favorites.
@@ -655,6 +663,36 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 			summary += fmt.Sprintf(" (default: %s)", defSvc.Name)
 		}
 
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: summary},
+				&mcp.TextContent{Text: string(jsonData)},
+			},
+		}, res, nil
+	})
+
+	// Tool 11: sonos_get_queue (Read-Only)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "sonos_get_queue",
+		Description: "Inspects tracks in the Sonos playback queue on the speaker with track titles, artists, albums, durations, and positions, supporting pagination.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args GetQueueParams) (*mcp.CallToolResult, any, error) {
+		if strings.TrimSpace(args.IP) == "" {
+			return nil, nil, fmt.Errorf("ip parameter is required")
+		}
+
+		client := cfg.ClientFactory(args.IP)
+		res, err := client.GetQueue(args.Start, args.Count)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get queue on %s: %w", args.IP, err)
+		}
+
+		jsonData, err := json.Marshal(res)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to encode queue result: %w", err)
+		}
+
+		summary := fmt.Sprintf("Sonos queue on %s: showing %d of %d track(s) (start: %d)",
+			args.IP, res.Returned, res.TotalMatches, res.StartIndex)
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
 				&mcp.TextContent{Text: summary},

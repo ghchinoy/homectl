@@ -42,6 +42,7 @@ homectl
 │   ├── play-favorite# Play pinned favorite by ID
 │   ├── play-stream  # Play direct HTTP/HTTPS audio stream
 │   ├── queue-add    # Enqueue track to playback queue
+│   ├── queue        # View items in playback queue
 │   └── services     # List streaming services catalog
 └── qolsys           # Qolsys alarm panel integration
     └── monitor      # Stream live panel events via WebSocket
@@ -93,6 +94,45 @@ homectl sonos details 192.168.1.120
 Sets speaker volume percentage:
 ```bash
 homectl sonos volume 192.168.1.120 35
+```
+
+### `homectl sonos favorites [ip]`
+Lists pinned cloud playlists, albums, and radio stations from Sonos Favorites (`FV:2`):
+```bash
+homectl sonos favorites 192.168.1.120
+homectl sonos favorites 192.168.1.120 --json
+```
+
+### `homectl sonos play-favorite [ip] <id>`
+Starts playback of a pinned favorite by ID (or title). Supports `--dry-run`:
+```bash
+homectl sonos play-favorite 192.168.1.120 FV:2/1
+homectl sonos play-favorite 192.168.1.120 FV:2/1 --dry-run
+```
+
+### `homectl sonos play-stream [ip] <url>`
+Streams any direct HTTP or HTTPS audio URL (internet radio, podcast, TTS voice):
+```bash
+homectl sonos play-stream 192.168.1.120 http://stream.somafm.com/groovesalad-128-mp3 --title "SomaFM"
+```
+
+### `homectl sonos queue-add [ip] <uri>`
+Enqueues a track or container URI without interrupting current playback:
+```bash
+homectl sonos queue-add 192.168.1.120 x-file-cifs://nas/track.flac --next
+```
+
+### `homectl sonos queue [ip]`
+Inspects items in the Sonos playback queue with positions, titles, artists, and durations:
+```bash
+homectl sonos queue 192.168.1.120 --start 0 --count 20
+homectl sonos queue 192.168.1.120 --json
+```
+
+### `homectl sonos services [ip]`
+Lists the catalog of supported streaming services and identifies the configured default provider:
+```bash
+homectl sonos services 192.168.1.120 --json
 ```
 
 ### `homectl qolsys monitor`

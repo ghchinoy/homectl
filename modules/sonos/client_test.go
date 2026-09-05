@@ -527,3 +527,123 @@ func TestRemoveAllTracksFromQueueMock(t *testing.T) {
 		t.Error("expected RemoveAllTracksFromQueue SOAP action to be called")
 	}
 }
+
+func TestParseQueueItems(t *testing.T) {
+	didl := `<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">
+		<item id="Q:0/1" parentID="Q:0" restricted="true">
+			<dc:title>Track One</dc:title>
+			<dc:creator>Artist One</dc:creator>
+			<upnp:album>Album One</upnp:album>
+			<upnp:albumArtURI>/getaa?u=1</upnp:albumArtURI>
+			<res protocolInfo="http-get:*:audio/mp3:*" duration="0:03:45">x-sonos-http:track1.mp3</res>
+		</item>
+		<item id="Q:0/2" parentID="Q:0" restricted="true">
+			<dc:title>Track Two</dc:title>
+			<dc:creator>Artist Two</dc:creator>
+			<upnp:album>Album Two</upnp:album>
+			<res duration="0:04:20">x-file-cifs://nas/track2.flac</res>
+		</item>
+	</DIDL-Lite>`
+
+	// Test startIndex 0
+	items := ParseQueueItems(didl, 0)
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(items))
+	}
+	if items[0].Position != 1 {
+		t.Errorf("expected position 1, got %d", items[0].Position)
+	}
+	if items[0].TrackID != "Q:0/1" {
+		t.Errorf("expected track id Q:0/1, got %s", items[0].TrackID)
+	}
+	if items[0].Title != "Track One" {
+		t.Errorf("expected title 'Track One', got %s", items[0].Title)
+	}
+	if items[0].Artist != "Artist One" {
+		t.Errorf("expected artist 'Artist One', got %s", items[0].Artist)
+	}
+	if items[0].Album != "Album One" {
+		t.Errorf("expected album 'Album One', got %s", items[0].Album)
+	}
+	if items[0].Duration != "0:03:45" {
+		t.Errorf("expected duration '0:03:45', got %s", items[0].Duration)
+	}
+	if items[0].URI != "x-sonos-http:track1.mp3" {
+		t.Errorf("expected URI 'x-sonos-http:track1.mp3', got %s", items[0].URI)
+	}
+
+	if items[1].Position != 2 {
+		t.Errorf("expected position 2, got %d", items[1].Position)
+	}
+	if items[1].Title != "Track Two" {
+		t.Errorf("expected title 'Track Two', got %s", items[1].Title)
+	}
+
+	// Test startIndex offset
+	offsetItems := ParseQueueItems(didl, 10)
+	if len(offsetItems) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(offsetItems))
+	}
+	if offsetItems[0].Position != 11 {
+		t.Errorf("expected position 11, got %d", offsetItems[0].Position)
+	}
+	if offsetItems[1].Position != 12 {
+		t.Errorf("expected position 12, got %d", offsetItems[1].Position)
+	}
+
+	// Test empty XML
+	emptyItems := ParseQueueItems("", 0)
+	if emptyItems != nil {
+		t.Errorf("expected nil for empty XML, got %+v", emptyItems)
+	}
+}
+
+func TestGetQueueMock(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		soapAction := r.Header.Get("SOAPAction")
+		if strings.Contains(soapAction, "Browse") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+<s:Body>
+<u:BrowseResponse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">
+<Result>&lt;DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"&gt;&lt;item id="Q:0/1"&gt;&lt;dc:title&gt;Mock Track&lt;/dc:title&gt;&lt;dc:creator&gt;Mock Artist&lt;/dc:creator&gt;&lt;res duration="0:03:00"&gt;http://audio.mp3&lt;/res&gt;&lt;/item&gt;&lt;/DIDL-Lite&gt;</Result>
+<NumberReturned>1</NumberReturned>
+<TotalMatches>5</TotalMatches>
+<UpdateID>1</UpdateID>
+</u:BrowseResponse>
+</s:Body>
+</s:Envelope>`))
+			return
+		}
+		if strings.Contains(soapAction, "GetZoneGroupState") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetZoneGroupStateResponse xmlns:u="urn:schemas-upnp-org:service:ZoneGroupTopology:1"><ZoneGroupState>&lt;ZoneGroups&gt;&lt;/ZoneGroups&gt;</ZoneGroupState></u:GetZoneGroupStateResponse></s:Body></s:Envelope>`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "http://")
+	client := NewClient(host, WithHTTPClient(server.Client()))
+	res, err := client.GetQueue(0, 10)
+	if err != nil {
+		t.Fatalf("GetQueue failed: %v", err)
+	}
+	if res.Returned != 1 {
+		t.Errorf("expected Returned 1, got %d", res.Returned)
+	}
+	if res.TotalMatches != 5 {
+		t.Errorf("expected TotalMatches 5, got %d", res.TotalMatches)
+	}
+	if len(res.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(res.Items))
+	}
+	if res.Items[0].Title != "Mock Track" {
+		t.Errorf("expected title 'Mock Track', got %s", res.Items[0].Title)
+	}
+	if res.Items[0].Position != 1 {
+		t.Errorf("expected position 1, got %d", res.Items[0].Position)
+	}
+}

@@ -584,9 +584,67 @@ var servicesSonosCmd = &cobra.Command{
 	},
 }
 
+var queueSonosCmd = &cobra.Command{
+	Use:   "queue [ip]",
+	Short: "View items in the Sonos playback queue",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var rawIP string
+		if len(args) > 0 {
+			rawIP = args[0]
+		}
+		ip, err := resolveSpeakerIP(rawIP)
+		if err != nil {
+			return err
+		}
+
+		start, _ := cmd.Flags().GetInt("start")
+		count, _ := cmd.Flags().GetInt("count")
+
+		client := sonos.NewClient(ip)
+		qRes, err := client.GetQueue(start, count)
+		if err != nil {
+			return fmt.Errorf("get queue: %w", err)
+		}
+
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(qRes)
+		}
+
+		fmt.Printf("Sonos Playback Queue on %s (showing %d of %d tracks, start: %d):\n\n",
+			ip, qRes.Returned, qRes.TotalMatches, qRes.StartIndex)
+		if len(qRes.Items) == 0 {
+			fmt.Println("Queue is empty.")
+			return nil
+		}
+
+		fmt.Printf("%-5s %-30s %-25s %-25s %-8s\n", "POS", "TITLE", "ARTIST", "ALBUM", "DURATION")
+		fmt.Println(strings.Repeat("-", 98))
+		for _, item := range qRes.Items {
+			title := item.Title
+			if len(title) > 28 {
+				title = title[:25] + "..."
+			}
+			artist := item.Artist
+			if len(artist) > 23 {
+				artist = artist[:20] + "..."
+			}
+			album := item.Album
+			if len(album) > 23 {
+				album = album[:20] + "..."
+			}
+			fmt.Printf("%-5d %-30s %-25s %-25s %-8s\n",
+				item.Position, title, artist, album, item.Duration)
+		}
+		return nil
+	},
+}
+
 func init() {
 	playStreamSonosCmd.Flags().String("title", "", "Descriptive title for the stream (defaults to URL host)")
 	queueAddSonosCmd.Flags().Bool("next", false, "Insert track as next in queue instead of appending to end")
+	queueSonosCmd.Flags().Int("start", 0, "0-based starting index in the queue (default 0)")
+	queueSonosCmd.Flags().Int("count", 20, "Number of tracks to return (default 20)")
 
 	rootCmd.AddCommand(sonosCmd)
 	sonosCmd.AddCommand(listSonosCmd)
@@ -602,5 +660,6 @@ func init() {
 	sonosCmd.AddCommand(playFavoriteSonosCmd)
 	sonosCmd.AddCommand(playStreamSonosCmd)
 	sonosCmd.AddCommand(queueAddSonosCmd)
+	sonosCmd.AddCommand(queueSonosCmd)
 	sonosCmd.AddCommand(servicesSonosCmd)
 }

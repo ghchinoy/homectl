@@ -37,6 +37,7 @@ func TestCommandRegistration(t *testing.T) {
 		{[]string{"sonos", "play-favorite"}},
 		{[]string{"sonos", "play-stream"}},
 		{[]string{"sonos", "queue-add"}},
+		{[]string{"sonos", "queue"}},
 		{[]string{"sonos", "services"}},
 		{[]string{"qolsys"}},
 		{[]string{"qolsys", "monitor"}},

@@ -1280,6 +1280,153 @@ func (c *Client) RemoveAllTracksFromQueue() error {
 	return nil
 }
 
+// QueueItem represents a single track entry within the Sonos playback queue.
+type QueueItem struct {
+	Position    int    `json:"position"`
+	TrackID     string `json:"track_id,omitempty"`
+	Title       string `json:"title"`
+	Artist      string `json:"artist,omitempty"`
+	Album       string `json:"album,omitempty"`
+	URI         string `json:"uri,omitempty"`
+	AlbumArtURI string `json:"album_art_uri,omitempty"`
+	Duration    string `json:"duration,omitempty"`
+}
+
+// QueueResult represents the paginated result of querying the Sonos playback queue.
+type QueueResult struct {
+	Items        []QueueItem `json:"items"`
+	Returned     int         `json:"returned"`
+	TotalMatches int         `json:"total_matches"`
+	StartIndex   int         `json:"start_index"`
+}
+
+// ParseQueueItems parses a DIDL-Lite XML string containing Sonos queue items into QueueItem structs.
+// startIndex is the 0-based offset used for calculating 1-based track positions.
+func ParseQueueItems(xmlStr string, startIndex int) []QueueItem {
+	if xmlStr == "" {
+		return nil
+	}
+
+	var items []QueueItem
+	remaining := xmlStr
+
+	for {
+		itemStart := strings.Index(remaining, "<item ")
+		if itemStart == -1 {
+			break
+		}
+
+		endTag := "</item>"
+		itemEnd := strings.Index(remaining[itemStart:], endTag)
+		if itemEnd == -1 {
+			break
+		}
+		itemEnd += itemStart + len(endTag)
+		itemXML := remaining[itemStart:itemEnd]
+		remaining = remaining[itemEnd:]
+
+		artist := extractTagContent(itemXML, "creator")
+		if artist == "" {
+			artist = extractTagContent(itemXML, "artist")
+		}
+
+		item := QueueItem{
+			Position:    startIndex + len(items) + 1,
+			TrackID:     extractAttr(itemXML, "id"),
+			Title:       extractTagContent(itemXML, "title"),
+			Artist:      artist,
+			Album:       extractTagContent(itemXML, "album"),
+			URI:         extractTagContent(itemXML, "res"),
+			AlbumArtURI: extractTagContent(itemXML, "albumArtURI"),
+			Duration:    extractAttr(itemXML, "duration"),
+		}
+
+		if item.Title != "" || item.URI != "" {
+			items = append(items, item)
+		}
+	}
+
+	return items
+}
+
+// GetQueue retrieves paginated items from the Sonos playback queue on the group coordinator.
+// start is the 0-based starting index (default 0).
+// count is the maximum number of items to return (default 100 if <= 0).
+func (c *Client) GetQueue(start, count int) (QueueResult, error) {
+	if start < 0 {
+		start = 0
+	}
+	if count <= 0 {
+		count = 100
+	}
+
+	coordIP, _ := c.GetCoordinatorIP()
+	targetClient := c
+	if coordIP != "" && coordIP != c.ip {
+		targetClient = NewClient(coordIP, WithHTTPClient(c.httpClient), WithLogger(c.log()), WithStorage(c.store()))
+	}
+
+	body, err := targetClient.SOAPAction(
+		"/MediaServer/ContentDirectory/Control",
+		"urn:schemas-upnp-org:service:ContentDirectory:1",
+		"Browse",
+		map[string]string{
+			"ObjectID":       "Q:0",
+			"BrowseFlag":     "BrowseDirectChildren",
+			"Filter":         "*",
+			"StartingIndex":  strconv.Itoa(start),
+			"RequestedCount": strconv.Itoa(count),
+			"SortCriteria":   "",
+		})
+	if err != nil {
+		return QueueResult{}, fmt.Errorf("browse queue: %w", err)
+	}
+	defer body.Close()
+
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return QueueResult{}, err
+	}
+
+	var resp struct {
+		Result         string `xml:"Body>BrowseResponse>Result"`
+		NumberReturned int    `xml:"Body>BrowseResponse>NumberReturned"`
+		TotalMatches   int    `xml:"Body>BrowseResponse>TotalMatches"`
+	}
+	_ = xml.Unmarshal(data, &resp)
+
+	resultXML := resp.Result
+	if resultXML == "" {
+		resultXML = extractTagContent(string(data), "Result")
+	}
+
+	if resp.TotalMatches == 0 {
+		if tmStr := extractTagContent(string(data), "TotalMatches"); tmStr != "" {
+			if tm, err := strconv.Atoi(tmStr); err == nil {
+				resp.TotalMatches = tm
+			}
+		}
+	}
+
+	items := ParseQueueItems(resultXML, start)
+	returned := len(items)
+	if resp.NumberReturned > 0 && resp.NumberReturned < returned {
+		returned = resp.NumberReturned
+	}
+
+	totalMatches := resp.TotalMatches
+	if totalMatches == 0 && len(items) > 0 {
+		totalMatches = len(items)
+	}
+
+	return QueueResult{
+		Items:        items,
+		Returned:     returned,
+		TotalMatches: totalMatches,
+		StartIndex:   start,
+	}, nil
+}
+
 // MusicService represents a supported or registered streaming service in the Sonos catalog.
 type MusicService struct {
 	ID           string `json:"id" xml:"Id,attr"`

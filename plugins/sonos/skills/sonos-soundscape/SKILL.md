@@ -89,9 +89,13 @@ For internet radio, podcasts, or TTS voice announcements:
    - URL scheme must be `http` or `https`.
    - Provide a human-readable `title` so the speaker display/UI identifies the stream. If omitted, the hostname is used as fallback.
    - Before playing loud or alert audio, check volume using `sonos_get_now_playing` and clamp to safe listening levels (≤ 30%).
-2. **Preserving Queue Order (`sonos_add_to_queue`):**
+2. **Preserving Queue Order & Adding Media (`sonos_add_to_queue`):**
    - When enqueuing a track without interrupting the current listening session, call `sonos_add_to_queue(ip: "<ip>", uri: "<uri>")`.
    - Use `as_next: true` to insert the track as the next song to play rather than clearing the playlist.
+   - For cloud playlists, albums, or container items, pass the optional `metadata` parameter with the stored DIDL-Lite descriptor so the player can properly parse tracks.
+3. **Browsing & Inspecting the Queue (`sonos_get_queue`):**
+   - Call `sonos_get_queue(ip: "<ip>", start: 0, count: 20)` to inspect upcoming tracks, current queue size (`total_matches`), and track positions.
+   - Use pagination parameters `start` and `count` to browse large queues without inflating prompt context.
 
 ---
 
@@ -109,7 +113,8 @@ When interacting with `homectl-sonos-mcp`:
 | `sonos_list_favorites` | 🔒 Read-Only | Browse pinned cloud playlists & radio stations | `ip: string` |
 | `sonos_play_favorite`  | ⚡ Mutating | Start playback of a pinned favorite by ID | `ip: string`, `favorite_id: string` |
 | `sonos_play_stream`    | ⚡ Mutating | Play HTTP/HTTPS audio stream (radio/podcast/TTS) | `ip: string`, `url: string`, `title?: string` |
-| `sonos_add_to_queue`   | ⚡ Mutating | Add audio URI to queue (optionally as next track) | `ip: string`, `uri: string`, `as_next?: bool` |
+| `sonos_add_to_queue`   | ⚡ Mutating | Add audio URI to queue (optionally as next track) | `ip: string`, `uri: string`, `metadata?: string`, `as_next?: bool` |
+| `sonos_get_queue`      | 🔒 Read-Only | Inspect tracks in queue with titles, artists, positions | `ip: string`, `start?: int`, `count?: int` |
 | `sonos_list_services`  | 🔒 Read-Only | List streaming services & default provider | `ip: string` |
 
 ---

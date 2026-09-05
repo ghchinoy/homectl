@@ -34,7 +34,8 @@ The `mcp-sonos` server exposes **10 focused tools** and **1 live resource**.
 | **`sonos_set_volume`** | ⚡ Mutating | Sets absolute volume (0–100) or applies step delta | `ip: string`, `volume?: int`, `delta?: int` |
 | **`sonos_play_favorite`** | ⚡ Mutating | Launches playback of a pinned cloud favorite | `ip: string`, `favorite_id: string` |
 | **`sonos_play_stream`** | ⚡ Mutating | Streams an arbitrary HTTP/HTTPS audio URL | `ip: string`, `url: string`, `title?: string` |
-| **`sonos_add_to_queue`** | ⚡ Mutating | Enqueues a track URI into the active queue | `ip: string`, `uri: string`, `as_next?: bool` |
+| **`sonos_add_to_queue`** | ⚡ Mutating | Enqueues a track URI into the active queue | `ip: string`, `uri: string`, `metadata?: string`, `as_next?: bool` |
+| **`sonos_get_queue`** | 🔒 Read-Only | Inspects tracks in playback queue with pagination | `ip: string`, `start?: int`, `count?: int` |
 
 ---
 
@@ -238,7 +239,7 @@ Loads and plays any arbitrary HTTP or HTTPS audio stream (internet radio station
 ---
 
 ### `sonos_add_to_queue` (Mutating)
-Appends or inserts an audio URI into the speaker's active queue without halting current playback.
+Appends or inserts an audio URI into the speaker's active queue without halting current playback. Supports passing stored DIDL-Lite metadata for cloud playlists and container items.
 
 * **Parameters:**
   ```json
@@ -247,9 +248,28 @@ Appends or inserts an audio URI into the speaker's active queue without halting 
     "properties": {
       "ip": { "type": "string", "description": "IP address of the Sonos speaker (required)" },
       "uri": { "type": "string", "description": "Track or stream URI to add" },
+      "metadata": { "type": "string", "description": "Optional DIDL-Lite metadata for the enqueued item (required for cloud container URIs)" },
       "as_next": { "type": "boolean", "description": "If true, inserts track as the next song to play; otherwise appends to end" }
     },
     "required": ["ip", "uri"]
+  }
+  ```
+
+---
+
+### `sonos_get_queue` (Read-Only)
+Inspects tracks in the Sonos playback queue on the speaker with track titles, artists, albums, durations, and positions. Supports pagination via `start` and `count`.
+
+* **Parameters:**
+  ```json
+  {
+    "type": "object",
+    "properties": {
+      "ip": { "type": "string", "description": "IP address of the Sonos speaker (required)" },
+      "start": { "type": "integer", "description": "0-based starting index for pagination (default 0)" },
+      "count": { "type": "integer", "description": "Maximum number of queue items to return (default 100)" }
+    },
+    "required": ["ip"]
   }
   ```
 

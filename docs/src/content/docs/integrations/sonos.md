@@ -59,6 +59,8 @@ Sonos Favorites allow you to browse and trigger cloud playlists, albums, and rad
 ./homectl sonos play-favorite 192.168.1.120 FV:2/1 --dry-run
 ```
 
+**Single-Item vs. Container Playlists:** `homectl` automatically distinguishes between individual radio streams and cloud containers (Spotify playlists, YouTube Music Liked Music, Apple Music albums). For containers, `homectl` clears the queue, enqueues the container with its stored DIDL-Lite metadata, repoints transport to the local queue, and initiates playback.
+
 ---
 
 ## Audio Streaming & Queue Management
@@ -71,6 +73,12 @@ Play arbitrary internet radio streams, podcasts, or TTS voice announcements dire
 
 # Enqueue an audio track as next
 ./homectl sonos queue-add 192.168.1.120 x-file-cifs://nas/music/track.flac --next
+
+# Enqueue a container item with stored metadata
+./homectl sonos queue-add 192.168.1.120 x-rincon-cpcontainer:... --metadata '<DIDL-Lite...>'
+
+# View tracks in the playback queue with pagination
+./homectl sonos queue 192.168.1.120 --start 0 --count 20
 ```
 
 ---

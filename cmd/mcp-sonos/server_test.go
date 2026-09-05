@@ -132,6 +132,34 @@ func (m *MockClient) AddURIToQueue(uri, metadata string, asNext bool) (int, erro
 	return 4, nil
 }
 
+func (m *MockClient) GetQueue(start, count int) (sonos.QueueResult, error) {
+	return sonos.QueueResult{
+		Items: []sonos.QueueItem{
+			{
+				Position: 1,
+				TrackID:  "Q:0/1",
+				Title:    "Track One",
+				Artist:   "Artist One",
+				Album:    "Album One",
+				Duration: "0:03:45",
+				URI:      "x-sonos-http:track1.mp3",
+			},
+			{
+				Position: 2,
+				TrackID:  "Q:0/2",
+				Title:    "Track Two",
+				Artist:   "Artist Two",
+				Album:    "Album Two",
+				Duration: "0:04:10",
+				URI:      "x-file-cifs://nas/track2.flac",
+			},
+		},
+		Returned:     2,
+		TotalMatches: 25,
+		StartIndex:   start,
+	}, nil
+}
+
 func (m *MockClient) ListMusicServices() ([]sonos.MusicService, error) {
 	return []sonos.MusicService{
 		{ID: "9", Name: "Spotify", Version: "1.1"},
@@ -211,6 +239,7 @@ func TestListTools(t *testing.T) {
 		"sonos_play_stream",
 		"sonos_add_to_queue",
 		"sonos_list_services",
+		"sonos_get_queue",
 	}
 
 	for _, expected := range expectedTools {
@@ -742,6 +771,63 @@ func TestSonosListServicesTool(t *testing.T) {
 
 	if svcResult.Count != 2 || len(svcResult.Services) != 2 {
 		t.Fatalf("expected 2 services, got %+v", svcResult)
+	}
+
+	// Verify structuredContent is a record/object (SEP-2106)
+	if res.StructuredContent != nil {
+		if _, ok := res.StructuredContent.(map[string]any); !ok {
+			t.Errorf("expected StructuredContent to be a record, got %T", res.StructuredContent)
+		}
+	}
+}
+
+func TestSonosGetQueueTool(t *testing.T) {
+	mock := &MockClient{ip: "192.168.1.120"}
+	session, cleanup := setupTestSession(t, mock)
+	defer cleanup()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	res, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_get_queue",
+		Arguments: map[string]any{
+			"ip":    "192.168.1.120",
+			"start": 0,
+			"count": 10,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool sonos_get_queue failed: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("expected success, got error: %+v", res)
+	}
+
+	if len(res.Content) < 2 {
+		t.Fatalf("expected at least 2 content items, got %d", len(res.Content))
+	}
+	textContent, ok := res.Content[1].(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("expected TextContent, got %T", res.Content[1])
+	}
+
+	var queueResult sonos.QueueResult
+	if err := json.Unmarshal([]byte(textContent.Text), &queueResult); err != nil {
+		t.Fatalf("failed to unmarshal queue JSON: %v", err)
+	}
+
+	if queueResult.Returned != 2 || queueResult.TotalMatches != 25 {
+		t.Errorf("expected returned 2 and total_matches 25, got %+v", queueResult)
+	}
+	if len(queueResult.Items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(queueResult.Items))
+	}
+	if queueResult.Items[0].Title != "Track One" {
+		t.Errorf("expected title 'Track One', got %s", queueResult.Items[0].Title)
+	}
+	if queueResult.Items[0].Position != 1 {
+		t.Errorf("expected position 1, got %d", queueResult.Items[0].Position)
 	}
 
 	// Verify structuredContent is a record/object (SEP-2106)

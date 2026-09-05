@@ -105,6 +105,7 @@ digraph SonosVerticalArchitecture {
         <tr><td><font color="#0f172a" point-size="8">• <b>sonos_get_now_playing</b> (compact status)</font></td></tr>
         <tr><td><font color="#0f172a" point-size="8">• <b>sonos_get_topology</b> (groups &amp; pairs)</font></td></tr>
         <tr><td><font color="#0f172a" point-size="8">• <b>sonos_list_favorites</b> (pinned cloud media)</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• <b>sonos_get_queue</b> (inspect queue tracks)</font></td></tr>
         <tr><td><font color="#0f172a" point-size="8">• <b>sonos_list_services</b> (catalog)</font></td></tr>
       </table>>,
       fillcolor="#ffffff",

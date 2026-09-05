@@ -34,12 +34,20 @@ The MCP server communicates with AI agents over standard I/O using the official 
 | **`sonos_set_volume`** | ⚡ Mutating | `{"status": "ok", "volume": ...}` | Adjusts absolute volume (0–100) or applies relative step deltas (`+5`, `-10`). |
 | **`sonos_play_favorite`** | ⚡ Mutating | `{"status": "ok", "favorite_id": ...}` | Initiates playback of a pinned cloud favorite. |
 | **`sonos_play_stream`** | ⚡ Mutating | `{"status": "ok", "url": ...}` | Streams an arbitrary HTTP/HTTPS audio URL (radio, podcast, or TTS). |
+| **`sonos_add_to_queue`** | ⚡ Mutating | `{"status": "ok", "track_position": ...}` | Enqueues track or container URI (with optional metadata and as-next flag). |
+| **`sonos_get_queue`** | 🔒 Read-Only | `QueueResult{Items, TotalMatches}` | Inspects playback queue tracks with pagination support. |
+| **`sonos_list_services`** | 🔒 Read-Only | `ListServicesResult{Count, Services}` | Lists registered music services and configured default provider. |
 
 All output schemas conform to **MCP SEP-2106** and OpenCode validation rules by returning Go records (JSON objects), never bare arrays.
 
 ### 3. Go Engine (`modules/sonos`)
 The core domain logic is isolated in `modules/sonos`:
 * **Coordinator / Follower Resolution:** In Sonos stereo pairs or groups, secondary speakers report their transport as `PLAYING` with an `x-rincon:<coord>` track URI but empty metadata. `modules/sonos` automatically detects follower nodes, resolves the group coordinator via `GetCoordinatorIP()`, and routes playback commands to the authoritative master speaker.
+* **Container vs. Item Favorite Playback Protocol:** Sonos handles single tracks/radio streams differently from multi-track containers (Spotify/Apple Music playlists, albums, YouTube Music Liked Music). `modules/sonos` detects container favorites via `isContainerFavorite()`:
+  1. Clears current queue (`RemoveAllTracksFromQueue`).
+  2. Enqueues the container with stored DIDL-Lite metadata (`AddURIToQueue`).
+  3. Points transport to local queue (`x-rincon-queue:<rincon>#0`).
+  4. Begins playback via the group coordinator. Single-item streams bypass queueing and use direct `SetAVTransportURI`.
 * **Zero Global State:** Does not rely on global `init()` loggers or hardcoded file paths. All dependencies (`core.Logger`, `core.Storage`, `core.Settings`) are injected via functional options:
   ```go
   client := sonos.NewClient(ip,
