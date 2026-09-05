@@ -13,7 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/ghchinoy/homectl/pkg/config"
 	"github.com/ghchinoy/homectl/pkg/leap"
-	"github.com/ghchinoy/homectl/pkg/sonos"
+	"github.com/ghchinoy/homectl/modules/sonos"
 )
 
 type sessionMode int

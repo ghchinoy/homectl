@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/ghchinoy/homectl/pkg/sonos"
+	"github.com/ghchinoy/homectl/modules/sonos"
 	"github.com/spf13/cobra"
 )
 

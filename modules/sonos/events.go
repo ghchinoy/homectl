@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/ghchinoy/homectl/pkg/config"
+	"github.com/ghchinoy/homectl/modules/core"
 )
 
 // EventMsg represents a processed event from a Sonos device
@@ -39,8 +39,24 @@ type LastChangeParser struct {
 
 // GENAListener handles incoming UPnP notifications
 type GENAListener struct {
-	Port    int
-	Handler func(EventMsg)
+	Port     int
+	Handler  func(EventMsg)
+	Logger   core.Logger
+	Settings core.Settings
+}
+
+func (l *GENAListener) getLogger() core.Logger {
+	if l != nil && l.Logger != nil {
+		return l.Logger
+	}
+	return defaultLogger
+}
+
+func (l *GENAListener) getSettings() core.Settings {
+	if l != nil && l.Settings != nil {
+		return l.Settings
+	}
+	return defaultSettings
 }
 
 // Start starts the HTTP listener on a random available port
@@ -66,21 +82,18 @@ func (l *GENAListener) Start() (string, error) {
 }
 
 func (l *GENAListener) GetLocalIP() string {
-	cfg := config.LoadConfig()
-	if cfg.CallbackIP != "" {
-		if sonosLogger != nil {
-			sonosLogger.Printf("Using Callback IP from config: %s\n", cfg.CallbackIP)
-		}
-		return fmt.Sprintf("http://%s:%d", cfg.CallbackIP, l.Port)
+	settings := l.getSettings()
+	logger := l.getLogger()
+	if cb := settings.CallbackIP(); cb != "" {
+		logger.Printf("Using Callback IP from config: %s\n", cb)
+		return fmt.Sprintf("http://%s:%d", cb, l.Port)
 	}
 
 	addrs, _ := net.InterfaceAddrs()
 	for _, addr := range addrs {
 		if ipnet, ok := addr.(*net.IPNet); ok {
 			ipStr := ipnet.IP.String()
-			if sonosLogger != nil {
-				sonosLogger.Printf("IP Discovery Candidate: %s\n", ipStr)
-			}
+			logger.Printf("IP Discovery Candidate: %s\n", ipStr)
 			if !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil && strings.HasPrefix(ipStr, "192.168.") {
 				return fmt.Sprintf("http://%s:%d", ipStr, l.Port)
 			}
@@ -106,17 +119,13 @@ func (l *GENAListener) handleNotify(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
 	ip := strings.Split(r.RemoteAddr, ":")[0]
 
-	if sonosLogger != nil {
-		sonosLogger.Printf("NOTIFY from %s\n", ip)
-	}
+	l.getLogger().Printf("NOTIFY from %s\n", ip)
 
 	var outer struct {
 		LastChange string `xml:"property>LastChange"`
 	}
 	if err := xml.Unmarshal(body, &outer); err != nil {
-		if sonosLogger != nil {
-			sonosLogger.Printf("XML Unmarshal Error (Outer): %v\n", err)
-		}
+		l.getLogger().Printf("XML Unmarshal Error (Outer): %v\n", err)
 	}
 
 	msg := EventMsg{IP: ip, Volume: -1}
@@ -124,9 +133,7 @@ func (l *GENAListener) handleNotify(w http.ResponseWriter, r *http.Request) {
 	if outer.LastChange != "" {
 		var lc LastChangeParser
 		if err := xml.Unmarshal([]byte(outer.LastChange), &lc); err != nil {
-			if sonosLogger != nil {
-				sonosLogger.Printf("XML Unmarshal Error (LastChange): %v\n", err)
-			}
+			l.getLogger().Printf("XML Unmarshal Error (LastChange): %v\n", err)
 		}
 
 		if len(lc.Volume) > 0 {

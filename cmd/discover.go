@@ -10,7 +10,7 @@ import (
 	"github.com/ghchinoy/homectl/pkg/leap"
 	"github.com/ghchinoy/homectl/pkg/miio"
 	"github.com/ghchinoy/homectl/pkg/onvif"
-	"github.com/ghchinoy/homectl/pkg/sonos"
+	"github.com/ghchinoy/homectl/modules/sonos"
 	"github.com/spf13/cobra"
 )
 

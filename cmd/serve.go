@@ -18,7 +18,7 @@ import (
 	"github.com/ghchinoy/homectl/pkg/cast"
 	"github.com/ghchinoy/homectl/pkg/config"
 	"github.com/ghchinoy/homectl/pkg/discovery"
-	"github.com/ghchinoy/homectl/pkg/sonos"
+	"github.com/ghchinoy/homectl/modules/sonos"
 	"github.com/spf13/cobra"
 )
 

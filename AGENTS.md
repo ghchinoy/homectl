@@ -32,6 +32,25 @@ bd sync               # Sync with git
 - **Service Deployment:** Maintain `scripts/install.sh` as the primary installation and update method for Linux. The service runs the `serve` command and points to `/usr/local/share/homectl/ui` by default.
 - **State Persistence:** Use `pkg/config` utilities like `LoadNicknames` and `SaveNicknames` to manage user-defined metadata consistently across CLI, TUI, and Web UI.
 
+### 4. Coding Conventions & Common Pitfalls
+- **Commits:** Use [Conventional Commits](https://www.conventionalcommits.org/) (e.g. `feat:`, `fix:`, `refactor:`, `docs:`).
+- **RTSP 401 Unauthorized:** Security cameras require `camera_auth` in `config.json` (format: `user:pass`).
+- **Art Proxy 404:** Check for double-escaped `&amp;` in the `path` query parameter.
+- **Omnivision / OV Ready:** ADC cameras often identify as `Server: OV Ready` on ports 6080/6443. These use a proprietary protocol; RTSP on port 554 is the standard local stream.
+
+### 5. Changelog Management
+To generate or update `CHANGELOG.md` from completed tasks in `bd`:
+```bash
+bd list --status closed --json | jq -r 'sort_by(.closed_at) | reverse | map(select(.closed_at != null)) | group_by(.closed_at[0:10]) | reverse | .[] | "## " + (.[0].closed_at[0:10]) + "\n" + (map("- " + .title + " (" + .id + ")") | join("\n")) + "\n"' > CHANGELOG.md
+```
+
+### 6. Skills & Plugin Packaging Strategy
+- **Canonical Skill Source:** Top-level `skills/<name>/` is the single source of truth for authoring skills. Edit `SKILL.md` and helper scripts (`skills/<name>/scripts/**`) ONLY in this directory.
+- **Self-Contained Plugin Bundles:** `plugins/<svc>/skills/<name>/` is a generated, self-contained bundle adhering to the Agent Plugins Specification. Never hand-edit files under `plugins/*/skills/`.
+- **Synchronization:** Run `make sync-skills` (or `go run ./cmd/sync-skills`) to mirror canonical skills into their respective plugin bundles (including scripts). Plugins declare their bundled skills via `plugins/<svc>/bundle.json` or existing subdirectories.
+- **CI Consistency Gate:** Run `make check-skills` (or `go run ./cmd/sync-skills --check`). CI verifies that all plugin skills match canonical sources and asserts that all `scripts/...` paths referenced in `SKILL.md` exist inside the bundle.
+- **Binary Artifacts:** All compiled binaries (`homectl`, `mcp-sonos`, `sync-skills`) build into `./bin/` via `make build`. The `./bin` directory is strictly gitignored.
+
 ## Landing the Plane (Session Completion)
 
 **When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.

@@ -10,7 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/ghchinoy/homectl/pkg/sonos"
+	"github.com/ghchinoy/homectl/modules/sonos"
 )
 
 func main() {

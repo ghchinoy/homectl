@@ -10,22 +10,20 @@ import (
 	"html"
 	"io"
 	"net/http"
-	"os"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/ghchinoy/homectl/pkg/config"
-	"github.com/ghchinoy/homectl/pkg/discovery"
+	"github.com/ghchinoy/homectl/modules/core"
 	"github.com/grandcat/zeroconf"
 )
 
-// DiscoveryProvider implements discovery.Provider for Sonos
+// DiscoveryProvider implements core.DiscoveryProvider for Sonos
 type DiscoveryProvider struct{}
 
 func (p *DiscoveryProvider) Name() string { return "sonos" }
 
-func (p *DiscoveryProvider) Discover(ctx context.Context) ([]discovery.Device, error) {
+func (p *DiscoveryProvider) Discover(ctx context.Context) ([]core.Device, error) {
 	deadline, ok := ctx.Deadline()
 	timeout := 5 * time.Second
 	if ok {
@@ -37,9 +35,9 @@ func (p *DiscoveryProvider) Discover(ctx context.Context) ([]discovery.Device, e
 		return nil, err
 	}
 
-	var devices []discovery.Device
+	var devices []core.Device
 	for _, s := range sonosDevices {
-		devices = append(devices, discovery.Device{
+		devices = append(devices, core.Device{
 			ID:       s.RinconID,
 			Name:     s.Name,
 			IP:       s.IP,
@@ -117,7 +115,7 @@ func Discover(timeout time.Duration) ([]Device, error) {
 }
 
 func cacheFile() string {
-	return config.GetPath("sonos_cache.json")
+	return defaultStorage.Path("sonos_cache.json")
 }
 
 // SaveCache merges newly discovered devices with existing ones and persists them
@@ -145,12 +143,12 @@ func SaveCache(newDevices []Device) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(cacheFile(), data, 0644)
+	return defaultStorage.WriteFile("sonos_cache.json", data, 0644)
 }
 
-// LoadCache retrieves previously discovered devices from the local file
+// LoadCache retrieves previously discovered devices from the local storage
 func LoadCache() ([]Device, error) {
-	data, err := os.ReadFile(cacheFile())
+	data, err := defaultStorage.ReadFile("sonos_cache.json")
 	if err != nil {
 		return nil, err
 	}
@@ -161,9 +159,16 @@ func LoadCache() ([]Device, error) {
 	return devices, nil
 }
 
+func hostPort(addr string, defaultPort int) string {
+	if strings.Contains(addr, ":") {
+		return addr
+	}
+	return fmt.Sprintf("%s:%d", addr, defaultPort)
+}
+
 // GetDeviceName fetches the device name, Rincon ID, model name and model number from the Sonos XML description
 func GetDeviceName(ip string) (string, string, string, string, error) {
-	url := fmt.Sprintf("http://%s:1400/xml/device_description.xml", ip)
+	url := fmt.Sprintf("http://%s/xml/device_description.xml", hostPort(ip, 1400))
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -203,21 +208,73 @@ func GetDeviceName(ip string) (string, string, string, string, error) {
 type Client struct {
 	ip         string
 	httpClient *http.Client
+	logger     core.Logger
+	storage    core.Storage
 }
 
-// NewClient creates a new Sonos client for a specific IP
-func NewClient(ip string) *Client {
-	return &Client{
+// Option configures a Sonos Client.
+type Option func(*Client)
+
+// WithLogger sets the logger for the Client.
+func WithLogger(l core.Logger) Option {
+	return func(c *Client) {
+		if l != nil {
+			c.logger = l
+		}
+	}
+}
+
+// WithHTTPClient sets a custom HTTP client (e.g. for mock tests).
+func WithHTTPClient(hc *http.Client) Option {
+	return func(c *Client) {
+		if hc != nil {
+			c.httpClient = hc
+		}
+	}
+}
+
+// WithStorage sets the storage provider for the Client.
+func WithStorage(s core.Storage) Option {
+	return func(c *Client) {
+		if s != nil {
+			c.storage = s
+		}
+	}
+}
+
+func (c *Client) log() core.Logger {
+	if c != nil && c.logger != nil {
+		return c.logger
+	}
+	return defaultLogger
+}
+
+func (c *Client) store() core.Storage {
+	if c != nil && c.storage != nil {
+		return c.storage
+	}
+	return defaultStorage
+}
+
+// NewClient creates a new Sonos client for a specific IP with optional configuration
+func NewClient(ip string, opts ...Option) *Client {
+	c := &Client{
 		ip: ip,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		logger:  defaultLogger,
+		storage: defaultStorage,
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 // SOAPAction executes a SOAP command on the Sonos device
 func (c *Client) SOAPAction(controlURL, serviceType, action string, args map[string]string) (io.ReadCloser, error) {
-	url := fmt.Sprintf("http://%s:1400%s", c.ip, controlURL)
+	url := fmt.Sprintf("http://%s%s", hostPort(c.ip, 1400), controlURL)
 
 	body := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
@@ -250,9 +307,7 @@ func (c *Client) SOAPAction(controlURL, serviceType, action string, args map[str
 	// The SOAPAction header must be quoted according to UPnP spec
 	req.Header.Set("SOAPAction", fmt.Sprintf("\"%s#%s\"", serviceType, action))
 
-	if sonosLogger != nil {
-		sonosLogger.Printf("SOAP OUT: %s#%s to %s\n", serviceType, action, url)
-	}
+	c.log().Printf("SOAP OUT: %s#%s to %s\n", serviceType, action, url)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -261,9 +316,7 @@ func (c *Client) SOAPAction(controlURL, serviceType, action string, args map[str
 
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
-	if sonosLogger != nil {
-		sonosLogger.Printf("SOAP RESP (%d):\n%s\n", resp.StatusCode, string(b))
-	}
+	c.log().Printf("SOAP RESP (%d):\n%s\n", resp.StatusCode, string(b))
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("SOAP error (%d): %s", resp.StatusCode, string(b))
@@ -382,7 +435,7 @@ func (c *Client) Play() error {
 	coordIP, _ := c.GetCoordinatorIP()
 	client := c
 	if coordIP != c.ip {
-		client = NewClient(coordIP)
+		client = NewClient(coordIP, WithHTTPClient(c.httpClient), WithLogger(c.log()), WithStorage(c.store()))
 	}
 
 	// 1. Try playing what's already there
@@ -397,9 +450,7 @@ func (c *Client) Play() error {
 
 	// 2. If it fails with 701 (Transition Not Available), try to load the queue
 	if err != nil && strings.Contains(err.Error(), "701") {
-		if sonosLogger != nil {
-			sonosLogger.Println("Play failed with 701, attempting queue restoration fallback...")
-		}
+		c.log().Println("Play failed with 701, attempting queue restoration fallback...")
 		_, rincon, _, _, nameErr := GetDeviceName(client.ip)
 		if nameErr == nil {
 			count, _ := client.GetQueueCount()
@@ -542,15 +593,13 @@ func (c *Client) SetAVTransportURI(uri, metadata string) error {
 
 // Subscribe registers a callback URL for GENA events from a specific service
 func (c *Client) Subscribe(serviceURL, callbackURL string, timeout int) (string, error) {
-	url := fmt.Sprintf("http://%s:1400%s", c.ip, serviceURL)
+	url := fmt.Sprintf("http://%s%s", hostPort(c.ip, 1400), serviceURL)
 	req, _ := http.NewRequest("SUBSCRIBE", url, nil)
 	req.Header.Set("CALLBACK", fmt.Sprintf("<%s>", callbackURL))
 	req.Header.Set("NT", "upnp:event")
 	req.Header.Set("TIMEOUT", fmt.Sprintf("Second-%d", timeout))
 
-	if sonosLogger != nil {
-		sonosLogger.Printf("SUBSCRIBE: %s to %s (Callback: %s)\n", serviceURL, url, callbackURL)
-	}
+	c.log().Printf("SUBSCRIBE: %s to %s (Callback: %s)\n", serviceURL, url, callbackURL)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -558,9 +607,7 @@ func (c *Client) Subscribe(serviceURL, callbackURL string, timeout int) (string,
 	}
 	defer resp.Body.Close()
 
-	if sonosLogger != nil {
-		sonosLogger.Printf("SUBSCRIBE RESP (%d) from %s\n", resp.StatusCode, c.ip)
-	}
+	c.log().Printf("SUBSCRIBE RESP (%d) from %s\n", resp.StatusCode, c.ip)
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("subscribe error: %d", resp.StatusCode)

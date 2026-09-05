@@ -1,0 +1,20 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "homectl-sonos",
+  "version": "0.1.0",
+  "description": "Smart home audio plugin for Sonos speakers: discovery, compact track metadata, playback control, and volume management.",
+  "author": {
+    "name": "ghchinoy",
+    "url": "https://github.com/ghchinoy"
+  },
+  "repository": "https://github.com/ghchinoy/homectl",
+  "license": "Apache-2.0",
+  "keywords": [
+    "sonos",
+    "smart-home",
+    "audio",
+    "mcp",
+    "upnp",
+    "homectl"
+  ]
+}

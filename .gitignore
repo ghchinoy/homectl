@@ -4,6 +4,7 @@ secrets/
 *.key
 
 # Binaries
+bin/
 homectl
 secrets/
 .beads/bd.sock
@@ -23,3 +24,11 @@ go_test/
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+# Agent Tool Scaffolding (use AGENTS.md as single source of truth)
+.claude/
+.codex/
+.cursor/
+.agents/
+CLAUDE.md
+GEMINI.md
