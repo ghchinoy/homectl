@@ -1,0 +1,43 @@
+---
+title: homectl
+description: A modern, Go-powered toolkit for local smart home management.
+template: splash
+hero:
+  tagline: Control Lutron lighting, Sonos whole-home audio, Google Cast, and RTSP security cameras locally with zero cloud dependencies.
+  image:
+    file: ../../assets/homectl.svg
+  actions:
+    - text: Quickstart Guide
+      link: /homectl/guides/getting-started/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/ghchinoy/homectl
+      icon: external
+      variant: secondary
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Core Capabilities
+
+<CardGrid stagger>
+  <Card title="Lutron Caseta & RA2 Select" icon="seti:light">
+    Local encrypted control via the LEAP protocol. Manage zones, areas, dimming levels, and scenes without going through the Lutron cloud.
+  </Card>
+  <Card title="Sonos Whole-Home Audio" icon="volume">
+    Control transport, track queueing, volume, and extract rich album art metadata with real-time UPnP GENA push event notifications.
+  </Card>
+  <Card title="Google Cast" icon="laptop">
+    Zero-config mDNS discovery for Chromecasts and Google Nest speakers with volume and playback state synchronization.
+  </Card>
+  <Card title="Security Cameras" icon="video">
+    Automatic ONVIF and RTSP port 554 discovery with on-demand, low-latency MJPEG transcoding powered by FFmpeg.
+  </Card>
+  <Card title="Three Unified Interfaces" icon="bars">
+    Switch seamlessly between an interactive Bubble Tea terminal UI, a scriptable Cobra CLI, and a modular Lit + Vite web dashboard.
+  </Card>
+  <Card title="XDG Compliant & Local First" icon="setting">
+    Standardized configuration storage at `~/.config/homectl/` with persistent nicknames, discovery caches, and automated systemd installer.
+  </Card>
+</CardGrid>
