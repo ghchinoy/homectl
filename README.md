@@ -111,7 +111,7 @@ All CLI commands support `--json` for machine-readable output and `--dry-run` fo
 ./bin/mcp-sonos
 ```
 
-Exposes 10 token-budgeted tools (`sonos_list_speakers`, `sonos_get_now_playing`, `sonos_control`, `sonos_set_volume`, `sonos_list_favorites`, `sonos_play_favorite`, `sonos_play_stream`, etc.) adhering to SEP-2106 object return schemas. See the [AI Agent Ecosystem Guide](https://ghchinoy.github.io/homectl/agents/overview/) for full client configuration details.
+Exposes 11 token-budgeted tools (`sonos_list_speakers`, `sonos_get_now_playing`, `sonos_get_topology`, `sonos_control`, `sonos_set_volume`, `sonos_list_favorites`, `sonos_play_favorite`, `sonos_play_stream`, `sonos_add_to_queue`, `sonos_get_queue`, `sonos_list_services`) adhering to SEP-2106 object return schemas. See the [AI Agent Ecosystem Guide](https://ghchinoy.github.io/homectl/agents/overview/) for full client configuration details.
 
 ### Web UI & API Server
 
