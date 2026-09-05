@@ -22,6 +22,11 @@ bd sync               # Sync with git
 - **SSDP M-SEARCH Fallback:** When mDNS yields zero Sonos speakers (common on macOS or segmented LANs), fallback to UPnP SSDP M-SEARCH (`urn:schemas-upnp-org:device:ZonePlayer:1`) ensures device discovery.
 - **IPv4 Preference & Link-Local Rejection:** Always prioritize usable IPv4 addresses over IPv6 during mDNS discovery, and explicitly reject link-local IPv6 addresses (`fe80::`) which fail without interface zone indices.
 - **Sonos Stereo-Pair/Group Followers:** A stereo-pair or group *follower* reports its transport as `PLAYING` with a `TrackURI` of `x-rincon:<coordinator-rincon>` and empty track metadata — a false positive. Never report a speaker's playback state directly; if `TrackURI` starts with `x-rincon:`, resolve the group coordinator via `Client.GetCoordinatorIP()` (or inspect `Client.GetZoneGroupState()`) and re-query the coordinator for authoritative state. The `sonos_get_now_playing` MCP tool does this automatically and returns `is_follower`/`coordinator_ip`; `sonos_get_topology` exposes the full group/pair structure.
+- **Sonos Container Playback Protocol:** Single-track audio streams (radio, direct URLs) use `SetAVTransportURI`. However, multi-track container favorites (Spotify playlists, YouTube Music Liked Music, albums) cannot be set as `CurrentURI` directly. Agents must execute the 4-step queue replacement protocol:
+  1. Clear queue via `RemoveAllTracksFromQueue()`.
+  2. Enqueue container with stored DIDL-Lite metadata via `AddURIToQueue()`.
+  3. Set transport to local queue: `SetAVTransportURI("x-rincon-queue:<rincon>#0", "")`.
+  4. Initiate playback on the group coordinator: `targetClient.Play()`.
 
 ### 2. Web UI (Lit + Vite)
 - **Component Isolation:** Keep Lit components atomic and isolated (e.g., `lutron-card`, `sonos-card`). Use properties for data-in and custom events for data-out.
@@ -56,6 +61,11 @@ bd list --status closed --json | jq -r 'sort_by(.closed_at) | reverse | map(sele
 - **MCP Tool Output Schemas:** Per MCP SEP-2106 and OpenCode schema validation, tool `Out` types MUST be Go structs/records (JSON objects), never bare slices/arrays. For list operations, always return a wrapping struct (e.g. `type ListResult struct { Count int; Items []T }`).
 - **Binary Artifacts:** All compiled binaries (`homectl`, `mcp-sonos`, `sync-skills`) build into `./bin/` via `make build`. The `./bin` directory is strictly gitignored.
 - **Global MCP Installation:** Run `make install-mcp` (or `./scripts/install-mcp.sh`) to install MCP binaries to `~/.local/bin/homectl-mcp-<svc>` and register them into `~/.config/opencode/opencode.jsonc` with absolute executable paths, decoupling agent invocations from the repository working directory.
+- **Token Budget & Tool Consolidation:**
+  - Avoid tool sprawl: An MCP server MUST NOT exceed 10–12 focused tools.
+  - Consolidate related verbs: Use action parameters on composite tools (e.g. `sonos_control(action: "play" | "pause" | "join" | "unjoin")`) instead of creating separate tools for each verb.
+  - Bundle tone/DSP controls: Consolidate multiple settings into single tools with optional fields (e.g. `sonos_set_eq(night_mode?, dialog_level?, bass?)`).
+  - Keep prompt schema footprint under **1,500 tokens** per server.
 
 ### 7. Privacy, PII & Hardware Redaction
 - **Local State Isolation (`local/`):** Real physical hardware MAC addresses, static LAN IP allocations, physical camera entryway placements, and device serial numbers belong **ONLY in the gitignored `local/` directory** (e.g., `local/NETWORK_DISCOVERY.md`, `local/config.json`). Never commit or stage files under `local/`.
@@ -77,6 +87,21 @@ bd list --status closed --json | jq -r 'sort_by(.closed_at) | reverse | map(sele
 - **Git Hygiene:** Always commit `.dot` source files and compiled `.webp` images together in the same commit. Intermediate `*.png` files are strictly gitignored.
 - **Documentation Verification Gate:** Before completing an architecture change, assert that `npm --prefix docs run build` succeeds with zero errors and zero broken links.
 
+### 9. Feature Addition & Documentation Synchronization
+Whenever a new feature, CLI command, or MCP tool is added or modified, the implementing agent MUST update all associated layers in the same atomic change:
+
+1. **Core Engine & Tests:** Implement in `modules/<svc>/` with mock transport tests in `client_test.go`.
+2. **MCP Tool & SEP-2106 Schema:** Register in `cmd/mcp-<svc>/server.go` using typed object wrappers (never bare arrays). Add mock handler tests in `server_test.go`.
+3. **Canonical Skill & Manifests:**
+   - Update `skills/<name>/SKILL.md` (tool quick-reference table and prompt routing guidelines).
+   - Run `make sync-skills` to mirror to `plugins/<svc>/skills/`.
+4. **Documentation & Architecture Site:**
+   - Tool Reference: Update `docs/src/content/docs/agents/mcp-servers.md` (table and JSON Schema).
+   - Integration Guide: Update `docs/src/content/docs/integrations/<svc>.md`.
+   - CLI Reference: Update `docs/src/content/docs/interfaces/cli.md`.
+   - Architecture Page: Update `docs/src/content/docs/architecture/<svc>.md`.
+   - Graphviz Diagram: If tool surface or protocol changed, update `docs/src/assets/architecture/<svc>.dot` and recompile via `make diagrams`.
+
 ## Landing the Plane (Session Completion)
 
 **When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
@@ -84,7 +109,13 @@ bd list --status closed --json | jq -r 'sort_by(.closed_at) | reverse | map(sele
 **MANDATORY WORKFLOW:**
 
 1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
+2. **Run quality gates** (if code changed):
+   ```bash
+   make test                   # Go tests across workspace & modules
+   make check-skills           # Asserts zero drift in plugin bundles & valid script paths
+   npm --prefix docs run build # Asserts zero broken links or markdown errors in docs
+   git diff                    # Asserts zero real MACs or unmasked private IPs are staged
+   ```
 3. **Update issue status** - Close finished work, update in-progress items
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
