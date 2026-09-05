@@ -1,3 +1,4 @@
+// Package sonos provides UPnP/SOAP control and GENA event handling for Sonos speakers.
 package sonos
 
 import (
@@ -49,7 +50,6 @@ func (p *DiscoveryProvider) Discover(ctx context.Context) ([]discovery.Device, e
 	}
 	return devices, nil
 }
-
 
 // Device represents a discovered Sonos device
 type Device struct {
@@ -164,7 +164,8 @@ func LoadCache() ([]Device, error) {
 // GetDeviceName fetches the device name, Rincon ID, model name and model number from the Sonos XML description
 func GetDeviceName(ip string) (string, string, string, string, error) {
 	url := fmt.Sprintf("http://%s:1400/xml/device_description.xml", ip)
-	resp, err := http.Get(url)
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(url)
 	if err != nil {
 		return "", "", "", "", err
 	}
@@ -186,7 +187,7 @@ func GetDeviceName(ip string) (string, string, string, string, error) {
 	if err != nil {
 		return "", "", "", "", err
 	}
-	
+
 	rincon := desc.UDN
 	if strings.HasPrefix(rincon, "uuid:") {
 		rincon = rincon[5:]
@@ -217,7 +218,7 @@ func NewClient(ip string) *Client {
 // SOAPAction executes a SOAP command on the Sonos device
 func (c *Client) SOAPAction(controlURL, serviceType, action string, args map[string]string) (io.ReadCloser, error) {
 	url := fmt.Sprintf("http://%s:1400%s", c.ip, controlURL)
-	
+
 	body := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
   <s:Body>
@@ -357,12 +358,12 @@ func (c *Client) GetQueueCount() (int, error) {
 		"urn:schemas-upnp-org:service:ContentDirectory:1",
 		"Browse",
 		map[string]string{
-			"ObjectID":         "Q:0",
-			"BrowseFlag":       "BrowseDirectChildren",
-			"Filter":           "*",
-			"StartingIndex":    "0",
-			"RequestedCount":   "1",
-			"SortCriteria":     "",
+			"ObjectID":       "Q:0",
+			"BrowseFlag":     "BrowseDirectChildren",
+			"Filter":         "*",
+			"StartingIndex":  "0",
+			"RequestedCount": "1",
+			"SortCriteria":   "",
 		})
 	if err != nil {
 		return 0, err
@@ -393,7 +394,7 @@ func (c *Client) Play() error {
 			"InstanceID": "0",
 			"Speed":      "1",
 		})
-	
+
 	// 2. If it fails with 701 (Transition Not Available), try to load the queue
 	if err != nil && strings.Contains(err.Error(), "701") {
 		if sonosLogger != nil {
@@ -408,7 +409,7 @@ func (c *Client) Play() error {
 				time.Sleep(500 * time.Millisecond)
 			} else {
 				// Final fallback: Sonos Radio
-			radioURI := "x-sonosapi-radio:sonos:158288?sid=303&flags=0&sn=1"
+				radioURI := "x-sonosapi-radio:sonos:158288?sid=303&flags=0&sn=1"
 				client.SetAVTransportURI(radioURI, "")
 				time.Sleep(500 * time.Millisecond)
 			}
@@ -613,7 +614,7 @@ type TrackMetadata struct {
 	Artist        string `xml:"creator"`
 	Album         string `xml:"album"`
 	StreamContent string `xml:"streamContent"`
-	AudioFormat   string `xml:"res"` 
+	AudioFormat   string `xml:"res"`
 	AlbumArtURI   string `xml:"albumArtURI"`
 }
 
@@ -728,10 +729,10 @@ type ZoneGroup struct {
 }
 
 type ZoneGroupMember struct {
-	UUID            string `xml:"UUID,attr"`
-	Location        string `xml:"Location,attr"`
-	RoomName        string `xml:"ZoneName,attr"`
-	Invisible       bool   `xml:"Invisible,attr"`
+	UUID             string `xml:"UUID,attr"`
+	Location         string `xml:"Location,attr"`
+	RoomName         string `xml:"ZoneName,attr"`
+	Invisible        bool   `xml:"Invisible,attr"`
 	IsZoneStandAlone bool   `xml:"IsZoneStandAlone,attr"`
 }
 
@@ -748,13 +749,17 @@ func (c *Client) ParseTrackMetadata(xmlStr string) (TrackMetadata, error) {
 		start := strings.Index(s, "<"+tag+">")
 		if start == -1 {
 			start = strings.Index(s, ":"+tag+">")
-			if start == -1 { return "" }
+			if start == -1 {
+				return ""
+			}
 			start += len(tag) + 2
 		} else {
 			start += len(tag) + 2
 		}
 		end := strings.Index(s[start:], "</")
-		if end == -1 { return "" }
+		if end == -1 {
+			return ""
+		}
 		return html.UnescapeString(s[start : start+end])
 	}
 	meta.Title = findTag(xmlStr, "title")

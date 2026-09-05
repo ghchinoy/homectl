@@ -1,3 +1,4 @@
+// Package config provides configuration directory and nickname management conforming to the XDG specification.
 package config
 
 import (
@@ -39,7 +40,7 @@ func GetPath(filename string) string {
 
 // EnsureDir ensures the configuration directory exists
 func EnsureDir() error {
-	return os.MkdirAll(GetConfigDir(), 0755)
+	return os.MkdirAll(GetConfigDir(), 0700)
 }
 
 // LoadNicknames loads the device nicknames from nicknames.json

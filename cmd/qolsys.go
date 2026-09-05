@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -21,12 +20,12 @@ var qolsysCmd = &cobra.Command{
 var qolsysMonitorCmd = &cobra.Command{
 	Use:   "monitor",
 	Short: "Stream events from the IQ Panel",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		addr, _ := cmd.Flags().GetString("host")
 		token, _ := cmd.Flags().GetString("token")
 
 		if addr == "" || token == "" {
-			log.Fatal("Host and Token are required")
+			return fmt.Errorf("both --host and --token are required")
 		}
 
 		client := qolsys.NewClient(addr, token)
@@ -34,32 +33,33 @@ var qolsysMonitorCmd = &cobra.Command{
 			fmt.Printf("EVENT: %v\n", msg)
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		connectCtx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
 		defer cancel()
 
 		fmt.Printf("Connecting to %s...\n", addr)
-		if err := client.Connect(ctx); err != nil {
-			log.Fatalf("Connection failed: %v", err)
+		if err := client.Connect(connectCtx); err != nil {
+			return fmt.Errorf("connection failed: %w", err)
 		}
 		defer client.Close()
 		fmt.Println("Connected! Listening for events (Ctrl+C to stop)...")
 
 		// Keep alive/Initial info request
-		client.Send(context.Background(), "INFO", nil)
+		_ = client.Send(cmd.Context(), "INFO", nil)
 
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 		errChan := make(chan error, 1)
 		go func() {
-			errChan <- client.ReadLoop(context.Background())
+			errChan <- client.ReadLoop(cmd.Context())
 		}()
 
 		select {
 		case <-sigChan:
 			fmt.Println("\nStopping...")
+			return nil
 		case err := <-errChan:
-			log.Fatalf("Read error: %v", err)
+			return fmt.Errorf("read error: %w", err)
 		}
 	},
 }

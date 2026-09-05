@@ -4,22 +4,22 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ghchinoy/homectl/pkg/camera"
+	"github.com/ghchinoy/homectl/pkg/cast"
 	"github.com/ghchinoy/homectl/pkg/discovery"
 	"github.com/ghchinoy/homectl/pkg/leap"
 	"github.com/ghchinoy/homectl/pkg/miio"
-	"github.com/ghchinoy/homectl/pkg/sonos"
-	"github.com/ghchinoy/homectl/pkg/cast"
 	"github.com/ghchinoy/homectl/pkg/onvif"
-	"github.com/ghchinoy/homectl/pkg/camera"
+	"github.com/ghchinoy/homectl/pkg/sonos"
 	"github.com/spf13/cobra"
 )
 
 var discoverCmd = &cobra.Command{
 	Use:   "discover",
 	Short: "Discover all smart home devices on the network",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Println("Starting network-wide discovery...")
-		
+
 		manager := discovery.NewManager()
 		manager.AddProvider(&leap.DiscoveryProvider{})
 		manager.AddProvider(&sonos.DiscoveryProvider{})
@@ -32,7 +32,7 @@ var discoverCmd = &cobra.Command{
 
 		if len(devices) == 0 {
 			fmt.Println("No devices found.")
-			return
+			return nil
 		}
 
 		fmt.Printf("\n%-10s %-20s %-15s %-30s\n", "PROVIDER", "NAME", "IP", "MODEL/ID")
@@ -45,6 +45,7 @@ var discoverCmd = &cobra.Command{
 			fmt.Printf("%-10s %-20s %-15s %-30s\n", d.Provider, d.Name, d.IP, model)
 		}
 		fmt.Printf("\nTotal devices found: %d\n", len(devices))
+		return nil
 	},
 }
 

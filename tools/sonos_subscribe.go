@@ -1,3 +1,5 @@
+//go:build ignore
+
 package main
 
 import (
@@ -60,7 +62,7 @@ func main() {
 	}
 
 	fmt.Println("Waiting for events... (Ctrl+C to quit)")
-	
+
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop

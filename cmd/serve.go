@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"html"
 	"io"
-	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -25,10 +26,13 @@ var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start the homectl API server",
 	Long:  `Starts an HTTP server that provides an API for controlling Lutron and Sonos devices.`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		port, _ := cmd.Flags().GetInt("port")
-		
-		client := getClient(cmd)
+
+		client, err := getClient(cmd)
+		if err != nil {
+			return fmt.Errorf("lutron client: %w", err)
+		}
 		defer client.Close()
 
 		http.HandleFunc("/api/lutron/devices", func(w http.ResponseWriter, r *http.Request) {
@@ -148,7 +152,7 @@ var serveCmd = &cobra.Command{
 				pos, _ := client.GetPositionInfo()
 				meta, _ := client.ParseTrackMetadata(pos.TrackMetaData)
 				vol, _ := client.GetVolume()
-				
+
 				results[d.IP] = map[string]interface{}{
 					"status":    transport.CurrentTransportState,
 					"volume":    vol,
@@ -206,7 +210,7 @@ var serveCmd = &cobra.Command{
 			manager := discovery.NewManager()
 			manager.AddProvider(&camera.DiscoveryProvider{})
 			devices := manager.DiscoverAll(2 * time.Second)
-			
+
 			nicknames := config.LoadNicknames()
 			var results []map[string]string
 			for _, d := range devices {
@@ -235,7 +239,7 @@ var serveCmd = &cobra.Command{
 			if cfg.CameraAuth != "" {
 				rtspURL = fmt.Sprintf("rtsp://%s@%s:554", cfg.CameraAuth, ip)
 			}
-			
+
 			// Use context to kill ffmpeg when the browser disconnects
 			ctx, cancel := context.WithCancel(r.Context())
 			defer cancel()
@@ -278,15 +282,42 @@ var serveCmd = &cobra.Command{
 				return
 			}
 
-			// Some Sonos metadata returns full URLs, others relative
-			url := path
-			if !strings.HasPrefix(path, "http") {
-				url = fmt.Sprintf("http://%s:1400%s", ip, path)
+			parsedIP := net.ParseIP(ip)
+			if parsedIP == nil || parsedIP.To4() == nil {
+				http.Error(w, "invalid ip address", http.StatusBadRequest)
+				return
 			}
 
-			fmt.Printf("Proxying Art: %s\n", url)
-			
-			resp, err := http.Get(url)
+			targetURL := path
+			if !strings.HasPrefix(path, "http://") && !strings.HasPrefix(path, "https://") {
+				if !strings.HasPrefix(path, "/") {
+					path = "/" + path
+				}
+				targetURL = fmt.Sprintf("http://%s:1400%s", ip, path)
+			} else {
+				parsed, err := url.Parse(path)
+				if err != nil {
+					http.Error(w, "invalid art url", http.StatusBadRequest)
+					return
+				}
+				hostOnly := parsed.Hostname()
+				if hostOnly == "localhost" || hostOnly == "127.0.0.1" || strings.HasPrefix(hostOnly, "169.254.") {
+					http.Error(w, "access to internal host is blocked", http.StatusForbidden)
+					return
+				}
+				targetIP := net.ParseIP(hostOnly)
+				if targetIP != nil && (targetIP.IsLoopback() || targetIP.IsLinkLocalUnicast()) {
+					http.Error(w, "access to internal host is blocked", http.StatusForbidden)
+					return
+				}
+				if targetIP != nil && targetIP.String() != parsedIP.String() {
+					http.Error(w, "art url host does not match speaker", http.StatusForbidden)
+					return
+				}
+			}
+
+			artClient := &http.Client{Timeout: 5 * time.Second}
+			resp, err := artClient.Get(targetURL)
 			if err != nil {
 				fmt.Printf("Art Proxy Error: %v\n", err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -357,7 +388,7 @@ var serveCmd = &cobra.Command{
 		http.Handle("/", http.FileServer(http.Dir(uiDir)))
 
 		fmt.Printf("Starting homectl API server on :%d (serving UI from %s)\n", port, uiDir)
-		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
+		return http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 	},
 }
 

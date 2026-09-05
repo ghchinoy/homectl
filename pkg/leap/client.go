@@ -1,3 +1,4 @@
+// Package leap provides client communication with Lutron Caseta and RA2 Select bridges via the LEAP protocol.
 package leap
 
 import (
@@ -6,9 +7,11 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -48,7 +51,6 @@ func (p *DiscoveryProvider) Discover(ctx context.Context) ([]discovery.Device, e
 	}
 	return devices, nil
 }
-
 
 var (
 	tagCounter uint64
@@ -315,8 +317,15 @@ func isNetErr(err error) bool {
 	if err == nil {
 		return false
 	}
-	// Check for common connection errors
-	return true // Simplified for now to retry on any error
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+	var opErr *net.OpError
+	return errors.As(err, &opErr)
 }
 
 func (c *Client) doRequest(req Message) (Message, error) {
@@ -329,8 +338,8 @@ func (c *Client) doRequest(req Message) (Message, error) {
 
 	tag := nextTag()
 	req.Header.ClientTag = tag
-	
-data, err := json.Marshal(req)
+
+	data, err := json.Marshal(req)
 	if err != nil {
 		return Message{}, err
 	}
@@ -477,7 +486,7 @@ func (c *Client) SetLevel(zoneHref string, level float64) error {
 			},
 		},
 	}
-	
+
 	body, _ := json.Marshal(cmdBody)
 	req := Message{
 		CommuniqueType: "CreateRequest",
@@ -486,7 +495,7 @@ func (c *Client) SetLevel(zoneHref string, level float64) error {
 		},
 		Body: body,
 	}
-	
+
 	resp, err := c.Request(req)
 	if err != nil {
 		return err

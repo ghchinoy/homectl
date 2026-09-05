@@ -1,3 +1,5 @@
+//go:build ignore
+
 package main
 
 import (
@@ -35,7 +37,7 @@ func main() {
 		log.Fatalf("Failed to listen: %v", err)
 	}
 	actualPort := l.Addr().(*net.TCPAddr).Port
-	
+
 	// 2. Determine Callback URL
 	cbIP := *callbackIP
 	if cbIP == "" {

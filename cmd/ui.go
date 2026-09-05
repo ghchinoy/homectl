@@ -1,8 +1,7 @@
-
 package cmd
 
 import (
-	"log"
+	"fmt"
 
 	"github.com/ghchinoy/homectl/pkg/tui"
 	"github.com/spf13/cobra"
@@ -11,13 +10,17 @@ import (
 var uiCmd = &cobra.Command{
 	Use:   "ui",
 	Short: "Launch the interactive Terminal UI",
-	Run: func(cmd *cobra.Command, args []string) {
-		client := getClient(cmd)
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client, err := getClient(cmd)
+		if err != nil {
+			return err
+		}
 		defer client.Close()
 
 		if err := tui.Start(client); err != nil {
-			log.Fatalf("TUI Error: %v", err)
+			return fmt.Errorf("tui error: %w", err)
 		}
+		return nil
 	},
 }
 

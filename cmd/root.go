@@ -1,9 +1,8 @@
-
+// Package cmd provides the Cobra CLI commands for homectl.
 package cmd
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -14,23 +13,24 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   "homectl",
-	Short: "homectl is a CLI for Lutron Caseta and RA2 Select",
-	Long:  `A modern, Go-powered toolkit for local smart home management.`,
+	Short: "homectl is a CLI for local smart home management",
+	Long:  `A modern, Go-powered toolkit for local smart home management (Lutron, Sonos, Google Cast, and RTSP cameras).`,
 }
 
+// Execute runs the root command and exits on error.
 func Execute() {
-	config.EnsureDir()
+	_ = config.EnsureDir()
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func getClient(cmd *cobra.Command) *leap.Client {
+func getClient(cmd *cobra.Command) (*leap.Client, error) {
 	addr, _ := cmd.Flags().GetString("bridge")
-	
-	// If the default IP is used, try discovery/cache first
-	if addr == "192.168.4.90" {
+
+	// If empty or default fallback, try cache then discovery
+	if addr == "" || addr == "192.168.4.90" {
 		cached, _ := leap.LoadCache()
 		if len(cached) > 0 {
 			addr = cached[0].IP
@@ -39,12 +39,16 @@ func getClient(cmd *cobra.Command) *leap.Client {
 			bridges, _ := leap.Discover(2 * time.Second)
 			if len(bridges) > 0 {
 				addr = bridges[0].IP
-				leap.SaveCache(bridges)
+				_ = leap.SaveCache(bridges)
 			}
 		}
 	}
 
-	// Certs are now in the config directory
+	if addr == "" {
+		return nil, fmt.Errorf("no Lutron bridge specified or discovered; pass --bridge <ip>")
+	}
+
+	// Certs are in the config directory
 	client, err := leap.NewClient(
 		addr+":8081",
 		config.GetPath("lutron_client.crt"),
@@ -52,15 +56,14 @@ func getClient(cmd *cobra.Command) *leap.Client {
 		config.GetPath("lutron_ca.crt"),
 	)
 	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
+		return nil, fmt.Errorf("create Lutron client: %w", err)
 	}
 	if err := client.Connect(); err != nil {
-		log.Fatalf("Failed to connect to Lutron bridge at %s: %v", addr, err)
+		return nil, fmt.Errorf("connect to Lutron bridge at %s: %w", addr, err)
 	}
-	return client
+	return client, nil
 }
 
 func init() {
-	// Global flags can be added here
-	rootCmd.PersistentFlags().String("bridge", "192.168.4.90", "Lutron Bridge IP address")
+	rootCmd.PersistentFlags().String("bridge", "", "Lutron Bridge IP address (defaults to auto-discovery or cache)")
 }

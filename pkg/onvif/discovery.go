@@ -1,3 +1,4 @@
+// Package onvif provides WS-Discovery probing for ONVIF-compliant IP cameras.
 package onvif
 
 import (
@@ -72,11 +73,11 @@ func (p *DiscoveryProvider) Discover(ctx context.Context) ([]discovery.Device, e
 		}
 
 		resp := string(buf[:n])
-		
+
 		// Very basic XML parsing to extract name/model from Scopes
 		name := "ONVIF Camera"
 		model := "Unknown"
-		
+
 		// Scopes often look like: onvif://www.onvif.org/name/Front_Door onvif://www.onvif.org/hardware/ADC-V522IR
 		scopesIdx := strings.Index(resp, "<d:Scopes>")
 		if scopesIdx != -1 {

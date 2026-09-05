@@ -1,3 +1,4 @@
+// Package cast provides Google Cast device discovery and media playback control.
 package cast
 
 import (
@@ -8,7 +9,7 @@ import (
 
 // Status represents the current state of a Google Cast device
 type Status struct {
-	AppId       string  `json:"app_id"`
+	AppID       string  `json:"app_id"`
 	DisplayName string  `json:"display_name"`
 	Volume      float64 `json:"volume"`
 	IsMuted     bool    `json:"is_muted"`
@@ -32,7 +33,7 @@ func GetStatus(ip string) (Status, error) {
 	res := Status{}
 
 	if appStatus != nil {
-		res.AppId = appStatus.AppId
+		res.AppID = appStatus.AppId
 		res.DisplayName = appStatus.DisplayName
 		res.StatusText = appStatus.StatusText
 	}

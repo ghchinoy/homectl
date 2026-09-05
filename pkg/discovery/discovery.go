@@ -1,3 +1,4 @@
+// Package discovery provides a coordinated registry and scanner for IoT devices across multiple protocols.
 package discovery
 
 import (

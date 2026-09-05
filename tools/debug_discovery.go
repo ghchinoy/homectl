@@ -1,3 +1,5 @@
+//go:build ignore
+
 package main
 
 import (
@@ -32,4 +34,3 @@ func main() {
 		fmt.Printf("Response from %s:\n%s\n---\n", addr, string(buf[:n]))
 	}
 }
-

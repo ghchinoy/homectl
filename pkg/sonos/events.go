@@ -105,7 +105,7 @@ func (l *GENAListener) handleNotify(w http.ResponseWriter, r *http.Request) {
 
 	body, _ := io.ReadAll(r.Body)
 	ip := strings.Split(r.RemoteAddr, ":")[0]
-	
+
 	if sonosLogger != nil {
 		sonosLogger.Printf("NOTIFY from %s\n", ip)
 	}

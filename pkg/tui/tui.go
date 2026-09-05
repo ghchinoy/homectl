@@ -1,3 +1,4 @@
+// Package tui provides an interactive terminal user interface built with Bubble Tea.
 package tui
 
 import (
@@ -29,18 +30,18 @@ var (
 	statusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
 	helpStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Margin(1, 0)
 	detailStyle = lipgloss.NewStyle().
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("241")).
-		Padding(1, 2).
-		MarginLeft(2)
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(lipgloss.Color("241")).
+			Padding(1, 2).
+			MarginLeft(2)
 
 	activeTabStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("255")).
-		Background(lipgloss.Color("205")).
-		Padding(0, 1).
-		Bold(true)
+			Foreground(lipgloss.Color("255")).
+			Background(lipgloss.Color("205")).
+			Padding(0, 1).
+			Bold(true)
 	inactiveTabStyle = lipgloss.NewStyle().
-		Padding(0, 1)
+				Padding(0, 1)
 )
 
 type item struct {
@@ -74,18 +75,18 @@ func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title }
 
 type model struct {
-	mode       sessionMode
-	lightsList list.Model
-	musicList  list.Model
-	areasList  list.Model
+	mode          sessionMode
+	lightsList    list.Model
+	musicList     list.Model
+	areasList     list.Model
 	groupsList    list.Model
 	leapClient    *leap.Client
 	sonosListener *sonos.GENAListener
 	err           error
-	status     string
-	progress   progress.Model
-	width      int
-	height     int
+	status        string
+	progress      progress.Model
+	width         int
+	height        int
 
 	// Nickname editing
 	textInput textinput.Model
@@ -93,9 +94,38 @@ type model struct {
 }
 
 func (m model) saveNicknames() {
-	nicknames := make(map[string]string)
-// ... (keep logic)
-	config.SaveNicknames(nicknames)
+	nicknames := config.LoadNicknames()
+	if nicknames == nil {
+		nicknames = make(map[string]string)
+	}
+	for _, itm := range m.lightsList.Items() {
+		if i, ok := itm.(item); ok && i.zoneHref != "" {
+			if i.nickname != "" {
+				nicknames[i.zoneHref] = i.nickname
+			} else {
+				delete(nicknames, i.zoneHref)
+			}
+		}
+	}
+	for _, itm := range m.musicList.Items() {
+		if i, ok := itm.(item); ok && i.ip != "" {
+			if i.nickname != "" {
+				nicknames[i.ip] = i.nickname
+			} else {
+				delete(nicknames, i.ip)
+			}
+		}
+	}
+	for _, itm := range m.areasList.Items() {
+		if i, ok := itm.(item); ok && i.zoneHref != "" {
+			if i.nickname != "" {
+				nicknames[i.zoneHref] = i.nickname
+			} else {
+				delete(nicknames, i.zoneHref)
+			}
+		}
+	}
+	_ = config.SaveNicknames(nicknames)
 }
 
 func (m model) Init() tea.Cmd {
@@ -368,7 +398,7 @@ func (m model) refreshMusic() tea.Cmd {
 			transport, _ := client.GetTransportInfo()
 			pos, _ := client.GetPositionInfo()
 			media, _ := client.GetMediaInfo()
-			
+
 			meta, _ := client.ParseTrackMetadata(pos.TrackMetaData)
 			nextMeta, _ := client.ParseTrackMetadata(media.NextURIMetaData)
 
@@ -402,13 +432,13 @@ func (m model) refreshGroups() tea.Cmd {
 		if len(speakers) == 0 {
 			return refreshGroupsMsg(groupItems)
 		}
-		
+
 		client := sonos.NewClient(speakers[0].IP)
 		state, err := client.GetZoneGroupState()
 		if err != nil {
 			return statusMsg(fmt.Sprintf("Groups Error: %v", err))
 		}
-		
+
 		for _, g := range state.Groups {
 			members := ""
 			groupName := ""
@@ -416,10 +446,12 @@ func (m model) refreshGroups() tea.Cmd {
 				if mm.UUID == g.Coordinator {
 					groupName = mm.RoomName
 				}
-				if members != "" { members += ", " }
+				if members != "" {
+					members += ", "
+				}
 				members += mm.RoomName
 			}
-			
+
 			if len(g.Members) > 1 {
 				groupName = fmt.Sprintf("%s + %d", groupName, len(g.Members)-1)
 			}
@@ -528,11 +560,11 @@ func (m model) setLevel(level float64) tea.Cmd {
 		if err != nil {
 			return statusMsg(fmt.Sprintf("Error: %v", err))
 		}
-		
+
 		if m.mode == modeAreas || (m.mode == modeLights && i.isAll) {
 			return m.refreshLights()()
 		}
-		
+
 		return statusMsg(fmt.Sprintf("Set %s to %.0f%%", i.title, level))
 	}
 }
@@ -706,7 +738,7 @@ func (m model) View() string {
 		}
 		detailView = detailStyle.
 			Height(currentList.Height()).
-			Width(int(float64(m.width)*0.3)).
+			Width(int(float64(m.width) * 0.3)).
 			Render(detailText)
 	}
 
@@ -863,99 +895,93 @@ func Start(leapClient *leap.Client) error {
 	m.areasList.SetShowTitle(true)
 	m.groupsList.SetShowTitle(true)
 
-		p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m, tea.WithAltScreen())
 
-	
+	// Initialize GENA listener
 
-		// Initialize GENA listener
+	listener := &sonos.GENAListener{
 
-		listener := &sonos.GENAListener{
+		Handler: func(event sonos.EventMsg) {
 
-			Handler: func(event sonos.EventMsg) {
+			p.Send(event)
 
-				p.Send(event)
+		},
+	}
 
-			},
+	callbackURL, err := listener.Start()
 
-		}
+	if err == nil {
 
-		callbackURL, err := listener.Start()
+		m.sonosListener = listener
 
-		if err == nil {
-
-			m.sonosListener = listener
-
-			// Initial subscriptions for cached items
-
-			go func() {
-
-				for _, itm := range musicItems {
-
-					i := itm.(item)
-
-					if i.ip != "" {
-
-						client := sonos.NewClient(i.ip)
-
-						client.Subscribe("/MediaRenderer/AVTransport/Event", callbackURL, 300)
-
-						client.Subscribe("/MediaRenderer/RenderingControl/Event", callbackURL, 300)
-
-					}
-
-				}
-
-			}()
-
-		}
-
-	
-
-		// Trigger discovery after startup
+		// Initial subscriptions for cached items
 
 		go func() {
 
-			speakers, _ := sonos.Discover(5 * time.Second)
+			for _, itm := range musicItems {
 
-			if len(speakers) > 0 {
+				i := itm.(item)
 
-				sonos.SaveCache(speakers)
+				if i.ip != "" {
 
-				var items []list.Item
+					client := sonos.NewClient(i.ip)
 
-				merged, _ := sonos.LoadCache()
+					client.Subscribe("/MediaRenderer/AVTransport/Event", callbackURL, 300)
 
-				for _, s := range merged {
-
-					if callbackURL != "" {
-
-						client := sonos.NewClient(s.IP)
-
-						client.Subscribe("/MediaRenderer/AVTransport/Event", callbackURL, 300)
-
-						client.Subscribe("/MediaRenderer/RenderingControl/Event", callbackURL, 300)
-
-					}
-
-										items = append(items, item{
-
-											title:    s.Name,
-
-											ip:       s.IP,
-
-											desc:     fmt.Sprintf("%s (%s)", s.ModelName, s.ModelNumber),
-
-											nickname: nicknames[s.IP],
-
-										})
+					client.Subscribe("/MediaRenderer/RenderingControl/Event", callbackURL, 300)
 
 				}
-
-				p.Send(musicItemsMsg(items))
 
 			}
 
 		}()
+
+	}
+
+	// Trigger discovery after startup
+
+	go func() {
+
+		speakers, _ := sonos.Discover(5 * time.Second)
+
+		if len(speakers) > 0 {
+
+			sonos.SaveCache(speakers)
+
+			var items []list.Item
+
+			merged, _ := sonos.LoadCache()
+
+			for _, s := range merged {
+
+				if callbackURL != "" {
+
+					client := sonos.NewClient(s.IP)
+
+					client.Subscribe("/MediaRenderer/AVTransport/Event", callbackURL, 300)
+
+					client.Subscribe("/MediaRenderer/RenderingControl/Event", callbackURL, 300)
+
+				}
+
+				items = append(items, item{
+
+					title: s.Name,
+
+					ip: s.IP,
+
+					desc: fmt.Sprintf("%s (%s)", s.ModelName, s.ModelNumber),
+
+					nickname: nicknames[s.IP],
+				})
+
+			}
+
+			p.Send(musicItemsMsg(items))
+
+		}
+
+	}()
 
 	_, err = p.Run()
 	return err

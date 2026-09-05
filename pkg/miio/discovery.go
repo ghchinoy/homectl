@@ -1,3 +1,4 @@
+// Package miio provides discovery for Xiaomi/Roborock devices via the Mi Home protocol.
 package miio
 
 import (
@@ -37,7 +38,6 @@ func (p *DiscoveryProvider) Discover(ctx context.Context) ([]discovery.Device, e
 	}
 	return devices, nil
 }
-
 
 // Device represents a discovered miio device
 type Device struct {

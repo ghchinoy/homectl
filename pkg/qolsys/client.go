@@ -1,3 +1,4 @@
+// Package qolsys provides secure WebSocket client communication with Qolsys IQ Panel alarm systems.
 package qolsys
 
 import (
@@ -82,11 +83,11 @@ func (c *Client) Send(ctx context.Context, action string, params map[string]inte
 	}
 
 	payload := map[string]interface{}{
-		"action":      action,
-		"user_pin":    c.token, // Some versions use token as pin
-		"version":     1,
-		"nonce":       fmt.Sprintf("%d", time.Now().Unix()),
-		"source":      "homectl",
+		"action":   action,
+		"user_pin": c.token, // Some versions use token as pin
+		"version":  1,
+		"nonce":    fmt.Sprintf("%d", time.Now().Unix()),
+		"source":   "homectl",
 	}
 	for k, v := range params {
 		payload[k] = v

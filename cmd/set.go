@@ -1,9 +1,7 @@
-
 package cmd
 
 import (
 	"fmt"
-	"log"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -18,22 +16,25 @@ var setLevelCmd = &cobra.Command{
 	Use:   "level [zone_href] [0-100]",
 	Short: "Set the dimming level of a zone",
 	Args:  cobra.ExactArgs(2),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		zoneHref := args[0]
 		level, err := strconv.ParseFloat(args[1], 64)
 		if err != nil {
-			log.Fatalf("Invalid level: %v", err)
+			return fmt.Errorf("invalid level %q: %w", args[1], err)
 		}
 
-		client := getClient(cmd)
+		client, err := getClient(cmd)
+		if err != nil {
+			return err
+		}
 		defer client.Close()
 
 		fmt.Printf("Setting %s to %.0f%%...\n", zoneHref, level)
-		err = client.SetLevel(zoneHref, level)
-		if err != nil {
-			log.Fatalf("Failed to set level: %v", err)
+		if err := client.SetLevel(zoneHref, level); err != nil {
+			return fmt.Errorf("set level: %w", err)
 		}
 		fmt.Println("Success!")
+		return nil
 	},
 }
 
@@ -41,21 +42,24 @@ var setAllCmd = &cobra.Command{
 	Use:   "all [0-100]",
 	Short: "Set the level for all lights",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		level, err := strconv.ParseFloat(args[0], 64)
 		if err != nil {
-			log.Fatalf("Invalid level: %v", err)
+			return fmt.Errorf("invalid level %q: %w", args[0], err)
 		}
 
-		client := getClient(cmd)
+		client, err := getClient(cmd)
+		if err != nil {
+			return err
+		}
 		defer client.Close()
 
 		fmt.Printf("Setting all lights to %.0f%%...\n", level)
-		err = client.SetAllLevels(level)
-		if err != nil {
-			log.Fatalf("Failed to set all levels: %v", err)
+		if err := client.SetAllLevels(level); err != nil {
+			return fmt.Errorf("set all levels: %w", err)
 		}
 		fmt.Println("Success!")
+		return nil
 	},
 }
 
