@@ -31,6 +31,8 @@ type MockClient struct {
 	lastEnqueuedMetadata string
 	lastSeekTrack        int
 	lastSeekTarget       string
+	nrTracks             int
+	mediaURI             string
 }
 
 func (m *MockClient) GetVolume() (int, error) {
@@ -60,6 +62,21 @@ func (m *MockClient) GetPositionInfo() (sonos.PositionInfo, error) {
 		RelTime:       "0:01:45",
 		TrackMetaData: "<item><title>Mock Song</title></item>",
 		TrackURI:      m.trackURI,
+	}, nil
+}
+
+func (m *MockClient) GetMediaInfo() (sonos.MediaInfo, error) {
+	nr := m.nrTracks
+	if nr == 0 {
+		nr = 12
+	}
+	uri := m.mediaURI
+	if uri == "" {
+		uri = "x-rincon-queue:RINCON_123456#0"
+	}
+	return sonos.MediaInfo{
+		NrTracks:   nr,
+		CurrentURI: uri,
 	}, nil
 }
 
@@ -306,11 +323,13 @@ func TestSonosListSpeakersTool(t *testing.T) {
 
 func TestSonosGetNowPlayingTool(t *testing.T) {
 	mock := &MockClient{
-		volume: 30,
-		state:  "PLAYING",
-		title:  "Take Five",
-		artist: "Dave Brubeck",
-		album:  "Time Out",
+		volume:   30,
+		state:    "PLAYING",
+		title:    "Take Five",
+		artist:   "Dave Brubeck",
+		album:    "Time Out",
+		nrTracks: 15,
+		mediaURI: "x-rincon-queue:RINCON_123456#0",
 	}
 	session, cleanup := setupTestSession(t, mock)
 	defer cleanup()
@@ -340,6 +359,12 @@ func TestSonosGetNowPlayingTool(t *testing.T) {
 
 	if nowPlaying.Title != "Take Five" || nowPlaying.Artist != "Dave Brubeck" || nowPlaying.Volume != 30 {
 		t.Errorf("unexpected now-playing result: %+v", nowPlaying)
+	}
+	if nowPlaying.QueueLength != 15 {
+		t.Errorf("expected QueueLength 15, got %d", nowPlaying.QueueLength)
+	}
+	if nowPlaying.MediaURI != "x-rincon-queue:RINCON_123456#0" {
+		t.Errorf("expected MediaURI 'x-rincon-queue:RINCON_123456#0', got %s", nowPlaying.MediaURI)
 	}
 }
 
@@ -522,11 +547,12 @@ func TestSonosGetNowPlayingFollowerRedirect(t *testing.T) {
 		coordinatorIP: coordinatorIP,
 	}
 	coordinator := &MockClient{
-		ip:     coordinatorIP,
-		volume: 22,
-		state:  "STOPPED",
-		title:  "Poison",
-		artist: "Alice Cooper",
+		ip:       coordinatorIP,
+		volume:   22,
+		state:    "STOPPED",
+		title:    "Poison",
+		artist:   "Alice Cooper",
+		nrTracks: 8,
 	}
 
 	factory := func(ip string) ClientInterface {
@@ -576,6 +602,9 @@ func TestSonosGetNowPlayingFollowerRedirect(t *testing.T) {
 	}
 	if np.Title != "Poison" || np.Artist != "Alice Cooper" {
 		t.Errorf("expected coordinator track 'Poison' by 'Alice Cooper', got %q by %q", np.Title, np.Artist)
+	}
+	if np.QueueLength != 8 {
+		t.Errorf("expected coordinator QueueLength 8, got %d", np.QueueLength)
 	}
 }
 

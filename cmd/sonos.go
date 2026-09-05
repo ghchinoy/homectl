@@ -33,6 +33,8 @@ type SonosNowPlayingOutput struct {
 	Duration      string              `json:"duration,omitempty"`
 	Progress      string              `json:"progress,omitempty"`
 	URI           string              `json:"uri,omitempty"`
+	QueueCount    int                 `json:"queue_count,omitempty"`
+	MediaURI      string              `json:"media_uri,omitempty"`
 	Track         sonos.TrackMetadata `json:"track"`
 	StreamContent string              `json:"stream_content,omitempty"`
 }
@@ -338,6 +340,7 @@ var nowPlayingCmd = &cobra.Command{
 		}
 
 		meta, _ := client.ParseTrackMetadata(pos.TrackMetaData)
+		media, _ := client.GetMediaInfo()
 
 		if isJSON(cmd) {
 			return json.NewEncoder(os.Stdout).Encode(SonosNowPlayingOutput{
@@ -347,6 +350,8 @@ var nowPlayingCmd = &cobra.Command{
 				Duration:      pos.TrackDuration,
 				Progress:      pos.RelTime,
 				URI:           pos.TrackURI,
+				QueueCount:    media.NrTracks,
+				MediaURI:      media.CurrentURI,
 				Track:         meta,
 				StreamContent: meta.StreamContent,
 			})
@@ -358,6 +363,9 @@ var nowPlayingCmd = &cobra.Command{
 		fmt.Printf("Duration: %s\n", pos.TrackDuration)
 		fmt.Printf("Progress: %s\n", pos.RelTime)
 		fmt.Printf("URI:      %s\n", pos.TrackURI)
+		if media.NrTracks > 0 {
+			fmt.Printf("Queue:    %d tracks\n", media.NrTracks)
+		}
 		return nil
 	},
 }

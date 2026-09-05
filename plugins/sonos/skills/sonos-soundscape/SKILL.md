@@ -93,7 +93,8 @@ For internet radio, podcasts, or TTS voice announcements:
    - When enqueuing a track without interrupting the current listening session, call `sonos_add_to_queue(ip: "<ip>", uri: "<uri>")`.
    - Use `as_next: true` to insert the track as the next song to play rather than clearing the playlist.
    - For cloud playlists, albums, or container items, pass the optional `metadata` parameter with the stored DIDL-Lite descriptor so the player can properly parse tracks.
-3. **Browsing & Inspecting the Queue (`sonos_get_queue`):**
+3. **Browsing & Inspecting the Queue (`sonos_get_queue` & `sonos_get_now_playing`):**
+   - Check `sonos_get_now_playing` for instant total queue size (`queue_length`) and media URI without fetching individual items.
    - Call `sonos_get_queue(ip: "<ip>", start: 0, count: 20)` to inspect upcoming tracks, current queue size (`total_matches`), and track positions.
    - Use pagination parameters `start` and `count` to browse large queues without inflating prompt context.
 4. **Queue Jumping & Time Seeking (`sonos_control`):**
@@ -109,7 +110,7 @@ When interacting with `homectl-sonos-mcp`:
 | Tool | Mode | Purpose | Key Parameters |
 |---|---|---|---|
 | `sonos_list_speakers` | 🔒 Read-Only | Discover speakers on LAN | `refresh: bool` |
-| `sonos_get_now_playing`| 🔒 Read-Only | Get track metadata & progress (resolves followers) | `ip: string` |
+| `sonos_get_now_playing`| 🔒 Read-Only | Track metadata, progress, queue length (resolves followers) | `ip: string` |
 | `sonos_get_topology`   | 🔒 Read-Only | Group & stereo-pair structure with coordinators | `ip: string` |
 | `sonos_control`        | ⚡ Mutating | Playback: play, pause, stop, next, prev, seek_track, seek_time | `ip: string`, `action: string`, `track?: int`, `target?: string` |
 | `sonos_set_volume`     | ⚡ Mutating | Adjust absolute or relative volume | `ip: string`, `volume?: int`, `delta?: int` |

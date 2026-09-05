@@ -19,6 +19,7 @@ type ClientInterface interface {
 	SetVolume(volume int) error
 	GetTransportInfo() (sonos.TransportInfo, error)
 	GetPositionInfo() (sonos.PositionInfo, error)
+	GetMediaInfo() (sonos.MediaInfo, error)
 	ParseTrackMetadata(xmlStr string) (sonos.TrackMetadata, error)
 	GetCoordinatorIP() (string, error)
 	GetZoneGroupState() (sonos.ZoneGroupState, error)
@@ -205,6 +206,10 @@ type NowPlayingResult struct {
 	// TrackURI is the raw transport URI. For a stereo-pair/group follower this is
 	// an "x-rincon:<coordinator-rincon>" reference rather than real media.
 	TrackURI string `json:"track_uri,omitempty"`
+	// QueueLength is the total number of tracks currently in the playback queue.
+	QueueLength int `json:"queue_length,omitempty"`
+	// MediaURI is the active transport/container media URI.
+	MediaURI string `json:"media_uri,omitempty"`
 	// IsFollower is true when the queried speaker was a stereo-pair/group follower
 	// whose transport merely mirrors the coordinator; in that case the reported
 	// fields are resolved from CoordinatorIP.
@@ -338,6 +343,7 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		transport, _ := client.GetTransportInfo()
 		vol, _ := client.GetVolume()
 		meta, _ := client.ParseTrackMetadata(pos.TrackMetaData)
+		media, _ := client.GetMediaInfo()
 
 		res := NowPlayingResult{
 			IP:            targetIP,
@@ -350,6 +356,8 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 			Progress:      pos.RelTime,
 			StreamContent: meta.StreamContent,
 			TrackURI:      pos.TrackURI,
+			QueueLength:   media.NrTracks,
+			MediaURI:      media.CurrentURI,
 			IsFollower:    isFollower,
 			CoordinatorIP: coordinatorIP,
 		}
@@ -364,6 +372,9 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 			summary = fmt.Sprintf("[%s] Stream: %s", res.State, res.StreamContent)
 		} else if res.Title == "" {
 			summary = fmt.Sprintf("[%s] No track loaded", res.State)
+		}
+		if res.QueueLength > 0 {
+			summary += fmt.Sprintf(" [Queue: %d tracks]", res.QueueLength)
 		}
 		if res.IsFollower {
 			summary = fmt.Sprintf("%s (resolved from stereo-pair/group coordinator %s)", summary, res.CoordinatorIP)

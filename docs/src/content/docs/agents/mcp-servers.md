@@ -75,7 +75,7 @@ Discovers all Sonos speakers on the local subnet or returns the cached topology 
 ---
 
 ### `sonos_get_now_playing` (Read-Only)
-Returns compact, token-optimized track status, duration, volume, and playback state.
+Returns compact, token-optimized track status, duration, volume, playback state, and queue length.
 
 * **Automatic Follower Resolution:** If invoked on a speaker that is a stereo-pair or group follower (reporting an `x-rincon:` URI), the tool automatically resolves the group coordinator IP, queries the coordinator, and returns authoritative metadata with `is_follower: true` and `coordinator_ip`.
 * **Parameters:**
@@ -99,6 +99,8 @@ Returns compact, token-optimized track status, duration, volume, and playback st
     "album": "The Wall",
     "duration": "0:06:24",
     "progress": "0:02:15",
+    "queue_length": 14,
+    "media_uri": "x-rincon-queue:RINCON_123456#0",
     "stream_content": "",
     "is_follower": false
   }
