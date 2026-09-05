@@ -1045,7 +1045,27 @@ func ParseFavorites(xmlStr string) ([]Favorite, error) {
 	return favorites, nil
 }
 
+// isContainerFavorite returns true if the favorite represents a container (playlist, album, etc.)
+// that must be enqueued into the playback queue rather than set directly as transport URI.
+func isContainerFavorite(fav *Favorite) bool {
+	if fav == nil {
+		return false
+	}
+	uri := strings.ToLower(fav.ResourceURI)
+	if strings.HasPrefix(uri, "x-rincon-cpcontainer:") ||
+		strings.HasPrefix(uri, "x-rincon-playlist:") ||
+		strings.HasPrefix(uri, "x-file-cifs:") {
+		return true
+	}
+	typ := strings.ToLower(fav.Type)
+	return strings.Contains(typ, "container") ||
+		strings.Contains(typ, "playlist") ||
+		strings.Contains(typ, "album")
+}
+
 // PlayFavorite starts playback of a favorite by ID (or title) with mandatory coordinator resolution.
+// For container/playlist favorites (e.g. YouTube Music Liked Music, Spotify playlists), it clears the
+// queue, enqueues the container with its stored metadata, points the transport to the queue, and begins playback.
 func (c *Client) PlayFavorite(idOrTitle string) error {
 	favs, err := c.BrowseFavorites()
 	if err != nil {
@@ -1079,6 +1099,49 @@ func (c *Client) PlayFavorite(idOrTitle string) error {
 		targetClient = NewClient(coordIP, WithHTTPClient(c.httpClient), WithLogger(c.log()), WithStorage(c.store()))
 	}
 
+	if isContainerFavorite(match) {
+		// 1. Clear existing queue (replace semantics)
+		_ = targetClient.RemoveAllTracksFromQueue()
+
+		// 2. Enqueue container with stored metadata
+		if _, err := targetClient.AddURIToQueue(match.ResourceURI, match.Metadata, false); err != nil {
+			return fmt.Errorf("enqueue favorite container %q: %w", match.Title, err)
+		}
+
+		// 3. Point transport to the local queue
+		var rincon string
+		_, r, _, _, nameErr := GetDeviceName(targetClient.ip)
+		if nameErr == nil && r != "" {
+			rincon = r
+		}
+		if rincon == "" {
+			if cached, err := LoadCache(); err == nil {
+				for _, d := range cached {
+					if d.IP == targetClient.ip && d.RinconID != "" {
+						rincon = d.RinconID
+						break
+					}
+				}
+			}
+		}
+
+		queueURI := "x-rincon-queue:0#0"
+		if rincon != "" {
+			queueURI = fmt.Sprintf("x-rincon-queue:%s#0", rincon)
+		}
+
+		if err := targetClient.SetAVTransportURI(queueURI, ""); err != nil {
+			return fmt.Errorf("set queue transport URI for favorite %q: %w", match.Title, err)
+		}
+
+		time.Sleep(300 * time.Millisecond)
+		if err := targetClient.Play(); err != nil {
+			return fmt.Errorf("play favorite queue %q: %w", match.Title, err)
+		}
+		return nil
+	}
+
+	// Single-item favorite (audio stream, internet radio, or individual track)
 	if err := targetClient.SetAVTransportURI(match.ResourceURI, match.Metadata); err != nil {
 		return fmt.Errorf("set transport URI for favorite %q: %w", match.Title, err)
 	}
@@ -1193,6 +1256,28 @@ func (c *Client) AddURIToQueue(uri, metadata string, asNext bool) (int, error) {
 	}
 
 	return 1, nil
+}
+
+// RemoveAllTracksFromQueue clears all tracks from the speaker's playback queue on the group coordinator.
+func (c *Client) RemoveAllTracksFromQueue() error {
+	coordIP, _ := c.GetCoordinatorIP()
+	targetClient := c
+	if coordIP != "" && coordIP != c.ip {
+		targetClient = NewClient(coordIP, WithHTTPClient(c.httpClient), WithLogger(c.log()), WithStorage(c.store()))
+	}
+
+	body, err := targetClient.SOAPAction(
+		"/MediaRenderer/AVTransport/Control",
+		"urn:schemas-upnp-org:service:AVTransport:1",
+		"RemoveAllTracksFromQueue",
+		map[string]string{
+			"InstanceID": "0",
+		})
+	if err != nil {
+		return fmt.Errorf("remove all tracks from queue: %w", err)
+	}
+	body.Close()
+	return nil
 }
 
 // MusicService represents a supported or registered streaming service in the Sonos catalog.

@@ -434,3 +434,96 @@ func TestResolveDefaultService(t *testing.T) {
 		t.Error("expected false for empty services list, got true")
 	}
 }
+
+
+func TestIsContainerFavorite(t *testing.T) {
+	tests := []struct {
+		name     string
+		fav      *Favorite
+		expected bool
+	}{
+		{
+			name: "YouTube Music Liked Music container",
+			fav: &Favorite{
+				ResourceURI: "x-rincon-cpcontainer:1006004cALkSOiEkjznR2U-hY1gZPXICcnXWetzSRIrNhw?sid=284&flags=76&sn=2",
+				Type:        "object.container.playlistContainer",
+			},
+			expected: true,
+		},
+		{
+			name: "Spotify playlist container",
+			fav: &Favorite{
+				ResourceURI: "x-rincon-cpcontainer:1006206cspotify%3aplaylist%3a37i9dQZF1DX4WYpdgoIcn6?sid=9&flags=0&sn=1",
+				Type:        "object.container.playlistContainer",
+			},
+			expected: true,
+		},
+		{
+			name: "Local NAS album container",
+			fav: &Favorite{
+				ResourceURI: "x-file-cifs://nas/music/PinkFloyd/TheWall",
+				Type:        "object.container.album.musicAlbum",
+			},
+			expected: true,
+		},
+		{
+			name: "Radio stream (not a container)",
+			fav: &Favorite{
+				ResourceURI: "x-sonosapi-stream:s12345?sid=254&flags=8224&sn=0",
+				Type:        "object.item.audioItem.audioBroadcast",
+			},
+			expected: false,
+		},
+		{
+			name: "Direct MP3 URL (not a container)",
+			fav: &Favorite{
+				ResourceURI: "http://stream.somafm.com/groovesalad-128-mp3",
+				Type:        "object.item.audioItem",
+			},
+			expected: false,
+		},
+		{
+			name:     "nil favorite",
+			fav:      nil,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isContainerFavorite(tt.fav)
+			if got != tt.expected {
+				t.Errorf("isContainerFavorite() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestRemoveAllTracksFromQueueMock(t *testing.T) {
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		soapAction := r.Header.Get("SOAPAction")
+		if strings.Contains(soapAction, "RemoveAllTracksFromQueue") {
+			called = true
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:RemoveAllTracksFromQueueResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"/></s:Body></s:Envelope>`))
+			return
+		}
+		if strings.Contains(soapAction, "GetZoneGroupState") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetZoneGroupStateResponse xmlns:u="urn:schemas-upnp-org:service:ZoneGroupTopology:1"><ZoneGroupState>&lt;ZoneGroups&gt;&lt;/ZoneGroups&gt;</ZoneGroupState></u:GetZoneGroupStateResponse></s:Body></s:Envelope>`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "http://")
+	client := NewClient(host, WithHTTPClient(server.Client()))
+	if err := client.RemoveAllTracksFromQueue(); err != nil {
+		t.Fatalf("RemoveAllTracksFromQueue failed: %v", err)
+	}
+	if !called {
+		t.Error("expected RemoveAllTracksFromQueue SOAP action to be called")
+	}
+}

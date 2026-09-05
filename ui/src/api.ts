@@ -99,8 +99,8 @@ export const homectlApi = {
     api.get<SonosServicesResult>('/sonos/services', { params: ip ? { ip } : {} }).then(r => r.data),
   playSonosStream: (ip: string, url: string, title?: string) => 
     api.post('/sonos/play-stream', { ip, url, title }).then(r => r.data),
-  addSonosToQueue: (ip: string, uri: string, asNext?: boolean) => 
-    api.post('/sonos/queue-add', { ip, uri, as_next: asNext }).then(r => r.data),
+  addSonosToQueue: (ip: string, uri: string, asNext?: boolean, metadata?: string) => 
+    api.post('/sonos/queue-add', { ip, uri, as_next: asNext, metadata }).then(r => r.data),
 
   // Cameras
   getCameras: () => api.get<Camera[]>('/security/cameras').then(r => r.data),

@@ -28,6 +28,7 @@ type MockClient struct {
 	coordinatorIP string
 	// zoneGroupState is returned verbatim by GetZoneGroupState().
 	zoneGroupState sonos.ZoneGroupState
+	lastEnqueuedMetadata string
 }
 
 func (m *MockClient) GetVolume() (int, error) {
@@ -127,6 +128,7 @@ func (m *MockClient) PlayStream(streamURL, title string) error {
 }
 
 func (m *MockClient) AddURIToQueue(uri, metadata string, asNext bool) (int, error) {
+	m.lastEnqueuedMetadata = metadata
 	return 4, nil
 }
 
@@ -688,12 +690,14 @@ func TestSonosAddToQueueTool(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
+	const testMetadata = "<DIDL-Lite><item><dc:title>Test Track</dc:title></item></DIDL-Lite>"
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "sonos_add_to_queue",
 		Arguments: map[string]any{
-			"ip":      "192.168.1.120",
-			"uri":     "x-file-cifs://nas/track.flac",
-			"as_next": true,
+			"ip":       "192.168.1.120",
+			"uri":      "x-rincon-cpcontainer:1006004cALkSOiEkjznR2U-hY1gZPXICcnXWetzSRIrNhw?sid=284&flags=76&sn=2",
+			"metadata": testMetadata,
+			"as_next":  true,
 		},
 	})
 	if err != nil {
@@ -701,6 +705,9 @@ func TestSonosAddToQueueTool(t *testing.T) {
 	}
 	if res.IsError {
 		t.Fatalf("expected success, got error: %+v", res)
+	}
+	if mock.lastEnqueuedMetadata != testMetadata {
+		t.Errorf("expected metadata %q, got %q", testMetadata, mock.lastEnqueuedMetadata)
 	}
 }
 

@@ -149,9 +149,10 @@ type PlayStreamParams struct {
 
 // AddToQueueParams defines parameters for sonos_add_to_queue.
 type AddToQueueParams struct {
-	IP     string `json:"ip" jsonschema:"IP address of the Sonos speaker (required)"`
-	URI    string `json:"uri" jsonschema:"Audio URI to enqueue (required)"`
-	AsNext bool   `json:"as_next,omitempty" jsonschema:"If true, inserts track as next to play instead of appending to end of queue"`
+	IP       string `json:"ip" jsonschema:"IP address of the Sonos speaker (required)"`
+	URI      string `json:"uri" jsonschema:"Audio URI to enqueue (required)"`
+	Metadata string `json:"metadata,omitempty" jsonschema:"Optional DIDL-Lite metadata for the enqueued item (required for cloud container URIs)"`
+	AsNext   bool   `json:"as_next,omitempty" jsonschema:"If true, inserts track as next to play instead of appending to end of queue"`
 }
 
 // ListServicesParams defines parameters for sonos_list_services.
@@ -603,7 +604,7 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		}
 
 		client := cfg.ClientFactory(args.IP)
-		pos, err := client.AddURIToQueue(args.URI, "", args.AsNext)
+		pos, err := client.AddURIToQueue(args.URI, args.Metadata, args.AsNext)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to add URI to queue on %s: %w", args.IP, err)
 		}

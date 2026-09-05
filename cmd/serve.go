@@ -348,9 +348,10 @@ var serveCmd = &cobra.Command{
 				return
 			}
 			var req struct {
-				IP     string `json:"ip"`
-				URI    string `json:"uri"`
-				AsNext bool   `json:"as_next"`
+				IP       string `json:"ip"`
+				URI      string `json:"uri"`
+				Metadata string `json:"metadata"`
+				AsNext   bool   `json:"as_next"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -362,7 +363,7 @@ var serveCmd = &cobra.Command{
 			}
 
 			client := sonos.NewClient(req.IP)
-			pos, err := client.AddURIToQueue(req.URI, "", req.AsNext)
+			pos, err := client.AddURIToQueue(req.URI, req.Metadata, req.AsNext)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
