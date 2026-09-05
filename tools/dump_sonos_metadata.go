@@ -6,12 +6,26 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 
 	"github.com/ghchinoy/homectl/modules/sonos"
 )
 
 func main() {
-	ip := "192.168.4.120"
+	ip := ""
+	if len(os.Args) > 1 {
+		ip = os.Args[1]
+	} else if env := os.Getenv("HOMECTL_SONOS_IP"); env != "" {
+		ip = env
+	} else {
+		cached, _ := sonos.LoadCache()
+		if len(cached) > 0 {
+			ip = cached[0].IP
+		}
+	}
+	if ip == "" {
+		log.Fatal("Usage: dump_sonos_metadata <speaker_ip> or set HOMECTL_SONOS_IP")
+	}
 	client := sonos.NewClient(ip)
 
 	fmt.Printf("--- Raw Position Info for %s ---\n", ip)

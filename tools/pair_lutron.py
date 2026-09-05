@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import sys
 from pathlib import Path
 from pylutron_caseta.pairing import async_pair
 
@@ -15,7 +16,10 @@ def get_config_dir():
     return Path.home() / ".config" / "homectl"
 
 async def pair():
-    bridge_ip = "192.168.4.90"
+    bridge_ip = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("HOMECTL_LUTRON_BRIDGE", "")
+    if not bridge_ip:
+        print("Usage: pair_lutron.py <bridge_ip> or set HOMECTL_LUTRON_BRIDGE environment variable", file=sys.stderr)
+        return
     config_dir = get_config_dir()
     config_dir.mkdir(parents=True, exist_ok=True)
     

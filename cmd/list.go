@@ -1,11 +1,24 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 )
+
+// DeviceSummary represents a Lutron device with zone status for JSON output.
+type DeviceSummary struct {
+	Href       string  `json:"href"`
+	Name       string  `json:"name"`
+	DeviceType string  `json:"device_type"`
+	ZoneName   string  `json:"zone_name,omitempty"`
+	ZoneHref   string  `json:"zone_href,omitempty"`
+	Status     string  `json:"status"`
+	Level      float64 `json:"level,omitempty"`
+}
 
 var listCmd = &cobra.Command{
 	Use:   "list",
@@ -25,6 +38,10 @@ var listAreasCmd = &cobra.Command{
 		areas, err := client.GetAreas()
 		if err != nil {
 			return fmt.Errorf("get areas: %w", err)
+		}
+
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(areas)
 		}
 
 		fmt.Printf("% -20s % -20s\n", "NAME", "HREF")
@@ -49,6 +66,10 @@ var listZonesCmd = &cobra.Command{
 		zones, err := client.GetZones()
 		if err != nil {
 			return fmt.Errorf("get zones: %w", err)
+		}
+
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(zones)
 		}
 
 		fmt.Printf("% -30s % -15s % -10s\n", "NAME", "TYPE", "HREF")
@@ -88,6 +109,33 @@ var listDevicesCmd = &cobra.Command{
 				cleanHref := strings.TrimSuffix(zs.Href, "/status")
 				zoneStatusMap[cleanHref] = zs.Level
 			}
+		}
+
+		if isJSON(cmd) {
+			var summaries []DeviceSummary
+			for _, d := range devices {
+				summary := DeviceSummary{
+					Href:       d.Href,
+					Name:       d.Name,
+					DeviceType: d.DeviceType,
+					Status:     "-",
+				}
+				if len(d.LocalZones) > 0 {
+					zHref := d.LocalZones[0].Href
+					summary.ZoneHref = zHref
+					summary.ZoneName = zoneNames[zHref]
+					if lvl, ok := zoneStatusMap[zHref]; ok {
+						summary.Level = lvl
+						if lvl > 0 {
+							summary.Status = fmt.Sprintf("%.0f%%", lvl)
+						} else {
+							summary.Status = "OFF"
+						}
+					}
+				}
+				summaries = append(summaries, summary)
+			}
+			return json.NewEncoder(os.Stdout).Encode(summaries)
 		}
 
 		fmt.Printf("% -30s % -20s % -10s % -20s % -10s\n", "NAME", "TYPE", "STATUS", "ZONE NAME", "HREF")

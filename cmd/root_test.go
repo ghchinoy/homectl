@@ -66,3 +66,24 @@ func TestSubcommandArgValidation(t *testing.T) {
 		}
 	})
 }
+
+func TestResolveLutronBridgePrecedence(t *testing.T) {
+	// 1. Explicit flag takes precedence
+	addr, err := ResolveLutronBridge("10.0.0.99")
+	if err != nil || addr != "10.0.0.99" {
+		t.Errorf("expected explicit flag '10.0.0.99', got %q, err: %v", addr, err)
+	}
+
+	// 2. Environment variable
+	t.Setenv("HOMECTL_LUTRON_BRIDGE", "10.0.0.50")
+	addr, err = ResolveLutronBridge("")
+	if err != nil || addr != "10.0.0.50" {
+		t.Errorf("expected env var '10.0.0.50', got %q, err: %v", addr, err)
+	}
+
+	// Explicit flag still beats env var
+	addr, err = ResolveLutronBridge("10.0.0.99")
+	if err != nil || addr != "10.0.0.99" {
+		t.Errorf("expected flag '10.0.0.99' to override env, got %q", addr)
+	}
+}

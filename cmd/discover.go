@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/ghchinoy/homectl/pkg/camera"
@@ -18,7 +20,12 @@ var discoverCmd = &cobra.Command{
 	Use:   "discover",
 	Short: "Discover all smart home devices on the network",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println("Starting network-wide discovery...")
+		jsonOut := isJSON(cmd)
+		if !jsonOut {
+			fmt.Println("Starting network-wide discovery...")
+		} else {
+			fmt.Fprintln(os.Stderr, "Starting network-wide discovery...")
+		}
 
 		manager := discovery.NewManager()
 		manager.AddProvider(&leap.DiscoveryProvider{})
@@ -29,6 +36,10 @@ var discoverCmd = &cobra.Command{
 		manager.AddProvider(&camera.DiscoveryProvider{})
 
 		devices := manager.DiscoverAll(5 * time.Second)
+
+		if jsonOut {
+			return json.NewEncoder(os.Stdout).Encode(devices)
+		}
 
 		if len(devices) == 0 {
 			fmt.Println("No devices found.")

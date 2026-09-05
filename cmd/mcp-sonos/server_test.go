@@ -181,13 +181,21 @@ func TestSonosListSpeakersTool(t *testing.T) {
 		t.Fatalf("expected TextContent, got %T", res.Content[1])
 	}
 
-	var devices []sonos.Device
-	if err := json.Unmarshal([]byte(textContent.Text), &devices); err != nil {
-		t.Fatalf("failed to unmarshal devices: %v", err)
+	var listResult ListSpeakersResult
+	if err := json.Unmarshal([]byte(textContent.Text), &listResult); err != nil {
+		t.Fatalf("failed to unmarshal ListSpeakersResult: %v", err)
 	}
 
-	if len(devices) != 1 || devices[0].Name != "Office Speaker" {
-		t.Errorf("unexpected devices returned: %+v", devices)
+	if listResult.Count != 1 || len(listResult.Speakers) != 1 || listResult.Speakers[0].Name != "Office Speaker" {
+		t.Errorf("unexpected speakers returned: %+v", listResult)
+	}
+
+	// Verify that structuredContent is an object/record (not a bare array) per SEP-2106
+	if res.StructuredContent != nil {
+		if _, ok := res.StructuredContent.(map[string]any); !ok {
+			t.Errorf("expected StructuredContent to be map[string]any (record/object), got %T: %+v",
+				res.StructuredContent, res.StructuredContent)
+		}
 	}
 }
 

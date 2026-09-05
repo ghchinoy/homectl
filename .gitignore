@@ -1,3 +1,6 @@
+# Local & Private Configuration (never committed)
+local/
+
 # Lutron Secrets
 secrets/
 *.crt

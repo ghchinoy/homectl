@@ -1,21 +1,21 @@
-.PHONY: all build test clean sync-skills check-skills
+.PHONY: all build test clean sync-skills check-skills bin-homectl bin-mcp-sonos bin-sync-skills
 
 BIN_DIR := ./bin
 
 all: build
 
 # Build all binaries into ./bin (gitignored)
-build: $(BIN_DIR)/homectl $(BIN_DIR)/mcp-sonos $(BIN_DIR)/sync-skills
+build: bin-homectl bin-mcp-sonos bin-sync-skills
 
-$(BIN_DIR)/homectl:
+bin-homectl:
 	@mkdir -p $(BIN_DIR)
 	go build -o $(BIN_DIR)/homectl .
 
-$(BIN_DIR)/mcp-sonos:
+bin-mcp-sonos:
 	@mkdir -p $(BIN_DIR)
 	go build -o $(BIN_DIR)/mcp-sonos ./cmd/mcp-sonos
 
-$(BIN_DIR)/sync-skills:
+bin-sync-skills:
 	@mkdir -p $(BIN_DIR)
 	go build -o $(BIN_DIR)/sync-skills ./cmd/sync-skills
 

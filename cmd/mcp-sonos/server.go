@@ -120,6 +120,12 @@ type SetVolumeParams struct {
 	Delta  int    `json:"delta,omitempty" jsonschema:"Relative volume change (e.g. +5 or -10). Applied if volume is 0 or omitted."`
 }
 
+// ListSpeakersResult represents the structured, object-wrapped output of sonos_list_speakers.
+type ListSpeakersResult struct {
+	Count    int            `json:"count"`
+	Speakers []sonos.Device `json:"speakers"`
+}
+
 // NowPlayingResult is the compact, token-optimized track status payload.
 type NowPlayingResult struct {
 	IP            string `json:"ip"`
@@ -167,7 +173,12 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 			}
 		}
 
-		jsonData, err := json.Marshal(speakers)
+		res := ListSpeakersResult{
+			Count:    len(speakers),
+			Speakers: speakers,
+		}
+
+		jsonData, err := json.Marshal(res)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to encode speakers: %w", err)
 		}
@@ -178,7 +189,7 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 				&mcp.TextContent{Text: summaryText},
 				&mcp.TextContent{Text: string(jsonData)},
 			},
-		}, speakers, nil
+		}, res, nil
 	})
 
 	// Tool 2: sonos_get_now_playing (Read-Only, compact JSON)

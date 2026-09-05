@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -21,6 +23,22 @@ var setLevelCmd = &cobra.Command{
 		level, err := strconv.ParseFloat(args[1], 64)
 		if err != nil {
 			return fmt.Errorf("invalid level %q: %w", args[1], err)
+		}
+		if level < 0 || level > 100 {
+			return fmt.Errorf("level must be between 0 and 100, got %.0f", level)
+		}
+
+		if isDryRun(cmd) {
+			if isJSON(cmd) {
+				return json.NewEncoder(os.Stdout).Encode(DryRunResult{
+					DryRun:  true,
+					Command: "set level",
+					Planned: map[string]any{"zone_href": zoneHref, "level": level},
+					Message: fmt.Sprintf("[DRY-RUN] Would set %s to %.0f%%", zoneHref, level),
+				})
+			}
+			fmt.Printf("[DRY-RUN] Simulating: Would set %s to %.0f%% (no changes made)\n", zoneHref, level)
+			return nil
 		}
 
 		client, err := getClient(cmd)
@@ -46,6 +64,22 @@ var setAllCmd = &cobra.Command{
 		level, err := strconv.ParseFloat(args[0], 64)
 		if err != nil {
 			return fmt.Errorf("invalid level %q: %w", args[0], err)
+		}
+		if level < 0 || level > 100 {
+			return fmt.Errorf("level must be between 0 and 100, got %.0f", level)
+		}
+
+		if isDryRun(cmd) {
+			if isJSON(cmd) {
+				return json.NewEncoder(os.Stdout).Encode(DryRunResult{
+					DryRun:  true,
+					Command: "set all",
+					Planned: map[string]any{"level": level},
+					Message: fmt.Sprintf("[DRY-RUN] Would set all lights to %.0f%%", level),
+				})
+			}
+			fmt.Printf("[DRY-RUN] Simulating: Would set all lights to %.0f%% (no changes made)\n", level)
+			return nil
 		}
 
 		client, err := getClient(cmd)
