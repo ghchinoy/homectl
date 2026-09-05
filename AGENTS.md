@@ -48,7 +48,9 @@ bd list --status closed --json | jq -r 'sort_by(.closed_at) | reverse | map(sele
 - **Canonical Skill Source:** Top-level `skills/<name>/` is the single source of truth for authoring skills. Edit `SKILL.md` and helper scripts (`skills/<name>/scripts/**`) ONLY in this directory.
 - **Self-Contained Plugin Bundles:** `plugins/<svc>/skills/<name>/` is a generated, self-contained bundle adhering to the Agent Plugins Specification. Never hand-edit files under `plugins/*/skills/`.
 - **Synchronization:** Run `make sync-skills` (or `go run ./cmd/sync-skills`) to mirror canonical skills into their respective plugin bundles (including scripts). Plugins declare their bundled skills via `plugins/<svc>/bundle.json` or existing subdirectories.
+- **Dual Manifests:** Each plugin provides both the standard Agent Plugins Spec `mcp.json` (`mcpServers.<svc>`) and an OpenCode-native `opencode.jsonc` (`mcp.<svc>.type="local"`, `command: ["./bin/mcp-<svc>"]`). Both are generated and asserted by `make check-skills`.
 - **CI Consistency Gate:** Run `make check-skills` (or `go run ./cmd/sync-skills --check`). CI verifies that all plugin skills match canonical sources and asserts that all `scripts/...` paths referenced in `SKILL.md` exist inside the bundle.
+- **MCP Tool Output Schemas:** Per MCP SEP-2106 and OpenCode schema validation, tool `Out` types MUST be Go structs/records (JSON objects), never bare slices/arrays. For list operations, always return a wrapping struct (e.g. `type ListResult struct { Count int; Items []T }`).
 - **Binary Artifacts:** All compiled binaries (`homectl`, `mcp-sonos`, `sync-skills`) build into `./bin/` via `make build`. The `./bin` directory is strictly gitignored.
 
 ## Landing the Plane (Session Completion)

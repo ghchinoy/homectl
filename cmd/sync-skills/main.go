@@ -105,6 +105,12 @@ func main() {
 				hasErrors = true
 			}
 		}
+
+		// Ensure OpenCode configuration example is generated and verified
+		if err := syncOpenCodeConfig(pluginName, pluginPath, *checkMode, *verbose); err != nil {
+			fmt.Fprintf(os.Stderr, "OPENCODE CONFIG ERROR in %s: %v\n", pluginName, err)
+			hasErrors = true
+		}
 	}
 
 	if hasErrors {
@@ -268,4 +274,56 @@ func validateScriptReferences(skillMDPath, skillDir string) error {
 		}
 	}
 	return nil
+}
+
+// syncOpenCodeConfig generates or validates the OpenCode-native config example (opencode.jsonc).
+func syncOpenCodeConfig(pluginName, pluginPath string, checkMode, verbose bool) error {
+	targetPath := filepath.Join(pluginPath, "opencode.jsonc")
+
+	type OpenCodeServer struct {
+		Type    string   `json:"type"`
+		Command []string `json:"command"`
+		Enabled bool     `json:"enabled"`
+	}
+
+	type OpenCodeConfig struct {
+		Schema string                    `json:"$schema"`
+		MCP    map[string]OpenCodeServer `json:"mcp"`
+	}
+
+	cfg := OpenCodeConfig{
+		Schema: "https://opencode.ai/config.json",
+		MCP: map[string]OpenCodeServer{
+			pluginName: {
+				Type:    "local",
+				Command: []string{fmt.Sprintf("./bin/mcp-%s", pluginName)},
+				Enabled: true,
+			},
+		},
+	}
+
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+
+	if checkMode {
+		existing, err := os.ReadFile(targetPath)
+		if err != nil {
+			return fmt.Errorf("missing %s in plugin bundle", targetPath)
+		}
+		if !bytes.Equal(existing, data) {
+			return fmt.Errorf("opencode.jsonc in %s is out of date", pluginPath)
+		}
+		if verbose {
+			fmt.Printf("OK: %s/opencode.jsonc is valid\n", pluginName)
+		}
+		return nil
+	}
+
+	if verbose {
+		fmt.Printf("  Writing %s\n", targetPath)
+	}
+	return os.WriteFile(targetPath, data, 0644)
 }
