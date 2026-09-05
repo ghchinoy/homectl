@@ -74,6 +74,7 @@ export default defineConfig({
             { label: 'Configuration & Nicknames', slug: 'reference/configuration' },
             { label: 'Systemd Service Deployment', slug: 'reference/service-deployment' },
             { label: 'Network Topology & NAT', slug: 'reference/network-topology' },
+            { label: 'Music Services & Audio Stream Bridge', slug: 'reference/music-service-oauth-spike' },
             { label: 'Developer Guide & Beads', slug: 'reference/developer-guide' },
           ],
         },
