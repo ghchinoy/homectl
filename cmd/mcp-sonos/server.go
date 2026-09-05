@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/ghchinoy/homectl/modules/sonos"
+	"github.com/ghchinoy/homectl/pkg/config"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -20,6 +22,11 @@ type ClientInterface interface {
 	ParseTrackMetadata(xmlStr string) (sonos.TrackMetadata, error)
 	GetCoordinatorIP() (string, error)
 	GetZoneGroupState() (sonos.ZoneGroupState, error)
+	BrowseFavorites() ([]sonos.Favorite, error)
+	PlayFavorite(idOrTitle string) error
+	PlayStream(streamURL, title string) error
+	AddURIToQueue(uri, metadata string, asNext bool) (int, error)
+	ListMusicServices() ([]sonos.MusicService, error)
 	Play() error
 	Pause() error
 	Stop() error
@@ -120,6 +127,49 @@ type SetVolumeParams struct {
 	IP     string `json:"ip" jsonschema:"IP address of the Sonos speaker (required)"`
 	Volume int    `json:"volume,omitempty" jsonschema:"Target volume level between 0 and 100"`
 	Delta  int    `json:"delta,omitempty" jsonschema:"Relative volume change (e.g. +5 or -10). Applied if volume is 0 or omitted."`
+}
+
+// ListFavoritesParams defines parameters for sonos_list_favorites.
+type ListFavoritesParams struct {
+	IP string `json:"ip" jsonschema:"IP address of the Sonos speaker (required)"`
+}
+
+// PlayFavoriteParams defines parameters for sonos_play_favorite.
+type PlayFavoriteParams struct {
+	IP         string `json:"ip" jsonschema:"IP address of the Sonos speaker (required)"`
+	FavoriteID string `json:"favorite_id" jsonschema:"ID or title of the favorite item to play (required)"`
+}
+
+// PlayStreamParams defines parameters for sonos_play_stream.
+type PlayStreamParams struct {
+	IP    string `json:"ip" jsonschema:"IP address of the Sonos speaker (required)"`
+	URL   string `json:"url" jsonschema:"HTTP or HTTPS audio stream URL (required)"`
+	Title string `json:"title,omitempty" jsonschema:"Optional display title for the stream (defaults to URL host)"`
+}
+
+// AddToQueueParams defines parameters for sonos_add_to_queue.
+type AddToQueueParams struct {
+	IP     string `json:"ip" jsonschema:"IP address of the Sonos speaker (required)"`
+	URI    string `json:"uri" jsonschema:"Audio URI to enqueue (required)"`
+	AsNext bool   `json:"as_next,omitempty" jsonschema:"If true, inserts track as next to play instead of appending to end of queue"`
+}
+
+// ListServicesParams defines parameters for sonos_list_services.
+type ListServicesParams struct {
+	IP string `json:"ip" jsonschema:"IP address of the Sonos speaker (required)"`
+}
+
+// ListFavoritesResult represents the structured, object-wrapped output of sonos_list_favorites.
+type ListFavoritesResult struct {
+	Count     int              `json:"count"`
+	Favorites []sonos.Favorite `json:"favorites"`
+}
+
+// ListServicesResult represents the structured, object-wrapped output of sonos_list_services.
+type ListServicesResult struct {
+	Count    int                  `json:"count"`
+	Default  *sonos.MusicService  `json:"default,omitempty"`
+	Services []sonos.MusicService `json:"services"`
 }
 
 // ListSpeakersResult represents the structured, object-wrapped output of sonos_list_speakers.
@@ -441,6 +491,175 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 				&mcp.TextContent{Text: msg},
 			},
 		}, map[string]any{"status": "ok", "ip": args.IP, "previous_volume": prevVol, "volume": targetVol}, nil
+	})
+
+	// Tool 6: sonos_list_favorites (Read-Only)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "sonos_list_favorites",
+		Description: "Lists all pinned Sonos favorites (playlists, albums, radio stations) on the speaker with ID, title, type, and description.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args ListFavoritesParams) (*mcp.CallToolResult, any, error) {
+		if strings.TrimSpace(args.IP) == "" {
+			return nil, nil, fmt.Errorf("ip parameter is required")
+		}
+
+		client := cfg.ClientFactory(args.IP)
+		favs, err := client.BrowseFavorites()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to browse favorites on %s: %w", args.IP, err)
+		}
+
+		res := ListFavoritesResult{
+			Count:     len(favs),
+			Favorites: favs,
+		}
+
+		jsonData, err := json.Marshal(res)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to encode favorites: %w", err)
+		}
+
+		summary := fmt.Sprintf("Found %d Sonos favorite(s) on %s", len(favs), args.IP)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: summary},
+				&mcp.TextContent{Text: string(jsonData)},
+			},
+		}, res, nil
+	})
+
+	// Tool 7: sonos_play_favorite (Mutating)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "sonos_play_favorite",
+		Description: "Starts playback of a pinned Sonos favorite item by its ID or title on the specified speaker (with automatic coordinator resolution).",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args PlayFavoriteParams) (*mcp.CallToolResult, any, error) {
+		if strings.TrimSpace(args.IP) == "" {
+			return nil, nil, fmt.Errorf("ip parameter is required")
+		}
+		if strings.TrimSpace(args.FavoriteID) == "" {
+			return nil, nil, fmt.Errorf("favorite_id parameter is required")
+		}
+
+		client := cfg.ClientFactory(args.IP)
+		if err := client.PlayFavorite(args.FavoriteID); err != nil {
+			return nil, nil, fmt.Errorf("failed to play favorite on %s: %w", args.IP, err)
+		}
+
+		msg := fmt.Sprintf("Successfully initiated playback of favorite %q on %s", args.FavoriteID, args.IP)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: msg},
+			},
+		}, map[string]string{"status": "ok", "action": "play_favorite", "ip": args.IP, "favorite_id": args.FavoriteID}, nil
+	})
+
+	// Tool 8: sonos_play_stream (Mutating)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "sonos_play_stream",
+		Description: "Plays an arbitrary HTTP or HTTPS audio stream (e.g. internet radio or audio podcast) on the specified speaker with automatic coordinator resolution.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args PlayStreamParams) (*mcp.CallToolResult, any, error) {
+		if strings.TrimSpace(args.IP) == "" {
+			return nil, nil, fmt.Errorf("ip parameter is required")
+		}
+		if strings.TrimSpace(args.URL) == "" {
+			return nil, nil, fmt.Errorf("url parameter is required")
+		}
+
+		u, err := url.Parse(strings.TrimSpace(args.URL))
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+			return nil, nil, fmt.Errorf("invalid stream URL %q: scheme must be http or https", args.URL)
+		}
+
+		title := args.Title
+		if title == "" {
+			title = u.Host
+			if title == "" {
+				title = "Audio Stream"
+			}
+		}
+
+		client := cfg.ClientFactory(args.IP)
+		if err := client.PlayStream(args.URL, title); err != nil {
+			return nil, nil, fmt.Errorf("failed to play stream on %s: %w", args.IP, err)
+		}
+
+		msg := fmt.Sprintf("Successfully started stream %q (%s) on %s", title, args.URL, args.IP)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: msg},
+			},
+		}, map[string]string{"status": "ok", "action": "play_stream", "ip": args.IP, "url": args.URL, "title": title}, nil
+	})
+
+	// Tool 9: sonos_add_to_queue (Mutating)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "sonos_add_to_queue",
+		Description: "Adds an audio URI to the Sonos playback queue (optionally as next track) on the group coordinator.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args AddToQueueParams) (*mcp.CallToolResult, any, error) {
+		if strings.TrimSpace(args.IP) == "" {
+			return nil, nil, fmt.Errorf("ip parameter is required")
+		}
+		if strings.TrimSpace(args.URI) == "" {
+			return nil, nil, fmt.Errorf("uri parameter is required")
+		}
+
+		client := cfg.ClientFactory(args.IP)
+		pos, err := client.AddURIToQueue(args.URI, "", args.AsNext)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to add URI to queue on %s: %w", args.IP, err)
+		}
+
+		msg := fmt.Sprintf("Successfully added URI to queue at track position %d on %s", pos, args.IP)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: msg},
+			},
+		}, map[string]any{"status": "ok", "action": "add_to_queue", "ip": args.IP, "uri": args.URI, "track_position": pos, "as_next": args.AsNext}, nil
+	})
+
+	// Tool 10: sonos_list_services (Read-Only)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "sonos_list_services",
+		Description: "Lists all registered music streaming services (Spotify, Apple Music, YouTube Music, etc.) available on the Sonos speaker catalog, noting the configured default.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args ListServicesParams) (*mcp.CallToolResult, any, error) {
+		if strings.TrimSpace(args.IP) == "" {
+			return nil, nil, fmt.Errorf("ip parameter is required")
+		}
+
+		client := cfg.ClientFactory(args.IP)
+		services, err := client.ListMusicServices()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to list music services on %s: %w", args.IP, err)
+		}
+
+		appCfg := config.LoadConfig()
+		defSvc, hasDef := sonos.ResolveDefaultService(services, appCfg.SonosDefaultService)
+		var defPtr *sonos.MusicService
+		if hasDef {
+			defPtr = &defSvc
+		}
+
+		res := ListServicesResult{
+			Count:    len(services),
+			Default:  defPtr,
+			Services: services,
+		}
+
+		jsonData, err := json.Marshal(res)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to encode music services: %w", err)
+		}
+
+		summary := fmt.Sprintf("Found %d music service(s) on %s", len(services), args.IP)
+		if hasDef {
+			summary += fmt.Sprintf(" (default: %s)", defSvc.Name)
+		}
+
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: summary},
+				&mcp.TextContent{Text: string(jsonData)},
+			},
+		}, res, nil
 	})
 
 	return server

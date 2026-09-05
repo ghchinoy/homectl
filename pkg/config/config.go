@@ -9,9 +9,10 @@ import (
 
 // AppConfig represents the application configuration
 type AppConfig struct {
-	CallbackIP   string `json:"callback_ip"`   // Manual override for GENA listener
-	CameraAuth   string `json:"camera_auth"`   // global user:pass for cameras
-	LutronBridge string `json:"lutron_bridge"` // Lutron Caseta / RA2 Select bridge IP address
+	CallbackIP          string `json:"callback_ip"`           // Manual override for GENA listener
+	CameraAuth          string `json:"camera_auth"`           // global user:pass for cameras
+	LutronBridge        string `json:"lutron_bridge"`         // Lutron Caseta / RA2 Select bridge IP address
+	SonosDefaultService string `json:"sonos_default_service"` // Default music service (e.g. Spotify, Apple Music)
 }
 
 // GetConfigDir returns the path to the configuration directory (~/.config/homectl)

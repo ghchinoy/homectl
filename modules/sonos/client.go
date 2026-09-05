@@ -11,7 +11,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -943,4 +945,443 @@ func (c *Client) ParseTrackMetadata(xmlStr string) (TrackMetadata, error) {
 		}
 	}
 	return meta, nil
+}
+
+
+// Favorite represents a pinned Sonos favorite item (playlist, album, radio station, etc.).
+type Favorite struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Type        string `json:"type"`
+	ResourceURI string `json:"resource_uri"`
+	Metadata    string `json:"metadata,omitempty"`
+	AlbumArtURI string `json:"album_art_uri,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+// BrowseFavorites lists all pinned Sonos Favorites from the speaker's ContentDirectory (FV:2).
+func (c *Client) BrowseFavorites() ([]Favorite, error) {
+	body, err := c.SOAPAction(
+		"/MediaServer/ContentDirectory/Control",
+		"urn:schemas-upnp-org:service:ContentDirectory:1",
+		"Browse",
+		map[string]string{
+			"ObjectID":       "FV:2",
+			"BrowseFlag":     "BrowseDirectChildren",
+			"Filter":         "*",
+			"StartingIndex":  "0",
+			"RequestedCount": "100",
+			"SortCriteria":   "",
+		})
+	if err != nil {
+		return nil, fmt.Errorf("browse favorites: %w", err)
+	}
+	defer body.Close()
+
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Result string `xml:"Body>BrowseResponse>Result"`
+	}
+	if err := xml.Unmarshal(data, &resp); err == nil && resp.Result != "" {
+		return ParseFavorites(resp.Result)
+	}
+
+	resultXML := extractTagContent(string(data), "Result")
+	return ParseFavorites(resultXML)
+}
+
+// ParseFavorites parses a DIDL-Lite XML string containing Sonos favorites into Favorite structs.
+func ParseFavorites(xmlStr string) ([]Favorite, error) {
+	if xmlStr == "" {
+		return nil, nil
+	}
+
+	var favorites []Favorite
+	remaining := xmlStr
+
+	for {
+		itemStart := strings.Index(remaining, "<item ")
+		isContainer := false
+		if itemStart == -1 {
+			itemStart = strings.Index(remaining, "<container ")
+			isContainer = true
+		}
+		if itemStart == -1 {
+			break
+		}
+
+		endTag := "</item>"
+		if isContainer {
+			endTag = "</container>"
+		}
+
+		itemEnd := strings.Index(remaining[itemStart:], endTag)
+		if itemEnd == -1 {
+			break
+		}
+		itemEnd += itemStart + len(endTag)
+		itemXML := remaining[itemStart:itemEnd]
+		remaining = remaining[itemEnd:]
+
+		fav := Favorite{
+			ID:          extractAttr(itemXML, "id"),
+			Title:       extractTagContent(itemXML, "title"),
+			Type:        extractTagContent(itemXML, "class"),
+			ResourceURI: extractTagContent(itemXML, "res"),
+			Metadata:    extractTagContent(itemXML, "resMD"),
+			AlbumArtURI: extractTagContent(itemXML, "albumArtURI"),
+			Description: extractTagContent(itemXML, "description"),
+		}
+
+		if fav.ID != "" && fav.Title != "" {
+			favorites = append(favorites, fav)
+		}
+	}
+
+	return favorites, nil
+}
+
+// PlayFavorite starts playback of a favorite by ID (or title) with mandatory coordinator resolution.
+func (c *Client) PlayFavorite(idOrTitle string) error {
+	favs, err := c.BrowseFavorites()
+	if err != nil {
+		return fmt.Errorf("failed to browse favorites: %w", err)
+	}
+
+	var match *Favorite
+	for i := range favs {
+		if favs[i].ID == idOrTitle {
+			match = &favs[i]
+			break
+		}
+	}
+	if match == nil {
+		for i := range favs {
+			if strings.EqualFold(favs[i].Title, idOrTitle) {
+				match = &favs[i]
+				break
+			}
+		}
+	}
+
+	if match == nil {
+		return fmt.Errorf("favorite %q not found", idOrTitle)
+	}
+
+	// Always resolve group coordinator before setting transport URI & playing
+	coordIP, _ := c.GetCoordinatorIP()
+	targetClient := c
+	if coordIP != "" && coordIP != c.ip {
+		targetClient = NewClient(coordIP, WithHTTPClient(c.httpClient), WithLogger(c.log()), WithStorage(c.store()))
+	}
+
+	if err := targetClient.SetAVTransportURI(match.ResourceURI, match.Metadata); err != nil {
+		return fmt.Errorf("set transport URI for favorite %q: %w", match.Title, err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+	if err := targetClient.Play(); err != nil {
+		return fmt.Errorf("play favorite %q: %w", match.Title, err)
+	}
+
+	return nil
+}
+
+// PlayStream validates an audio stream URL (http/https minimal scheme check),
+// defaults missing title to the URL host, creates minimal DIDL-Lite stream metadata,
+// resolves the group coordinator, sets the transport URI, and starts playback.
+func (c *Client) PlayStream(streamURL, title string) error {
+	u, err := url.Parse(strings.TrimSpace(streamURL))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return fmt.Errorf("invalid stream URL %q: scheme must be http or https", streamURL)
+	}
+
+	if title == "" {
+		title = u.Host
+		if title == "" {
+			title = "Audio Stream"
+		}
+	}
+
+	metadata := fmt.Sprintf(`<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"><item id="-1" parentID="-1" restricted="true"><dc:title>%s</dc:title><upnp:class>object.item.audioItem.audioBroadcast</upnp:class><res protocolInfo="http-get:*:audio/mpeg:*">%s</res></item></DIDL-Lite>`,
+		html.EscapeString(title),
+		html.EscapeString(streamURL))
+
+	// Mandatory coordinator resolution
+	coordIP, _ := c.GetCoordinatorIP()
+	targetClient := c
+	if coordIP != "" && coordIP != c.ip {
+		targetClient = NewClient(coordIP, WithHTTPClient(c.httpClient), WithLogger(c.log()), WithStorage(c.store()))
+	}
+
+	if err := targetClient.SetAVTransportURI(streamURL, metadata); err != nil {
+		return fmt.Errorf("set stream URI: %w", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+	if err := targetClient.Play(); err != nil {
+		return fmt.Errorf("play stream: %w", err)
+	}
+
+	return nil
+}
+
+// AddURIToQueue adds an audio URI to the queue (optionally as next track) on the group coordinator.
+// Returns the newly enqueued track position or queue length.
+func (c *Client) AddURIToQueue(uri, metadata string, asNext bool) (int, error) {
+	// Mandatory coordinator resolution
+	coordIP, _ := c.GetCoordinatorIP()
+	targetClient := c
+	if coordIP != "" && coordIP != c.ip {
+		targetClient = NewClient(coordIP, WithHTTPClient(c.httpClient), WithLogger(c.log()), WithStorage(c.store()))
+	}
+
+	asNextVal := "0"
+	desiredTrack := "0"
+	if asNext {
+		asNextVal = "1"
+		desiredTrack = "1"
+	}
+
+	body, err := targetClient.SOAPAction(
+		"/MediaRenderer/AVTransport/Control",
+		"urn:schemas-upnp-org:service:AVTransport:1",
+		"AddURIToQueue",
+		map[string]string{
+			"InstanceID":                      "0",
+			"EnqueuedURI":                     uri,
+			"EnqueuedURIMetaData":             metadata,
+			"DesiredFirstTrackNumberEnqueued": desiredTrack,
+			"EnqueueAsNext":                   asNextVal,
+		})
+	if err != nil {
+		return 0, fmt.Errorf("add URI to queue: %w", err)
+	}
+	defer body.Close()
+
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return 0, err
+	}
+
+	var resp struct {
+		FirstTrackNumber int `xml:"Body>AddURIToQueueResponse>FirstTrackNumberEnqueued"`
+		NewQueueLength   int `xml:"Body>AddURIToQueueResponse>NewQueueLength"`
+	}
+	_ = xml.Unmarshal(data, &resp)
+
+	if resp.FirstTrackNumber > 0 {
+		return resp.FirstTrackNumber, nil
+	}
+	if resp.NewQueueLength > 0 {
+		return resp.NewQueueLength, nil
+	}
+
+	if firstStr := extractTagContent(string(data), "FirstTrackNumberEnqueued"); firstStr != "" {
+		if n, err := strconv.Atoi(firstStr); err == nil {
+			return n, nil
+		}
+	}
+	if lenStr := extractTagContent(string(data), "NewQueueLength"); lenStr != "" {
+		if n, err := strconv.Atoi(lenStr); err == nil {
+			return n, nil
+		}
+	}
+
+	return 1, nil
+}
+
+// MusicService represents a supported or registered streaming service in the Sonos catalog.
+type MusicService struct {
+	ID           string `json:"id" xml:"Id,attr"`
+	Name         string `json:"name" xml:"Name,attr"`
+	Version      string `json:"version,omitempty" xml:"Version,attr"`
+	URI          string `json:"uri,omitempty" xml:"Uri,attr"`
+	SecureURI    string `json:"secure_uri,omitempty" xml:"SecureUri,attr"`
+	Capabilities string `json:"capabilities,omitempty" xml:"Capabilities,attr"`
+	IsDefault    bool   `json:"is_default"`
+}
+
+// ListMusicServices calls ListAvailableServices on /MusicServices/Control and returns available services.
+func (c *Client) ListMusicServices() ([]MusicService, error) {
+	body, err := c.SOAPAction(
+		"/MusicServices/Control",
+		"urn:schemas-upnp-org:service:MusicServices:1",
+		"ListAvailableServices",
+		nil)
+	if err != nil {
+		return nil, fmt.Errorf("list music services: %w", err)
+	}
+	defer body.Close()
+
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		XML string `xml:"Body>ListAvailableServicesResponse>AvailableServiceDescriptorList"`
+	}
+	_ = xml.Unmarshal(data, &resp)
+
+	xmlStr := resp.XML
+	if xmlStr == "" {
+		xmlStr = extractTagContent(string(data), "AvailableServiceDescriptorList")
+	}
+
+	return ParseMusicServices(xmlStr)
+}
+
+// ParseMusicServices parses an AvailableServiceDescriptorList XML string into MusicService structs.
+func ParseMusicServices(xmlStr string) ([]MusicService, error) {
+	if xmlStr == "" {
+		return nil, nil
+	}
+
+	var doc struct {
+		Services []MusicService `xml:"Service"`
+	}
+	if err := xml.Unmarshal([]byte(xmlStr), &doc); err == nil && len(doc.Services) > 0 {
+		return doc.Services, nil
+	}
+
+	var rootDoc struct {
+		Services []MusicService `xml:"Services>Service"`
+	}
+	if err := xml.Unmarshal([]byte(xmlStr), &rootDoc); err == nil && len(rootDoc.Services) > 0 {
+		return rootDoc.Services, nil
+	}
+
+	var services []MusicService
+	remaining := xmlStr
+	for {
+		start := strings.Index(remaining, "<Service ")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(remaining[start:], "/>")
+		if end == -1 {
+			end = strings.Index(remaining[start:], "</Service>")
+			if end == -1 {
+				break
+			}
+			end += len("</Service>")
+		} else {
+			end += len("/>")
+		}
+
+		svcXML := remaining[start : start+end]
+		remaining = remaining[start+end:]
+
+		svc := MusicService{
+			ID:           extractAttr(svcXML, "Id"),
+			Name:         extractAttr(svcXML, "Name"),
+			Version:      extractAttr(svcXML, "Version"),
+			URI:          extractAttr(svcXML, "Uri"),
+			SecureURI:    extractAttr(svcXML, "SecureUri"),
+			Capabilities: extractAttr(svcXML, "Capabilities"),
+		}
+		if svc.ID != "" && svc.Name != "" {
+			services = append(services, svc)
+		}
+	}
+
+	return services, nil
+}
+
+// ResolveDefaultService marks and returns the default music service matching configuredDefault
+// (case-insensitive name or ID). If configuredDefault is empty or not matched, it defaults to the
+// first service (e.g. Spotify, Apple Music) if available.
+func ResolveDefaultService(services []MusicService, configuredDefault string) (MusicService, bool) {
+	if len(services) == 0 {
+		return MusicService{}, false
+	}
+
+	if configuredDefault != "" {
+		for i := range services {
+			if strings.EqualFold(services[i].Name, configuredDefault) || services[i].ID == configuredDefault {
+				services[i].IsDefault = true
+				return services[i], true
+			}
+		}
+	}
+
+	services[0].IsDefault = true
+	return services[0], true
+}
+
+func extractAttr(xmlStr, attr string) string {
+	needle := attr + "=\""
+	start := strings.Index(xmlStr, needle)
+	if start == -1 {
+		return ""
+	}
+	start += len(needle)
+	end := strings.Index(xmlStr[start:], "\"")
+	if end == -1 {
+		return ""
+	}
+	return html.UnescapeString(xmlStr[start : start+end])
+}
+
+func extractTagContent(xmlStr, tag string) string {
+	findOpening := func(s, t string) (int, int) {
+		idx := strings.Index(s, "<"+t+">")
+		if idx != -1 {
+			return idx, idx + len(t) + 2
+		}
+		idx = strings.Index(s, "<"+t+" ")
+		if idx != -1 {
+			closeBracket := strings.Index(s[idx:], ">")
+			if closeBracket != -1 {
+				return idx, idx + closeBracket + 1
+			}
+		}
+		idx = strings.Index(s, ":"+t+">")
+		if idx != -1 {
+			openIdx := strings.LastIndex(s[:idx], "<")
+			if openIdx != -1 {
+				return openIdx, idx + len(t) + 2
+			}
+		}
+		idx = strings.Index(s, ":"+t+" ")
+		if idx != -1 {
+			openIdx := strings.LastIndex(s[:idx], "<")
+			if openIdx != -1 {
+				closeBracket := strings.Index(s[idx:], ">")
+				if closeBracket != -1 {
+					return openIdx, idx + closeBracket + 1
+				}
+			}
+		}
+		return -1, -1
+	}
+
+	_, contentStart := findOpening(xmlStr, tag)
+	if contentStart == -1 {
+		return ""
+	}
+
+	content := xmlStr[contentStart:]
+	closeTag := "</" + tag + ">"
+	endIdx := strings.Index(content, closeTag)
+	if endIdx == -1 {
+		colonClose := ":" + tag + ">"
+		cIdx := strings.Index(content, colonClose)
+		if cIdx != -1 {
+			openSlash := strings.LastIndex(content[:cIdx], "</")
+			if openSlash != -1 {
+				endIdx = openSlash
+			}
+		}
+	}
+
+	if endIdx == -1 {
+		return ""
+	}
+	return html.UnescapeString(content[:endIdx])
 }

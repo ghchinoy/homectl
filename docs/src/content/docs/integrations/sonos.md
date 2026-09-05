@@ -41,6 +41,59 @@ Bedroom              192.168.1.122   15%        STOPPED         -
 
 ---
 
+## Favorites & Cloud Playlists (FV:2)
+
+Sonos Favorites allow you to browse and trigger cloud playlists, albums, and radio stations pinned in the official Sonos app without needing third-party API tokens (e.g. Spotify, Apple Music, YouTube Music).
+
+```bash
+# Browse pinned favorites
+./homectl sonos favorites 192.168.1.120
+
+# Output as structured JSON
+./homectl sonos favorites 192.168.1.120 --json
+
+# Play a favorite by ID (or title)
+./homectl sonos play-favorite 192.168.1.120 FV:2/1
+
+# Test with dry-run simulation
+./homectl sonos play-favorite 192.168.1.120 FV:2/1 --dry-run
+```
+
+---
+
+## Audio Streaming & Queue Management
+
+Play arbitrary internet radio streams, podcasts, or TTS voice announcements directly:
+
+```bash
+# Stream internet radio with custom title
+./homectl sonos play-stream 192.168.1.120 https://stream.somafm.com/groovesalad-128-mp3 --title "SomaFM Groove Salad"
+
+# Enqueue an audio track as next
+./homectl sonos queue-add 192.168.1.120 x-file-cifs://nas/music/track.flac --next
+```
+
+---
+
+## Music Services & Default Routing
+
+Inspect all registered music streaming services on the Sonos speaker:
+
+```bash
+# List available services
+./homectl sonos services 192.168.1.120
+```
+
+You can set a default music service in `~/.config/homectl/config.json` so agents automatically choose a provider when no service is explicitly specified:
+
+```json
+{
+  "sonos_default_service": "Spotify"
+}
+```
+
+---
+
 ## Metadata Extraction
 
 To view detailed stream details, queue position, and audio formats:

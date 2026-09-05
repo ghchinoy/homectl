@@ -33,6 +33,11 @@ func TestCommandRegistration(t *testing.T) {
 		{[]string{"sonos", "now-playing"}},
 		{[]string{"sonos", "details"}},
 		{[]string{"sonos", "volume"}},
+		{[]string{"sonos", "favorites"}},
+		{[]string{"sonos", "play-favorite"}},
+		{[]string{"sonos", "play-stream"}},
+		{[]string{"sonos", "queue-add"}},
+		{[]string{"sonos", "services"}},
 		{[]string{"qolsys"}},
 		{[]string{"qolsys", "monitor"}},
 	}
@@ -176,6 +181,75 @@ func TestDryRunCommands(t *testing.T) {
 			t.Errorf("unexpected dry run result: %+v", res)
 		}
 	})
+
+	t.Run("sonos play-favorite dry-run json", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"sonos", "play-favorite"})
+		_ = rootCmd.PersistentFlags().Set("dry-run", "true")
+		_ = rootCmd.PersistentFlags().Set("json", "true")
+		defer rootCmd.PersistentFlags().Set("dry-run", "false")
+		defer rootCmd.PersistentFlags().Set("json", "false")
+
+		out, err := captureOutput(func() error {
+			return cmd.RunE(cmd, []string{"192.168.1.100", "FV:2/1"})
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		var res DryRunResult
+		if err := json.Unmarshal([]byte(out), &res); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v, raw: %q", err, out)
+		}
+		if !res.DryRun || res.Command != "sonos play-favorite" || res.Planned["favorite_id"] != "FV:2/1" {
+			t.Errorf("unexpected dry run result: %+v", res)
+		}
+	})
+
+	t.Run("sonos play-stream dry-run json", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"sonos", "play-stream"})
+		_ = rootCmd.PersistentFlags().Set("dry-run", "true")
+		_ = rootCmd.PersistentFlags().Set("json", "true")
+		defer rootCmd.PersistentFlags().Set("dry-run", "false")
+		defer rootCmd.PersistentFlags().Set("json", "false")
+
+		out, err := captureOutput(func() error {
+			return cmd.RunE(cmd, []string{"192.168.1.100", "https://stream.example.com/live.mp3"})
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		var res DryRunResult
+		if err := json.Unmarshal([]byte(out), &res); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v, raw: %q", err, out)
+		}
+		if !res.DryRun || res.Command != "sonos play-stream" || res.Planned["url"] != "https://stream.example.com/live.mp3" {
+			t.Errorf("unexpected dry run result: %+v", res)
+		}
+	})
+
+	t.Run("sonos queue-add dry-run json", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"sonos", "queue-add"})
+		_ = rootCmd.PersistentFlags().Set("dry-run", "true")
+		_ = rootCmd.PersistentFlags().Set("json", "true")
+		defer rootCmd.PersistentFlags().Set("dry-run", "false")
+		defer rootCmd.PersistentFlags().Set("json", "false")
+
+		out, err := captureOutput(func() error {
+			return cmd.RunE(cmd, []string{"192.168.1.100", "x-file-cifs://nas/track.flac"})
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		var res DryRunResult
+		if err := json.Unmarshal([]byte(out), &res); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v, raw: %q", err, out)
+		}
+		if !res.DryRun || res.Command != "sonos queue-add" || res.Planned["uri"] != "x-file-cifs://nas/track.flac" {
+			t.Errorf("unexpected dry run result: %+v", res)
+		}
+	})
 }
 
 func TestValidationRanges(t *testing.T) {
@@ -200,6 +274,13 @@ func TestValidationRanges(t *testing.T) {
 		cmd, _, _ := rootCmd.Find([]string{"sonos", "volume"})
 		if err := cmd.RunE(cmd, []string{"192.168.1.1", "101"}); err == nil {
 			t.Error("expected error for volume 101, got nil")
+		}
+	})
+
+	t.Run("sonos play-stream invalid scheme", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"sonos", "play-stream"})
+		if err := cmd.RunE(cmd, []string{"192.168.1.1", "ftp://example.com/audio.mp3"}); err == nil {
+			t.Error("expected error for ftp scheme, got nil")
 		}
 	})
 }

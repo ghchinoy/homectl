@@ -317,3 +317,120 @@ func TestSelectBestIP(t *testing.T) {
 		})
 	}
 }
+
+
+func TestParseFavorites(t *testing.T) {
+	xmlStr := `<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">
+  <item id="FV:2/1" parentID="FV:2" restricted="true">
+    <dc:title>Morning Jazz</dc:title>
+    <upnp:class>object.item.audioItem.audioBroadcast</upnp:class>
+    <res protocolInfo="x-rincon-mp3radio:*:*:*">x-sonosapi-stream:s12345?sid=254&amp;flags=8224&amp;sn=0</res>
+    <r:resMD>&lt;DIDL-Lite&gt;&lt;item&gt;&lt;dc:title&gt;Morning Jazz Station&lt;/dc:title&gt;&lt;/item&gt;&lt;/DIDL-Lite&gt;</r:resMD>
+    <upnp:albumArtURI>/getaa?s=1&amp;u=x-sonosapi-stream</upnp:albumArtURI>
+    <r:description>Sonos Radio</r:description>
+  </item>
+  <item id="FV:2/2" parentID="FV:2" restricted="true">
+    <dc:title>Chill Vibes</dc:title>
+    <upnp:class>object.container.playlistContainer</upnp:class>
+    <res protocolInfo="x-rincon-playlist:*:*:*">x-rincon-cpcontainer:1006206cspotify%3aplaylist%3a37i9dQZF1DX4WYpdgoIcn6?sid=9&amp;flags=0&amp;sn=1</res>
+    <r:description>Spotify</r:description>
+  </item>
+</DIDL-Lite>`
+
+	favs, err := ParseFavorites(xmlStr)
+	if err != nil {
+		t.Fatalf("ParseFavorites failed: %v", err)
+	}
+	if len(favs) != 2 {
+		t.Fatalf("expected 2 favorites, got %d", len(favs))
+	}
+
+	if favs[0].ID != "FV:2/1" || favs[0].Title != "Morning Jazz" || favs[0].Description != "Sonos Radio" {
+		t.Errorf("unexpected favorite[0]: %+v", favs[0])
+	}
+	if !strings.Contains(favs[0].ResourceURI, "x-sonosapi-stream:s12345") {
+		t.Errorf("expected ResourceURI to contain stream, got %s", favs[0].ResourceURI)
+	}
+	if !strings.Contains(favs[0].Metadata, "Morning Jazz Station") {
+		t.Errorf("expected Metadata to be unescaped XML, got %s", favs[0].Metadata)
+	}
+
+	if favs[1].ID != "FV:2/2" || favs[1].Title != "Chill Vibes" || favs[1].Description != "Spotify" {
+		t.Errorf("unexpected favorite[1]: %+v", favs[1])
+	}
+}
+
+func TestPlayStreamValidation(t *testing.T) {
+	client := NewClient("192.168.1.100")
+
+	// Invalid URL scheme (ftp)
+	err := client.PlayStream("ftp://example.com/audio.mp3", "FTP Stream")
+	if err == nil {
+		t.Error("expected error for ftp scheme, got nil")
+	}
+
+	// Invalid URL (empty/garbage)
+	err = client.PlayStream("not-a-url", "")
+	if err == nil {
+		t.Error("expected error for non-URL, got nil")
+	}
+}
+
+func TestParseMusicServices(t *testing.T) {
+	xmlStr := `<Services Scheme="1.1">
+  <Service Id="9" Name="Spotify" Version="1.1" Uri="https://spotify.sonos.com/smapi" SecureUri="https://spotify.sonos.com/smapi" Capabilities="513"/>
+  <Service Id="204" Name="Apple Music" Version="1.1" Uri="https://sonos-music.apple.com/smapi" SecureUri="https://sonos-music.apple.com/smapi"/>
+</Services>`
+
+	services, err := ParseMusicServices(xmlStr)
+	if err != nil {
+		t.Fatalf("ParseMusicServices failed: %v", err)
+	}
+	if len(services) != 2 {
+		t.Fatalf("expected 2 services, got %d", len(services))
+	}
+	if services[0].ID != "9" || services[0].Name != "Spotify" {
+		t.Errorf("unexpected service[0]: %+v", services[0])
+	}
+	if services[1].ID != "204" || services[1].Name != "Apple Music" {
+		t.Errorf("unexpected service[1]: %+v", services[1])
+	}
+}
+
+func TestResolveDefaultService(t *testing.T) {
+	services := []MusicService{
+		{ID: "9", Name: "Spotify"},
+		{ID: "204", Name: "Apple Music"},
+		{ID: "160", Name: "Amazon Music"},
+	}
+
+	// 1. Configured default matches Spotify
+	s, ok := ResolveDefaultService(services, "Spotify")
+	if !ok || s.Name != "Spotify" || !s.IsDefault {
+		t.Errorf("expected Spotify as default, got %+v (ok=%v)", s, ok)
+	}
+
+	// 2. Case-insensitive match on Apple Music
+	s, ok = ResolveDefaultService(services, "apple music")
+	if !ok || s.Name != "Apple Music" || !s.IsDefault {
+		t.Errorf("expected Apple Music as default, got %+v (ok=%v)", s, ok)
+	}
+
+	// 3. Match on service ID "160"
+	s, ok = ResolveDefaultService(services, "160")
+	if !ok || s.Name != "Amazon Music" || !s.IsDefault {
+		t.Errorf("expected Amazon Music matching ID 160, got %+v (ok=%v)", s, ok)
+	}
+
+	// 4. Configured default is empty -> fallback to first service
+	s, ok = ResolveDefaultService(services, "")
+	if !ok || s.Name != "Spotify" || !s.IsDefault {
+		t.Errorf("expected first service Spotify as fallback, got %+v (ok=%v)", s, ok)
+	}
+
+	// 5. Empty services list returns false
+	_, ok = ResolveDefaultService(nil, "Spotify")
+	if ok {
+		t.Error("expected false for empty services list, got true")
+	}
+}

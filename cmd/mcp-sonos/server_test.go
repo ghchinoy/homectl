@@ -107,6 +107,36 @@ func (m *MockClient) Previous() error {
 	return nil
 }
 
+func (m *MockClient) BrowseFavorites() ([]sonos.Favorite, error) {
+	return []sonos.Favorite{
+		{ID: "FV:2/1", Title: "Chill Vibes", Type: "playlist", Description: "Spotify"},
+		{ID: "FV:2/2", Title: "Morning Jazz", Type: "audioBroadcast", Description: "Sonos Radio"},
+	}, nil
+}
+
+func (m *MockClient) PlayFavorite(idOrTitle string) error {
+	m.title = "Favorite: " + idOrTitle
+	m.state = "PLAYING"
+	return nil
+}
+
+func (m *MockClient) PlayStream(streamURL, title string) error {
+	m.title = title
+	m.state = "PLAYING"
+	return nil
+}
+
+func (m *MockClient) AddURIToQueue(uri, metadata string, asNext bool) (int, error) {
+	return 4, nil
+}
+
+func (m *MockClient) ListMusicServices() ([]sonos.MusicService, error) {
+	return []sonos.MusicService{
+		{ID: "9", Name: "Spotify", Version: "1.1"},
+		{ID: "204", Name: "Apple Music", Version: "1.1"},
+	}, nil
+}
+
 func setupTestSession(t *testing.T, mockClient *MockClient) (*mcp.ClientSession, func()) {
 	return setupTestSessionWithFactory(t, func(ip string) ClientInterface {
 		return mockClient
@@ -174,6 +204,11 @@ func TestListTools(t *testing.T) {
 		"sonos_get_topology",
 		"sonos_control",
 		"sonos_set_volume",
+		"sonos_list_favorites",
+		"sonos_play_favorite",
+		"sonos_play_stream",
+		"sonos_add_to_queue",
+		"sonos_list_services",
 	}
 
 	for _, expected := range expectedTools {
@@ -527,6 +562,182 @@ func TestSonosGetTopologyTool(t *testing.T) {
 	}
 
 	// StructuredContent must be an object/record per SEP-2106.
+	if res.StructuredContent != nil {
+		if _, ok := res.StructuredContent.(map[string]any); !ok {
+			t.Errorf("expected StructuredContent to be a record, got %T", res.StructuredContent)
+		}
+	}
+}
+
+
+func TestSonosListFavoritesTool(t *testing.T) {
+	mock := &MockClient{ip: "192.168.4.120"}
+	session, cleanup := setupTestSession(t, mock)
+	defer cleanup()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	res, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "sonos_list_favorites",
+		Arguments: map[string]any{"ip": "192.168.4.120"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool sonos_list_favorites failed: %v", err)
+	}
+
+	if len(res.Content) < 2 {
+		t.Fatalf("expected at least 2 content items, got %d", len(res.Content))
+	}
+	textContent, ok := res.Content[1].(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("expected TextContent, got %T", res.Content[1])
+	}
+
+	var favResult ListFavoritesResult
+	if err := json.Unmarshal([]byte(textContent.Text), &favResult); err != nil {
+		t.Fatalf("failed to unmarshal favorites JSON: %v", err)
+	}
+
+	if favResult.Count != 2 || len(favResult.Favorites) != 2 {
+		t.Fatalf("expected 2 favorites, got %+v", favResult)
+	}
+	if favResult.Favorites[0].Title != "Chill Vibes" {
+		t.Errorf("expected first favorite 'Chill Vibes', got %s", favResult.Favorites[0].Title)
+	}
+
+	// Verify structuredContent is a record/object (SEP-2106)
+	if res.StructuredContent != nil {
+		if _, ok := res.StructuredContent.(map[string]any); !ok {
+			t.Errorf("expected StructuredContent to be a record, got %T", res.StructuredContent)
+		}
+	}
+}
+
+func TestSonosPlayFavoriteTool(t *testing.T) {
+	mock := &MockClient{ip: "192.168.4.120", state: "STOPPED"}
+	session, cleanup := setupTestSession(t, mock)
+	defer cleanup()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	res, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_play_favorite",
+		Arguments: map[string]any{
+			"ip":          "192.168.4.120",
+			"favorite_id": "FV:2/1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool sonos_play_favorite failed: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("expected success, got error: %+v", res)
+	}
+	if mock.state != "PLAYING" {
+		t.Errorf("expected mock state PLAYING, got %s", mock.state)
+	}
+}
+
+func TestSonosPlayStreamTool(t *testing.T) {
+	mock := &MockClient{ip: "192.168.4.120", state: "STOPPED"}
+	session, cleanup := setupTestSession(t, mock)
+	defer cleanup()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// 1. Valid stream
+	res, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_play_stream",
+		Arguments: map[string]any{
+			"ip":    "192.168.4.120",
+			"url":   "https://stream.example.com/live.mp3",
+			"title": "Live Radio",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool sonos_play_stream failed: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("expected success, got error: %+v", res)
+	}
+	if mock.state != "PLAYING" || mock.title != "Live Radio" {
+		t.Errorf("unexpected state: state=%s, title=%s", mock.state, mock.title)
+	}
+
+	// 2. Invalid scheme (ftp)
+	badRes, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_play_stream",
+		Arguments: map[string]any{
+			"ip":  "192.168.4.120",
+			"url": "ftp://example.com/audio.mp3",
+		},
+	})
+	if err == nil && (badRes == nil || !badRes.IsError) {
+		t.Error("expected error for invalid ftp scheme, got success")
+	}
+}
+
+func TestSonosAddToQueueTool(t *testing.T) {
+	mock := &MockClient{ip: "192.168.4.120"}
+	session, cleanup := setupTestSession(t, mock)
+	defer cleanup()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	res, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_add_to_queue",
+		Arguments: map[string]any{
+			"ip":      "192.168.4.120",
+			"uri":     "x-file-cifs://nas/track.flac",
+			"as_next": true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool sonos_add_to_queue failed: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("expected success, got error: %+v", res)
+	}
+}
+
+func TestSonosListServicesTool(t *testing.T) {
+	mock := &MockClient{ip: "192.168.4.120"}
+	session, cleanup := setupTestSession(t, mock)
+	defer cleanup()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	res, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "sonos_list_services",
+		Arguments: map[string]any{"ip": "192.168.4.120"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool sonos_list_services failed: %v", err)
+	}
+
+	if len(res.Content) < 2 {
+		t.Fatalf("expected at least 2 content items, got %d", len(res.Content))
+	}
+	textContent, ok := res.Content[1].(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("expected TextContent, got %T", res.Content[1])
+	}
+
+	var svcResult ListServicesResult
+	if err := json.Unmarshal([]byte(textContent.Text), &svcResult); err != nil {
+		t.Fatalf("failed to unmarshal services JSON: %v", err)
+	}
+
+	if svcResult.Count != 2 || len(svcResult.Services) != 2 {
+		t.Fatalf("expected 2 services, got %+v", svcResult)
+	}
+
+	// Verify structuredContent is a record/object (SEP-2106)
 	if res.StructuredContent != nil {
 		if _, ok := res.StructuredContent.(map[string]any); !ok {
 			t.Errorf("expected StructuredContent to be a record, got %T", res.StructuredContent)

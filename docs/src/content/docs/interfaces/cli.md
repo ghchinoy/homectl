@@ -8,6 +8,8 @@ description: Complete command-line interface documentation for homectl.
 ## Global Flags
 
 * `--bridge string`: Lutron Bridge IP address. Defaults to auto-discovery or cached IP.
+* `--json`: Output results as machine-readable JSON.
+* `--dry-run`: Simulate operation without sending network mutations.
 
 ---
 
@@ -35,7 +37,12 @@ homectl
 │   ├── next         # Next track
 │   ├── prev         # Previous track
 │   ├── now-playing  # Quick track metadata display
-│   └── volume       # Set volume (0-100)
+│   ├── volume       # Set volume (0-100)
+│   ├── favorites    # List pinned cloud favorites
+│   ├── play-favorite# Play pinned favorite by ID
+│   ├── play-stream  # Play direct HTTP/HTTPS audio stream
+│   ├── queue-add    # Enqueue track to playback queue
+│   └── services     # List streaming services catalog
 └── qolsys           # Qolsys alarm panel integration
     └── monitor      # Stream live panel events via WebSocket
 ```

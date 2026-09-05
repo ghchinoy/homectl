@@ -3,11 +3,14 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ghchinoy/homectl/modules/sonos"
+	"github.com/ghchinoy/homectl/pkg/config"
 	"github.com/spf13/cobra"
 )
 
@@ -48,6 +51,34 @@ type SonosDetailsOutput struct {
 	NextTrack   sonos.TrackMetadata `json:"next_track,omitempty"`
 	Duration    string              `json:"duration,omitempty"`
 	Progress    string              `json:"progress,omitempty"`
+}
+
+// SonosFavoritesOutput represents the structured JSON output for favorites.
+type SonosFavoritesOutput struct {
+	Count     int              `json:"count"`
+	Favorites []sonos.Favorite `json:"favorites"`
+}
+
+// SonosServicesOutput represents the structured JSON output for music services.
+type SonosServicesOutput struct {
+	Count    int                  `json:"count"`
+	Default  *sonos.MusicService  `json:"default,omitempty"`
+	Services []sonos.MusicService `json:"services"`
+}
+
+func resolveSpeakerIP(arg string) (string, error) {
+	if arg != "" {
+		return arg, nil
+	}
+	devices, err := sonos.LoadCache()
+	if err == nil && len(devices) > 0 {
+		return devices[0].IP, nil
+	}
+	discovered, err := sonos.Discover(2 * time.Second)
+	if err == nil && len(discovered) > 0 {
+		return discovered[0].IP, nil
+	}
+	return "", fmt.Errorf("no Sonos speaker IP provided and none discovered")
 }
 
 var sonosCmd = &cobra.Command{
@@ -351,7 +382,212 @@ var setSonosVolumeCmd = &cobra.Command{
 	},
 }
 
+var favoritesSonosCmd = &cobra.Command{
+	Use:   "favorites [ip]",
+	Short: "List pinned favorites from a Sonos speaker",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var rawIP string
+		if len(args) > 0 {
+			rawIP = args[0]
+		}
+		ip, err := resolveSpeakerIP(rawIP)
+		if err != nil {
+			return err
+		}
+
+		client := sonos.NewClient(ip)
+		favs, err := client.BrowseFavorites()
+		if err != nil {
+			return fmt.Errorf("list favorites: %w", err)
+		}
+
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(SonosFavoritesOutput{
+				Count:     len(favs),
+				Favorites: favs,
+			})
+		}
+
+		fmt.Printf("Sonos Favorites on %s (%d found):\n\n", ip, len(favs))
+		fmt.Printf("%-12s %-30s %-20s %-15s\n", "ID", "TITLE", "TYPE", "DESCRIPTION")
+		fmt.Println(strings.Repeat("-", 80))
+		for _, f := range favs {
+			typ := f.Type
+			if lastSlash := strings.LastIndex(typ, "."); lastSlash != -1 {
+				typ = typ[lastSlash+1:]
+			}
+			fmt.Printf("%-12s %-30s %-20s %-15s\n", f.ID, f.Title, typ, f.Description)
+		}
+		return nil
+	},
+}
+
+var playFavoriteSonosCmd = &cobra.Command{
+	Use:   "play-favorite [ip] [favorite-id]",
+	Short: "Play a pinned favorite by ID on a Sonos speaker",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ip := args[0]
+		favID := args[1]
+
+		if isDryRun(cmd) {
+			if isJSON(cmd) {
+				return json.NewEncoder(os.Stdout).Encode(DryRunResult{
+					DryRun:  true,
+					Command: "sonos play-favorite",
+					Planned: map[string]any{"ip": ip, "favorite_id": favID},
+					Message: fmt.Sprintf("[DRY-RUN] Would play favorite %q on %s", favID, ip),
+				})
+			}
+			fmt.Printf("[DRY-RUN] Simulating: Would play favorite %q on %s (no changes made)\n", favID, ip)
+			return nil
+		}
+
+		client := sonos.NewClient(ip)
+		fmt.Printf("Playing favorite %q on %s...\n", favID, ip)
+		if err := client.PlayFavorite(favID); err != nil {
+			return fmt.Errorf("play favorite: %w", err)
+		}
+		fmt.Println("Success!")
+		return nil
+	},
+}
+
+var playStreamSonosCmd = &cobra.Command{
+	Use:   "play-stream [ip] [url]",
+	Short: "Play an HTTP/HTTPS audio stream on a Sonos speaker",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ip := args[0]
+		streamURL := args[1]
+
+		u, err := url.Parse(strings.TrimSpace(streamURL))
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+			return fmt.Errorf("invalid stream URL %q: scheme must be http or https", streamURL)
+		}
+
+		title, _ := cmd.Flags().GetString("title")
+		if title == "" {
+			title = u.Host
+			if title == "" {
+				title = "Audio Stream"
+			}
+		}
+
+		if isDryRun(cmd) {
+			if isJSON(cmd) {
+				return json.NewEncoder(os.Stdout).Encode(DryRunResult{
+					DryRun:  true,
+					Command: "sonos play-stream",
+					Planned: map[string]any{"ip": ip, "url": streamURL, "title": title},
+					Message: fmt.Sprintf("[DRY-RUN] Would play stream %q (%s) on %s", title, streamURL, ip),
+				})
+			}
+			fmt.Printf("[DRY-RUN] Simulating: Would play stream %q (%s) on %s (no changes made)\n", title, streamURL, ip)
+			return nil
+		}
+
+		client := sonos.NewClient(ip)
+		fmt.Printf("Starting stream %q (%s) on %s...\n", title, streamURL, ip)
+		if err := client.PlayStream(streamURL, title); err != nil {
+			return fmt.Errorf("play stream: %w", err)
+		}
+		fmt.Println("Success!")
+		return nil
+	},
+}
+
+var queueAddSonosCmd = &cobra.Command{
+	Use:   "queue-add [ip] [uri]",
+	Short: "Add an audio track/stream URI to the Sonos queue",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ip := args[0]
+		uri := args[1]
+		asNext, _ := cmd.Flags().GetBool("next")
+
+		if isDryRun(cmd) {
+			if isJSON(cmd) {
+				return json.NewEncoder(os.Stdout).Encode(DryRunResult{
+					DryRun:  true,
+					Command: "sonos queue-add",
+					Planned: map[string]any{"ip": ip, "uri": uri, "next": asNext},
+					Message: fmt.Sprintf("[DRY-RUN] Would add URI %q to queue on %s (next=%v)", uri, ip, asNext),
+				})
+			}
+			fmt.Printf("[DRY-RUN] Simulating: Would add URI %q to queue on %s (next=%v, no changes made)\n", uri, ip, asNext)
+			return nil
+		}
+
+		client := sonos.NewClient(ip)
+		pos, err := client.AddURIToQueue(uri, "", asNext)
+		if err != nil {
+			return fmt.Errorf("queue add: %w", err)
+		}
+		fmt.Printf("Enqueued at track position %d on %s\n", pos, ip)
+		return nil
+	},
+}
+
+var servicesSonosCmd = &cobra.Command{
+	Use:   "services [ip]",
+	Short: "List available music streaming services on a Sonos speaker",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var rawIP string
+		if len(args) > 0 {
+			rawIP = args[0]
+		}
+		ip, err := resolveSpeakerIP(rawIP)
+		if err != nil {
+			return err
+		}
+
+		client := sonos.NewClient(ip)
+		services, err := client.ListMusicServices()
+		if err != nil {
+			return fmt.Errorf("list services: %w", err)
+		}
+
+		cfg := config.LoadConfig()
+		defaultService, hasDefault := sonos.ResolveDefaultService(services, cfg.SonosDefaultService)
+
+		if isJSON(cmd) {
+			var defPtr *sonos.MusicService
+			if hasDefault {
+				defPtr = &defaultService
+			}
+			return json.NewEncoder(os.Stdout).Encode(SonosServicesOutput{
+				Count:    len(services),
+				Default:  defPtr,
+				Services: services,
+			})
+		}
+
+		fmt.Printf("Sonos Music Services on %s (%d available):\n", ip, len(services))
+		if hasDefault {
+			fmt.Printf("Default Service: %s (ID: %s)\n\n", defaultService.Name, defaultService.ID)
+		} else {
+			fmt.Println()
+		}
+		fmt.Printf("%-6s %-30s %-8s %-10s\n", "ID", "NAME", "DEFAULT", "VERSION")
+		fmt.Println(strings.Repeat("-", 60))
+		for _, s := range services {
+			isDef := ""
+			if s.IsDefault {
+				isDef = "*"
+			}
+			fmt.Printf("%-6s %-30s %-8s %-10s\n", s.ID, s.Name, isDef, s.Version)
+		}
+		return nil
+	},
+}
+
 func init() {
+	playStreamSonosCmd.Flags().String("title", "", "Descriptive title for the stream (defaults to URL host)")
+	queueAddSonosCmd.Flags().Bool("next", false, "Insert track as next in queue instead of appending to end")
+
 	rootCmd.AddCommand(sonosCmd)
 	sonosCmd.AddCommand(listSonosCmd)
 	sonosCmd.AddCommand(playSonosCmd)
@@ -362,4 +598,9 @@ func init() {
 	sonosCmd.AddCommand(nowPlayingCmd)
 	sonosCmd.AddCommand(sonosDetailsCmd)
 	sonosCmd.AddCommand(setSonosVolumeCmd)
+	sonosCmd.AddCommand(favoritesSonosCmd)
+	sonosCmd.AddCommand(playFavoriteSonosCmd)
+	sonosCmd.AddCommand(playStreamSonosCmd)
+	sonosCmd.AddCommand(queueAddSonosCmd)
+	sonosCmd.AddCommand(servicesSonosCmd)
 }
