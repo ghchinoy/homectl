@@ -692,6 +692,107 @@ func (c *Client) Previous() error {
 	return nil
 }
 
+// SeekTrack seeks to a specific 1-based track number in the active playback queue.
+func (c *Client) SeekTrack(track int) error {
+	if track < 1 {
+		return fmt.Errorf("invalid track number %d: track must be >= 1", track)
+	}
+
+	coordIP, _ := c.GetCoordinatorIP()
+	targetClient := c
+	if coordIP != "" && coordIP != c.ip {
+		targetClient = NewClient(coordIP, WithHTTPClient(c.httpClient), WithLogger(c.log()), WithStorage(c.store()))
+	}
+
+	body, err := targetClient.SOAPAction(
+		"/MediaRenderer/AVTransport/Control",
+		"urn:schemas-upnp-org:service:AVTransport:1",
+		"Seek",
+		map[string]string{
+			"InstanceID": "0",
+			"Unit":       "TRACK_NR",
+			"Target":     strconv.Itoa(track),
+		})
+	if err != nil {
+		if strings.Contains(err.Error(), "711") || strings.Contains(err.Error(), "701") {
+			return nil
+		}
+		return fmt.Errorf("seek track: %w", err)
+	}
+	body.Close()
+	return nil
+}
+
+// SeekTime seeks to a specific relative time offset within the currently playing track.
+// target should be in [H:]MM:SS format (e.g. "0:02:30" or "1:15").
+func (c *Client) SeekTime(target string) error {
+	normTime, err := normalizeSeekTime(target)
+	if err != nil {
+		return err
+	}
+
+	coordIP, _ := c.GetCoordinatorIP()
+	targetClient := c
+	if coordIP != "" && coordIP != c.ip {
+		targetClient = NewClient(coordIP, WithHTTPClient(c.httpClient), WithLogger(c.log()), WithStorage(c.store()))
+	}
+
+	body, err := targetClient.SOAPAction(
+		"/MediaRenderer/AVTransport/Control",
+		"urn:schemas-upnp-org:service:AVTransport:1",
+		"Seek",
+		map[string]string{
+			"InstanceID": "0",
+			"Unit":       "REL_TIME",
+			"Target":     normTime,
+		})
+	if err != nil {
+		return fmt.Errorf("seek time: %w", err)
+	}
+	body.Close()
+	return nil
+}
+
+// normalizeSeekTime validates and formats seek time strings into H:MM:SS.
+func normalizeSeekTime(target string) (string, error) {
+	trimmed := strings.TrimSpace(target)
+	if trimmed == "" {
+		return "", fmt.Errorf("seek time cannot be empty")
+	}
+
+	parts := strings.Split(trimmed, ":")
+	switch len(parts) {
+	case 2:
+		mm, err := strconv.Atoi(parts[0])
+		if err != nil || mm < 0 {
+			return "", fmt.Errorf("invalid minutes %q in seek time %q", parts[0], target)
+		}
+		ss, err := strconv.Atoi(parts[1])
+		if err != nil || ss < 0 || ss >= 60 {
+			return "", fmt.Errorf("invalid seconds %q in seek time %q (must be 0-59)", parts[1], target)
+		}
+		return fmt.Sprintf("0:%02d:%02d", mm, ss), nil
+
+	case 3:
+		hh, err := strconv.Atoi(parts[0])
+		if err != nil || hh < 0 {
+			return "", fmt.Errorf("invalid hours %q in seek time %q", parts[0], target)
+		}
+		mm, err := strconv.Atoi(parts[1])
+		if err != nil || mm < 0 || mm >= 60 {
+			return "", fmt.Errorf("invalid minutes %q in seek time %q (must be 0-59)", parts[1], target)
+		}
+		ss, err := strconv.Atoi(parts[2])
+		if err != nil || ss < 0 || ss >= 60 {
+			return "", fmt.Errorf("invalid seconds %q in seek time %q (must be 0-59)", parts[2], target)
+		}
+		return fmt.Sprintf("%d:%02d:%02d", hh, mm, ss), nil
+
+	default:
+		return "", fmt.Errorf("invalid seek time format %q: expected MM:SS or H:MM:SS", target)
+	}
+}
+
 // SetAVTransportURI sets the current media URI (e.g. for the queue)
 func (c *Client) SetAVTransportURI(uri, metadata string) error {
 	body, err := c.SOAPAction(

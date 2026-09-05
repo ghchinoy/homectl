@@ -33,6 +33,8 @@ type ClientInterface interface {
 	Stop() error
 	Next() error
 	Previous() error
+	SeekTrack(track int) error
+	SeekTime(target string) error
 }
 
 // ClientFactory creates a ClientInterface for the specified IP.
@@ -120,7 +122,9 @@ type NowPlayingParams struct {
 // ControlParams defines parameters for sonos_control.
 type ControlParams struct {
 	IP     string `json:"ip" jsonschema:"IP address of the Sonos speaker (required)"`
-	Action string `json:"action" jsonschema:"Playback action: 'play', 'pause', 'stop', 'next', 'previous' (required)"`
+	Action string `json:"action" jsonschema:"Playback action: 'play', 'pause', 'stop', 'next', 'previous', 'seek_track', 'seek_time' (required)"`
+	Track  int    `json:"track,omitempty" jsonschema:"1-based queue track number to jump to (required when action is 'seek_track')"`
+	Target string `json:"target,omitempty" jsonschema:"Time offset to seek to in [H:]MM:SS format e.g. '1:30' or '0:02:15' (required when action is 'seek_time')"`
 }
 
 // SetVolumeParams defines parameters for sonos_set_volume.
@@ -426,14 +430,14 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 	// Tool 4: sonos_control (Mutating)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "sonos_control",
-		Description: "Controls playback on a Sonos speaker: 'play', 'pause', 'stop', 'next', 'previous'.",
+		Description: "Controls playback on a Sonos speaker: 'play', 'pause', 'stop', 'next', 'previous', 'seek_track' (jump to track number), 'seek_time' (seek offset).",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args ControlParams) (*mcp.CallToolResult, any, error) {
 		if strings.TrimSpace(args.IP) == "" {
 			return nil, nil, fmt.Errorf("ip parameter is required")
 		}
 		action := strings.TrimSpace(strings.ToLower(args.Action))
 		if action == "" {
-			return nil, nil, fmt.Errorf("action parameter is required ('play', 'pause', 'stop', 'next', 'previous')")
+			return nil, nil, fmt.Errorf("action parameter is required ('play', 'pause', 'stop', 'next', 'previous', 'seek_track', 'seek_time')")
 		}
 
 		client := cfg.ClientFactory(args.IP)
@@ -450,8 +454,18 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 			err = client.Next()
 		case "prev", "previous":
 			err = client.Previous()
+		case "seek_track":
+			if args.Track < 1 {
+				return nil, nil, fmt.Errorf("track parameter must be >= 1 for seek_track action")
+			}
+			err = client.SeekTrack(args.Track)
+		case "seek_time":
+			if strings.TrimSpace(args.Target) == "" {
+				return nil, nil, fmt.Errorf("target parameter (e.g. '0:01:30' or '1:45') is required for seek_time action")
+			}
+			err = client.SeekTime(args.Target)
 		default:
-			return nil, nil, fmt.Errorf("unknown action %q (supported: 'play', 'pause', 'stop', 'next', 'previous')", action)
+			return nil, nil, fmt.Errorf("unknown action %q (supported: 'play', 'pause', 'stop', 'next', 'previous', 'seek_track', 'seek_time')", action)
 		}
 
 		if err != nil {
@@ -459,11 +473,20 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		}
 
 		msg := fmt.Sprintf("Successfully executed '%s' on Sonos speaker at %s", action, args.IP)
+		outPayload := map[string]any{"status": "ok", "action": action, "ip": args.IP}
+		if action == "seek_track" {
+			msg = fmt.Sprintf("Successfully jumped to track %d on Sonos speaker at %s", args.Track, args.IP)
+			outPayload["track"] = args.Track
+		} else if action == "seek_time" {
+			msg = fmt.Sprintf("Successfully sought to %s on Sonos speaker at %s", args.Target, args.IP)
+			outPayload["target"] = args.Target
+		}
+
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
 				&mcp.TextContent{Text: msg},
 			},
-		}, map[string]string{"status": "ok", "action": action, "ip": args.IP}, nil
+		}, outPayload, nil
 	})
 
 	// Tool 5: sonos_set_volume (Mutating)

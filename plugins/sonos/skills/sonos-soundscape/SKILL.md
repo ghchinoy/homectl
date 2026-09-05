@@ -96,6 +96,9 @@ For internet radio, podcasts, or TTS voice announcements:
 3. **Browsing & Inspecting the Queue (`sonos_get_queue`):**
    - Call `sonos_get_queue(ip: "<ip>", start: 0, count: 20)` to inspect upcoming tracks, current queue size (`total_matches`), and track positions.
    - Use pagination parameters `start` and `count` to browse large queues without inflating prompt context.
+4. **Queue Jumping & Time Seeking (`sonos_control`):**
+   - Jump directly to a 1-based queue track number: `sonos_control(ip: "<ip>", action: "seek_track", track: <n>)`.
+   - Seek to a time offset in the active track: `sonos_control(ip: "<ip>", action: "seek_time", target: "<[H:]MM:SS>")`.
 
 ---
 
@@ -108,7 +111,7 @@ When interacting with `homectl-sonos-mcp`:
 | `sonos_list_speakers` | 🔒 Read-Only | Discover speakers on LAN | `refresh: bool` |
 | `sonos_get_now_playing`| 🔒 Read-Only | Get track metadata & progress (resolves followers) | `ip: string` |
 | `sonos_get_topology`   | 🔒 Read-Only | Group & stereo-pair structure with coordinators | `ip: string` |
-| `sonos_control`        | ⚡ Mutating | Play, pause, stop, next, previous | `ip: string`, `action: string` |
+| `sonos_control`        | ⚡ Mutating | Playback: play, pause, stop, next, prev, seek_track, seek_time | `ip: string`, `action: string`, `track?: int`, `target?: string` |
 | `sonos_set_volume`     | ⚡ Mutating | Adjust absolute or relative volume | `ip: string`, `volume?: int`, `delta?: int` |
 | `sonos_list_favorites` | 🔒 Read-Only | Browse pinned cloud playlists & radio stations | `ip: string` |
 | `sonos_play_favorite`  | ⚡ Mutating | Start playback of a pinned favorite by ID | `ip: string`, `favorite_id: string` |

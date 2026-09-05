@@ -36,6 +36,7 @@ homectl
 │   ├── stop         # Stop playback
 │   ├── next         # Next track
 │   ├── prev         # Previous track
+│   ├── seek         # Seek track or time offset
 │   ├── now-playing  # Quick track metadata display
 │   ├── volume       # Set volume (0-100)
 │   ├── favorites    # List pinned cloud favorites
@@ -88,6 +89,14 @@ homectl sonos list
 Prints full metadata (queue length, format, duration, next track):
 ```bash
 homectl sonos details 192.168.1.120
+```
+
+### `homectl sonos seek <ip>`
+Jumps to a 1-based track number in the queue or seeks to a time offset in the current track. Supports `--dry-run`:
+```bash
+homectl sonos seek 192.168.1.120 --track 3
+homectl sonos seek 192.168.1.120 --time 1:30
+homectl sonos seek 192.168.1.120 --track 3 --dry-run
 ```
 
 ### `homectl sonos volume <ip> <0-100>`

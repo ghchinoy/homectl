@@ -249,6 +249,81 @@ var prevSonosCmd = &cobra.Command{
 	},
 }
 
+var seekSonosCmd = &cobra.Command{
+	Use:   "seek [ip]",
+	Short: "Seek to a track number or time offset on a Sonos speaker",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ip := args[0]
+		track, _ := cmd.Flags().GetInt("track")
+		timeStr, _ := cmd.Flags().GetString("time")
+
+		if track == 0 && timeStr == "" {
+			return fmt.Errorf("must specify either --track <number> or --time <[H:]MM:SS>")
+		}
+		if track != 0 && timeStr != "" {
+			return fmt.Errorf("cannot specify both --track and --time")
+		}
+		if track < 0 {
+			return fmt.Errorf("track number must be >= 1")
+		}
+
+		if isDryRun(cmd) {
+			planned := map[string]any{"ip": ip}
+			msg := ""
+			if track > 0 {
+				planned["track"] = track
+				msg = fmt.Sprintf("[DRY-RUN] Would seek to track %d on %s", track, ip)
+			} else {
+				planned["time"] = timeStr
+				msg = fmt.Sprintf("[DRY-RUN] Would seek to time %s on %s", timeStr, ip)
+			}
+
+			if isJSON(cmd) {
+				return json.NewEncoder(os.Stdout).Encode(DryRunResult{
+					DryRun:  true,
+					Command: "sonos seek",
+					Planned: planned,
+					Message: msg,
+				})
+			}
+			fmt.Printf("[DRY-RUN] Simulating: %s (no changes made)\n", msg)
+			return nil
+		}
+
+		client := sonos.NewClient(ip)
+		if track > 0 {
+			if err := client.SeekTrack(track); err != nil {
+				return fmt.Errorf("seek track: %w", err)
+			}
+			if isJSON(cmd) {
+				return json.NewEncoder(os.Stdout).Encode(map[string]any{
+					"status": "ok",
+					"action": "seek_track",
+					"ip":     ip,
+					"track":  track,
+				})
+			}
+			fmt.Printf("Successfully jumped to track %d on %s.\n", track, ip)
+		} else {
+			if err := client.SeekTime(timeStr); err != nil {
+				return fmt.Errorf("seek time: %w", err)
+			}
+			if isJSON(cmd) {
+				return json.NewEncoder(os.Stdout).Encode(map[string]any{
+					"status": "ok",
+					"action": "seek_time",
+					"ip":     ip,
+					"time":   timeStr,
+				})
+			}
+			fmt.Printf("Successfully sought to %s on %s.\n", timeStr, ip)
+		}
+
+		return nil
+	},
+}
+
 var nowPlayingCmd = &cobra.Command{
 	Use:   "now-playing [ip]",
 	Short: "Show what is currently playing on a Sonos speaker",
@@ -645,6 +720,8 @@ func init() {
 	queueAddSonosCmd.Flags().Bool("next", false, "Insert track as next in queue instead of appending to end")
 	queueSonosCmd.Flags().Int("start", 0, "0-based starting index in the queue (default 0)")
 	queueSonosCmd.Flags().Int("count", 20, "Number of tracks to return (default 20)")
+	seekSonosCmd.Flags().Int("track", 0, "1-based track number in the queue to jump to")
+	seekSonosCmd.Flags().String("time", "", "Time offset to seek to in [H:]MM:SS format (e.g. '1:30' or '0:02:15')")
 
 	rootCmd.AddCommand(sonosCmd)
 	sonosCmd.AddCommand(listSonosCmd)
@@ -653,6 +730,7 @@ func init() {
 	sonosCmd.AddCommand(stopSonosCmd)
 	sonosCmd.AddCommand(nextSonosCmd)
 	sonosCmd.AddCommand(prevSonosCmd)
+	sonosCmd.AddCommand(seekSonosCmd)
 	sonosCmd.AddCommand(nowPlayingCmd)
 	sonosCmd.AddCommand(sonosDetailsCmd)
 	sonosCmd.AddCommand(setSonosVolumeCmd)

@@ -115,7 +115,7 @@ digraph SonosVerticalArchitecture {
     mcp_mut_tools [
       label=<<table border="0" cellborder="0" cellspacing="2">
         <tr><td><font color="#dc2626"><b>⚡ Mutating MCP Tools</b></font></td></tr>
-        <tr><td><font color="#0f172a" point-size="8">• <b>sonos_control</b> (play/pause/stop/next/prev)</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• <b>sonos_control</b> (play/pause/stop/next/prev/seek)</font></td></tr>
         <tr><td><font color="#0f172a" point-size="8">• <b>sonos_set_volume</b> (absolute / delta)</font></td></tr>
         <tr><td><font color="#0f172a" point-size="8">• <b>sonos_play_favorite</b> (launch favorite)</font></td></tr>
         <tr><td><font color="#0f172a" point-size="8">• <b>sonos_play_stream</b> (direct web URL)</font></td></tr>

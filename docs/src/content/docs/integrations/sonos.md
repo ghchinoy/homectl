@@ -79,6 +79,12 @@ Play arbitrary internet radio streams, podcasts, or TTS voice announcements dire
 
 # View tracks in the playback queue with pagination
 ./homectl sonos queue 192.168.1.120 --start 0 --count 20
+
+# Jump to track 5 in the playback queue
+./homectl sonos seek 192.168.1.120 --track 5
+
+# Seek to 1 minute 30 seconds within current track
+./homectl sonos seek 192.168.1.120 --time 1:30
 ```
 
 ---

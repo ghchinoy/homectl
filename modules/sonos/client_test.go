@@ -647,3 +647,127 @@ func TestGetQueueMock(t *testing.T) {
 		t.Errorf("expected position 1, got %d", res.Items[0].Position)
 	}
 }
+
+func TestSeekTrackMock(t *testing.T) {
+	var requestedUnit, requestedTarget string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		soapAction := r.Header.Get("SOAPAction")
+		if strings.Contains(soapAction, "Seek") {
+			body, _ := io.ReadAll(r.Body)
+			sBody := string(body)
+			requestedUnit = extractTagContent(sBody, "Unit")
+			requestedTarget = extractTagContent(sBody, "Target")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:SeekResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"/></s:Body></s:Envelope>`))
+			return
+		}
+		if strings.Contains(soapAction, "GetZoneGroupState") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetZoneGroupStateResponse xmlns:u="urn:schemas-upnp-org:service:ZoneGroupTopology:1"><ZoneGroupState>&lt;ZoneGroups&gt;&lt;/ZoneGroups&gt;</ZoneGroupState></u:GetZoneGroupStateResponse></s:Body></s:Envelope>`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "http://")
+	client := NewClient(host, WithHTTPClient(server.Client()))
+
+	// Valid track seek
+	if err := client.SeekTrack(3); err != nil {
+		t.Fatalf("SeekTrack failed: %v", err)
+	}
+	if requestedUnit != "TRACK_NR" {
+		t.Errorf("expected Unit TRACK_NR, got %s", requestedUnit)
+	}
+	if requestedTarget != "3" {
+		t.Errorf("expected Target 3, got %s", requestedTarget)
+	}
+
+	// Invalid track seek (track < 1)
+	if err := client.SeekTrack(0); err == nil {
+		t.Error("expected error for track 0, got nil")
+	}
+}
+
+func TestSeekTimeMock(t *testing.T) {
+	var requestedUnit, requestedTarget string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		soapAction := r.Header.Get("SOAPAction")
+		if strings.Contains(soapAction, "Seek") {
+			body, _ := io.ReadAll(r.Body)
+			sBody := string(body)
+			requestedUnit = extractTagContent(sBody, "Unit")
+			requestedTarget = extractTagContent(sBody, "Target")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:SeekResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"/></s:Body></s:Envelope>`))
+			return
+		}
+		if strings.Contains(soapAction, "GetZoneGroupState") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetZoneGroupStateResponse xmlns:u="urn:schemas-upnp-org:service:ZoneGroupTopology:1"><ZoneGroupState>&lt;ZoneGroups&gt;&lt;/ZoneGroups&gt;</ZoneGroupState></u:GetZoneGroupStateResponse></s:Body></s:Envelope>`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "http://")
+	client := NewClient(host, WithHTTPClient(server.Client()))
+
+	// Seek with MM:SS (normalizes to 0:02:15)
+	if err := client.SeekTime("2:15"); err != nil {
+		t.Fatalf("SeekTime(2:15) failed: %v", err)
+	}
+	if requestedUnit != "REL_TIME" {
+		t.Errorf("expected Unit REL_TIME, got %s", requestedUnit)
+	}
+	if requestedTarget != "0:02:15" {
+		t.Errorf("expected normalized Target 0:02:15, got %s", requestedTarget)
+	}
+
+	// Seek with H:MM:SS
+	if err := client.SeekTime("1:05:30"); err != nil {
+		t.Fatalf("SeekTime(1:05:30) failed: %v", err)
+	}
+	if requestedTarget != "1:05:30" {
+		t.Errorf("expected Target 1:05:30, got %s", requestedTarget)
+	}
+
+	// Invalid seek time format
+	if err := client.SeekTime("invalid"); err == nil {
+		t.Error("expected error for invalid seek time, got nil")
+	}
+}
+
+func TestNormalizeSeekTime(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+		wantErr  bool
+	}{
+		{"0:01:30", "0:01:30", false},
+		{"1:45", "0:01:45", false},
+		{"01:45", "0:01:45", false},
+		{"2:05:10", "2:05:10", false},
+		{"0:00:00", "0:00:00", false},
+		{"", "", true},
+		{"abc", "", true},
+		{"1:60", "", true},
+		{"1:02:60", "", true},
+		{"1:60:00", "", true},
+		{"-1:30", "", true},
+		{"1:2:3:4", "", true},
+	}
+
+	for _, tt := range tests {
+		got, err := normalizeSeekTime(tt.input)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("normalizeSeekTime(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			continue
+		}
+		if !tt.wantErr && got != tt.expected {
+			t.Errorf("normalizeSeekTime(%q) = %q, want %q", tt.input, got, tt.expected)
+		}
+	}
+}

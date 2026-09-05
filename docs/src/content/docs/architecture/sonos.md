@@ -30,7 +30,7 @@ The MCP server communicates with AI agents over standard I/O using the official 
 | **`sonos_get_now_playing`** | 🔒 Read-Only | `NowPlayingResult` | Compact playback state, progress, and track metadata. |
 | **`sonos_get_topology`** | 🔒 Read-Only | `TopologyResult{Count, Groups}` | Exposes zone groups and stereo-pair coordinator/follower relationships. |
 | **`sonos_list_favorites`** | 🔒 Read-Only | `ListFavoritesResult{Count, Favorites}` | Lists pinned cloud tracks/playlists from Spotify, Apple Music, and Sonos Radio. |
-| **`sonos_control`** | ⚡ Mutating | `{"status": "ok", "action": ...}` | Sends playback actions: `play`, `pause`, `stop`, `next`, `previous`. |
+| **`sonos_control`** | ⚡ Mutating | `{"status": "ok", "action": ...}` | Sends playback actions: `play`, `pause`, `stop`, `next`, `previous`, `seek_track`, `seek_time`. |
 | **`sonos_set_volume`** | ⚡ Mutating | `{"status": "ok", "volume": ...}` | Adjusts absolute volume (0–100) or applies relative step deltas (`+5`, `-10`). |
 | **`sonos_play_favorite`** | ⚡ Mutating | `{"status": "ok", "favorite_id": ...}` | Initiates playback of a pinned cloud favorite. |
 | **`sonos_play_stream`** | ⚡ Mutating | `{"status": "ok", "url": ...}` | Streams an arbitrary HTTP/HTTPS audio URL (radio, podcast, or TTS). |

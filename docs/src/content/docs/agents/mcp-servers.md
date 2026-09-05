@@ -30,7 +30,7 @@ The `mcp-sonos` server exposes **10 focused tools** and **1 live resource**.
 | **`sonos_get_topology`** | 🔒 Read-Only | Inspects zone groups, members, and stereo pairs | `ip: string` |
 | **`sonos_list_favorites`** | 🔒 Read-Only | Lists pinned cloud tracks, playlists, and radio | `ip?: string` |
 | **`sonos_list_services`** | 🔒 Read-Only | Enumerates available music services on household | `ip?: string` |
-| **`sonos_control`** | ⚡ Mutating | Basic playback (`play`, `pause`, `stop`, `next`, `prev`) | `ip: string`, `action: string` |
+| **`sonos_control`** | ⚡ Mutating | Playback (`play`, `pause`, `stop`, `next`, `prev`, `seek_track`, `seek_time`) | `ip: string`, `action: string`, `track?: int`, `target?: string` |
 | **`sonos_set_volume`** | ⚡ Mutating | Sets absolute volume (0–100) or applies step delta | `ip: string`, `volume?: int`, `delta?: int` |
 | **`sonos_play_favorite`** | ⚡ Mutating | Launches playback of a pinned cloud favorite | `ip: string`, `favorite_id: string` |
 | **`sonos_play_stream`** | ⚡ Mutating | Streams an arbitrary HTTP/HTTPS audio URL | `ip: string`, `url: string`, `title?: string` |
@@ -165,7 +165,7 @@ Lists pinned cloud media (Spotify playlists, Apple Music albums, radio stations)
 ---
 
 ### `sonos_control` (Mutating)
-Dispatches playback actions to a speaker. If the target speaker is a follower, the command is automatically routed to the group coordinator.
+Dispatches playback actions to a speaker. If the target speaker is a follower, the command is automatically routed to the group coordinator. Supports transport control as well as queue track jumping and time seeking.
 
 * **Parameters:**
   ```json
@@ -175,8 +175,16 @@ Dispatches playback actions to a speaker. If the target speaker is a follower, t
       "ip": { "type": "string", "description": "IP address of the Sonos speaker (required)" },
       "action": {
         "type": "string",
-        "enum": ["play", "pause", "stop", "next", "previous"],
+        "enum": ["play", "pause", "stop", "next", "previous", "seek_track", "seek_time"],
         "description": "Playback action to execute"
+      },
+      "track": {
+        "type": "integer",
+        "description": "1-based queue track number to jump to (required when action is 'seek_track')"
+      },
+      "target": {
+        "type": "string",
+        "description": "Time offset to seek to in [H:]MM:SS format e.g. '1:30' or '0:02:15' (required when action is 'seek_time')"
       }
     },
     "required": ["ip", "action"]

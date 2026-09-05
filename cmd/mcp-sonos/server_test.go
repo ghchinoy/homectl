@@ -29,6 +29,8 @@ type MockClient struct {
 	// zoneGroupState is returned verbatim by GetZoneGroupState().
 	zoneGroupState sonos.ZoneGroupState
 	lastEnqueuedMetadata string
+	lastSeekTrack        int
+	lastSeekTarget       string
 }
 
 func (m *MockClient) GetVolume() (int, error) {
@@ -105,6 +107,16 @@ func (m *MockClient) Next() error {
 
 func (m *MockClient) Previous() error {
 	m.title = "Previous Track"
+	return nil
+}
+
+func (m *MockClient) SeekTrack(track int) error {
+	m.lastSeekTrack = track
+	return nil
+}
+
+func (m *MockClient) SeekTime(target string) error {
+	m.lastSeekTarget = target
 	return nil
 }
 
@@ -369,8 +381,66 @@ func TestSonosControlTool(t *testing.T) {
 		t.Errorf("expected state PAUSED_PLAYBACK, got %s", mock.state)
 	}
 
-	// 3. Invalid action
+	// 3. Seek track
+	_, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_control",
+		Arguments: map[string]any{
+			"ip":     "192.168.1.120",
+			"action": "seek_track",
+			"track":  4,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool seek_track failed: %v", err)
+	}
+	if mock.lastSeekTrack != 4 {
+		t.Errorf("expected lastSeekTrack 4, got %d", mock.lastSeekTrack)
+	}
+
+	// 4. Seek track invalid (track < 1)
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_control",
+		Arguments: map[string]any{
+			"ip":     "192.168.1.120",
+			"action": "seek_track",
+			"track":  0,
+		},
+	})
+	if err == nil && (res == nil || !res.IsError) {
+		t.Error("expected error or IsError=true for seek_track with track 0, got success")
+	}
+
+	// 5. Seek time
+	_, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_control",
+		Arguments: map[string]any{
+			"ip":     "192.168.1.120",
+			"action": "seek_time",
+			"target": "0:02:15",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool seek_time failed: %v", err)
+	}
+	if mock.lastSeekTarget != "0:02:15" {
+		t.Errorf("expected lastSeekTarget '0:02:15', got %s", mock.lastSeekTarget)
+	}
+
+	// 6. Seek time invalid (empty target)
+	res, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_control",
+		Arguments: map[string]any{
+			"ip":     "192.168.1.120",
+			"action": "seek_time",
+			"target": "",
+		},
+	})
+	if err == nil && (res == nil || !res.IsError) {
+		t.Error("expected error or IsError=true for seek_time with empty target, got success")
+	}
+
+	// 7. Invalid action
+	res, err = session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "sonos_control",
 		Arguments: map[string]any{
 			"ip":     "192.168.1.120",
