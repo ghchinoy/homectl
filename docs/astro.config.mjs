@@ -69,6 +69,16 @@ export default defineConfig({
           ],
         },
         {
+          label: 'AI Agent Ecosystem',
+          items: [
+            { label: 'Overview & The 3 Pillars', slug: 'agents/overview' },
+            { label: 'Client Setup (OpenCode & Claude)', slug: 'agents/client-setup' },
+            { label: 'MCP Server Reference', slug: 'agents/mcp-servers' },
+            { label: 'Skills & Safety Guardrails', slug: 'agents/skills-and-safety' },
+            { label: 'Plugin Packaging & Authoring', slug: 'agents/packaging' },
+          ],
+        },
+        {
           label: 'Operations & Reference',
           items: [
             { label: 'Configuration & Nicknames', slug: 'reference/configuration' },
