@@ -1,6 +1,10 @@
 package cmd
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"os"
 	"testing"
 )
 
@@ -86,4 +90,116 @@ func TestResolveLutronBridgePrecedence(t *testing.T) {
 	if err != nil || addr != "10.0.0.99" {
 		t.Errorf("expected flag '10.0.0.99' to override env, got %q", addr)
 	}
+}
+
+func TestDryRunCommands(t *testing.T) {
+	captureOutput := func(f func() error) (string, error) {
+		oldStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		err := f()
+
+		w.Close()
+		os.Stdout = oldStdout
+
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		return buf.String(), err
+	}
+
+	t.Run("lutron set level dry-run json", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"lutron", "set", "level"})
+		_ = rootCmd.PersistentFlags().Set("dry-run", "true")
+		_ = rootCmd.PersistentFlags().Set("json", "true")
+		defer rootCmd.PersistentFlags().Set("dry-run", "false")
+		defer rootCmd.PersistentFlags().Set("json", "false")
+
+		out, err := captureOutput(func() error {
+			return cmd.RunE(cmd, []string{"/zone/1", "45"})
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		var res DryRunResult
+		if err := json.Unmarshal([]byte(out), &res); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v, raw: %q", err, out)
+		}
+		if !res.DryRun || res.Command != "set level" || res.Planned["level"] != float64(45) {
+			t.Errorf("unexpected dry run result: %+v", res)
+		}
+	})
+
+	t.Run("lutron set all dry-run json", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"lutron", "set", "all"})
+		_ = rootCmd.PersistentFlags().Set("dry-run", "true")
+		_ = rootCmd.PersistentFlags().Set("json", "true")
+		defer rootCmd.PersistentFlags().Set("dry-run", "false")
+		defer rootCmd.PersistentFlags().Set("json", "false")
+
+		out, err := captureOutput(func() error {
+			return cmd.RunE(cmd, []string{"75"})
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		var res DryRunResult
+		if err := json.Unmarshal([]byte(out), &res); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v, raw: %q", err, out)
+		}
+		if !res.DryRun || res.Command != "set all" || res.Planned["level"] != float64(75) {
+			t.Errorf("unexpected dry run result: %+v", res)
+		}
+	})
+
+	t.Run("sonos volume dry-run json", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"sonos", "volume"})
+		_ = rootCmd.PersistentFlags().Set("dry-run", "true")
+		_ = rootCmd.PersistentFlags().Set("json", "true")
+		defer rootCmd.PersistentFlags().Set("dry-run", "false")
+		defer rootCmd.PersistentFlags().Set("json", "false")
+
+		out, err := captureOutput(func() error {
+			return cmd.RunE(cmd, []string{"192.168.1.100", "30"})
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		var res DryRunResult
+		if err := json.Unmarshal([]byte(out), &res); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v, raw: %q", err, out)
+		}
+		if !res.DryRun || res.Command != "sonos volume" || res.Planned["volume"] != float64(30) {
+			t.Errorf("unexpected dry run result: %+v", res)
+		}
+	})
+}
+
+func TestValidationRanges(t *testing.T) {
+	t.Run("set level invalid range", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"lutron", "set", "level"})
+		if err := cmd.RunE(cmd, []string{"/zone/1", "150"}); err == nil {
+			t.Error("expected error for level 150, got nil")
+		}
+		if err := cmd.RunE(cmd, []string{"/zone/1", "-10"}); err == nil {
+			t.Error("expected error for level -10, got nil")
+		}
+	})
+
+	t.Run("set all invalid range", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"lutron", "set", "all"})
+		if err := cmd.RunE(cmd, []string{"105"}); err == nil {
+			t.Error("expected error for level 105, got nil")
+		}
+	})
+
+	t.Run("sonos volume invalid range", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"sonos", "volume"})
+		if err := cmd.RunE(cmd, []string{"192.168.1.1", "101"}); err == nil {
+			t.Error("expected error for volume 101, got nil")
+		}
+	})
 }

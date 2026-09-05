@@ -93,13 +93,23 @@ type DryRunResult struct {
 }
 
 func isJSON(cmd *cobra.Command) bool {
-	jsonOut, _ := cmd.Flags().GetBool("json")
-	return jsonOut
+	if cmd == nil {
+		return false
+	}
+	if f := cmd.Flag("json"); f != nil {
+		return f.Value.String() == "true"
+	}
+	return false
 }
 
 func isDryRun(cmd *cobra.Command) bool {
-	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	return dryRun
+	if cmd == nil {
+		return false
+	}
+	if f := cmd.Flag("dry-run"); f != nil {
+		return f.Value.String() == "true"
+	}
+	return false
 }
 
 func init() {
