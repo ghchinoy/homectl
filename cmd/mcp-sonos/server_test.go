@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,6 +40,7 @@ type MockClient struct {
 	lastReorderStart     int
 	lastReorderCount     int
 	lastReorderInsert    int
+	failTopology         bool
 }
 
 func (m *MockClient) GetVolume() (int, error) {
@@ -94,6 +96,9 @@ func (m *MockClient) GetCoordinatorIP() (string, error) {
 }
 
 func (m *MockClient) GetZoneGroupState() (sonos.ZoneGroupState, error) {
+	if m.failTopology {
+		return sonos.ZoneGroupState{}, errors.New("timeout connecting to sleeping battery speaker")
+	}
 	return m.zoneGroupState, nil
 }
 
@@ -1080,5 +1085,113 @@ func TestSonosQueueEditTool(t *testing.T) {
 		if _, ok := res.StructuredContent.(map[string]any); !ok {
 			t.Errorf("expected StructuredContent to be a record, got %T", res.StructuredContent)
 		}
+	}
+}
+
+// TestSonosGetTopologyCachedFallback verifies that when the target speaker IP times out or fails
+// (e.g. Move/Roam sleeping on battery), sonos_get_topology iterates across other cached speakers.
+// Regression for control-d9v.
+func TestSonosGetTopologyCachedFallback(t *testing.T) {
+	const sleepingIP = "192.168.1.50"
+	const activeIP = "192.168.1.100"
+
+	sleepingSpeaker := &MockClient{
+		ip:           sleepingIP,
+		failTopology: true, // simulates sleeping/unreachable Roam/Move
+	}
+
+	activeSpeaker := &MockClient{
+		ip:           activeIP,
+		failTopology: false,
+		zoneGroupState: sonos.ZoneGroupState{
+			Groups: []sonos.ZoneGroup{
+				{
+					ID:          "Group-1",
+					Coordinator: "RINCON_ACTIVE",
+					Members: []sonos.ZoneGroupMember{
+						{
+							UUID:             "RINCON_ACTIVE",
+							Location:         "http://192.168.1.100:1400/xml/device_description.xml",
+							RoomName:         "Living Room",
+							IsZoneStandAlone: true,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	factory := func(ip string) ClientInterface {
+		if ip == sleepingIP {
+			return sleepingSpeaker
+		}
+		return activeSpeaker
+	}
+
+	// Create test session with cache loader providing both devices
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	server := CreateMCPServer(
+		WithClientFactory(factory),
+		WithCacheLoader(func() ([]sonos.Device, error) {
+			return []sonos.Device{
+				{Name: "Roam", IP: sleepingIP, RinconID: "RINCON_ROAM", ModelName: "Sonos Roam"},
+				{Name: "Living Room", IP: activeIP, RinconID: "RINCON_ACTIVE", ModelName: "Sonos One"},
+			}, nil
+		}),
+	)
+
+	serverErrChan := make(chan error, 1)
+	go func() {
+		serverErrChan <- server.Run(ctx, serverTransport)
+	}()
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("failed to connect: %v", err)
+	}
+	defer session.Close()
+
+	callCtx, callCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer callCancel()
+
+	// Call topology querying the sleeping IP
+	res, err := session.CallTool(callCtx, &mcp.CallToolParams{
+		Name: "sonos_get_topology",
+		Arguments: map[string]any{
+			"ip": sleepingIP,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool sonos_get_topology failed: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("expected fallback success, got error: %+v", res)
+	}
+
+	if len(res.Content) < 2 {
+		t.Fatalf("expected at least 2 content items, got %d", len(res.Content))
+	}
+
+	summaryContent, ok := res.Content[0].(*mcp.TextContent)
+	if !ok || !strings.Contains(summaryContent.Text, "resolved via cached fallback") {
+		t.Errorf("expected summary to mention cached fallback, got %q", summaryContent.Text)
+	}
+
+	textContent, ok := res.Content[1].(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("expected TextContent, got %T", res.Content[1])
+	}
+
+	var topo TopologyResult
+	if err := json.Unmarshal([]byte(textContent.Text), &topo); err != nil {
+		t.Fatalf("failed to unmarshal topology: %v", err)
+	}
+
+	if topo.Count != 1 || len(topo.Groups) != 1 || topo.Groups[0].Coordinator != "RINCON_ACTIVE" {
+		t.Errorf("unexpected fallback topology result: %+v", topo)
 	}
 }

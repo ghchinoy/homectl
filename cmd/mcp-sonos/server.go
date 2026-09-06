@@ -412,8 +412,26 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 
 		client := cfg.ClientFactory(args.IP)
 		state, err := client.GetZoneGroupState()
+		resolvedIP := args.IP
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to read zone group state from %s: %w", args.IP, err)
+			// Fallback: If the provided IP timed out or is unreachable (e.g. Move/Roam sleeping on battery),
+			// iterate across other cached speakers from CacheLoader() before failing.
+			if cached, cacheErr := cfg.CacheLoader(); cacheErr == nil && len(cached) > 0 {
+				for _, dev := range cached {
+					if dev.IP != "" && dev.IP != args.IP {
+						altClient := cfg.ClientFactory(dev.IP)
+						if altState, altErr := altClient.GetZoneGroupState(); altErr == nil {
+							state = altState
+							resolvedIP = dev.IP
+							err = nil
+							break
+						}
+					}
+				}
+			}
+		}
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to read zone group state from %s (and cached fallbacks): %w", args.IP, err)
 		}
 
 		result := TopologyResult{}
@@ -443,6 +461,9 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		}
 
 		summary := fmt.Sprintf("Found %d Sonos zone group(s)", result.Count)
+		if resolvedIP != args.IP {
+			summary = fmt.Sprintf("%s (resolved via cached fallback %s)", summary, resolvedIP)
+		}
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
 				&mcp.TextContent{Text: summary},
