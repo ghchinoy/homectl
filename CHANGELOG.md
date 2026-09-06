@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Sonos Queue Management Suite:** Added `sonos_queue_edit` MCP tool and CLI subcommands `homectl sonos queue-remove`, `queue-clear`, and `queue-reorder` (with `--as-next` convenience and `--dry-run`), providing local queue editing via UPnP `RemoveTrackRangeFromQueue`, `RemoveAllTracksFromQueue`, and `ReorderTracksInQueue` ([control-znc], [control-6ht], [control-s5y]).
+
 ## [0.2.0] - 2026-09-05
 
 _Major architectural release introducing disaggregated Go modules, standalone Agent Plugins (MCP), Catppuccin Astro Starlight documentation, and robust audio stream management._

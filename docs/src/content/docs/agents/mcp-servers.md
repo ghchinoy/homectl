@@ -36,6 +36,7 @@ The `mcp-sonos` server exposes **10 focused tools** and **1 live resource**.
 | **`sonos_play_stream`** | ⚡ Mutating | Streams an arbitrary HTTP/HTTPS audio URL | `ip: string`, `url: string`, `title?: string` |
 | **`sonos_add_to_queue`** | ⚡ Mutating | Enqueues a track URI into the active queue | `ip: string`, `uri: string`, `metadata?: string`, `as_next?: bool` |
 | **`sonos_get_queue`** | 🔒 Read-Only | Inspects tracks in playback queue with pagination | `ip: string`, `start?: int`, `count?: int` |
+| **`sonos_queue_edit`** | ⚡ Mutating | Edits queue (`remove`, `clear`, `reorder` / bump to next) | `ip: string`, `action: string`, `track?: int`, `count?: int`, `insert_before?: int`, `as_next?: bool` |
 
 ---
 
@@ -280,6 +281,43 @@ Inspects tracks in the Sonos playback queue on the speaker with track titles, ar
       "count": { "type": "integer", "description": "Maximum number of queue items to return (default 100)" }
     },
     "required": ["ip"]
+  }
+  ```
+
+---
+
+### `sonos_queue_edit` (Mutating)
+Edits the local playback queue on a Sonos speaker. Supports removing tracks (`action: "remove"`), clearing the entire queue (`action: "clear"`), and reordering tracks or bumping them to play next (`action: "reorder"`).
+
+* **Parameters:**
+  ```json
+  {
+    "type": "object",
+    "properties": {
+      "ip": { "type": "string", "description": "IP address of the Sonos speaker (required)" },
+      "action": {
+        "type": "string",
+        "enum": ["remove", "clear", "reorder"],
+        "description": "Queue edit action to execute (required)"
+      },
+      "track": {
+        "type": "integer",
+        "description": "1-based track position in queue (required for remove and reorder)"
+      },
+      "count": {
+        "type": "integer",
+        "description": "Number of tracks to remove or reorder (default 1)"
+      },
+      "insert_before": {
+        "type": "integer",
+        "description": "1-based target track position to insert before (for reorder)"
+      },
+      "as_next": {
+        "type": "boolean",
+        "description": "If true, moves track(s) to play immediately after the currently playing track (for reorder)"
+      }
+    },
+    "required": ["ip", "action"]
   }
   ```
 

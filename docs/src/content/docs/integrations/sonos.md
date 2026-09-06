@@ -85,6 +85,18 @@ Play arbitrary internet radio streams, podcasts, or TTS voice announcements dire
 
 # Seek to 1 minute 30 seconds within current track
 ./homectl sonos seek 192.168.1.120 --time 1:30
+
+# Remove track 3 (or range of tracks) from queue
+./homectl sonos queue-remove 192.168.1.120 --track 3 --count 1
+
+# Reorder track: bump track 8 to play next
+./homectl sonos queue-reorder 192.168.1.120 --track 8 --as-next
+
+# Reorder track: move track 5 before track 2
+./homectl sonos queue-reorder 192.168.1.120 --track 5 --insert-before 2
+
+# Clear all tracks from queue
+./homectl sonos queue-clear 192.168.1.120
 ```
 
 ---

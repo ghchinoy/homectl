@@ -120,6 +120,7 @@ digraph SonosVerticalArchitecture {
         <tr><td><font color="#0f172a" point-size="8">• <b>sonos_play_favorite</b> (launch favorite)</font></td></tr>
         <tr><td><font color="#0f172a" point-size="8">• <b>sonos_play_stream</b> (direct web URL)</font></td></tr>
         <tr><td><font color="#0f172a" point-size="8">• <b>sonos_add_to_queue</b> (enqueue track)</font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• <b>sonos_queue_edit</b> (remove/clear/reorder)</font></td></tr>
       </table>>,
       fillcolor="#ffffff",
       color="#dc2626"

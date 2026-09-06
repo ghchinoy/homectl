@@ -100,6 +100,10 @@ For internet radio, podcasts, or TTS voice announcements:
 4. **Queue Jumping & Time Seeking (`sonos_control`):**
    - Jump directly to a 1-based queue track number: `sonos_control(ip: "<ip>", action: "seek_track", track: <n>)`.
    - Seek to a time offset in the active track: `sonos_control(ip: "<ip>", action: "seek_time", target: "<[H:]MM:SS>")`.
+5. **Editing the Playback Queue (`sonos_queue_edit`):**
+   - Remove tracks: `sonos_queue_edit(ip: "<ip>", action: "remove", track: <n>, count?: <m>)`.
+   - Clear entire queue: `sonos_queue_edit(ip: "<ip>", action: "clear")`.
+   - Reorder tracks: `sonos_queue_edit(ip: "<ip>", action: "reorder", track: <n>, insert_before: <pos>)` or with `as_next: true` to bump a song to play next.
 
 ---
 
@@ -119,6 +123,7 @@ When interacting with `homectl-sonos-mcp`:
 | `sonos_play_stream`    | ⚡ Mutating | Play HTTP/HTTPS audio stream (radio/podcast/TTS) | `ip: string`, `url: string`, `title?: string` |
 | `sonos_add_to_queue`   | ⚡ Mutating | Add audio URI to queue (optionally as next track) | `ip: string`, `uri: string`, `metadata?: string`, `as_next?: bool` |
 | `sonos_get_queue`      | 🔒 Read-Only | Inspect tracks in queue with titles, artists, positions | `ip: string`, `start?: int`, `count?: int` |
+| `sonos_queue_edit`     | ⚡ Mutating | Edit queue: remove tracks, clear all, or reorder (bump to next) | `ip: string`, `action: string`, `track?: int`, `count?: int`, `insert_before?: int`, `as_next?: bool` |
 | `sonos_list_services`  | 🔒 Read-Only | List streaming services & default provider | `ip: string` |
 
 ---

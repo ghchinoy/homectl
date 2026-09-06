@@ -44,6 +44,9 @@ homectl
 │   ├── play-stream  # Play direct HTTP/HTTPS audio stream
 │   ├── queue-add    # Enqueue track to playback queue
 │   ├── queue        # View items in playback queue
+│   ├── queue-remove # Remove track(s) from playback queue
+│   ├── queue-clear  # Clear all tracks from playback queue
+│   ├── queue-reorder# Reorder tracks in playback queue
 │   └── services     # List streaming services catalog
 └── qolsys           # Qolsys alarm panel integration
     └── monitor      # Stream live panel events via WebSocket
@@ -136,6 +139,28 @@ Inspects items in the Sonos playback queue with positions, titles, artists, and 
 ```bash
 homectl sonos queue 192.168.1.120 --start 0 --count 20
 homectl sonos queue 192.168.1.120 --json
+```
+
+### `homectl sonos queue-remove [ip]`
+Removes one or more tracks from the Sonos playback queue. Supports `--dry-run`:
+```bash
+homectl sonos queue-remove 192.168.1.120 --track 3 --count 1
+homectl sonos queue-remove 192.168.1.120 --track 3 --dry-run
+```
+
+### `homectl sonos queue-clear [ip]`
+Clears all tracks from the speaker's playback queue. Supports `--dry-run`:
+```bash
+homectl sonos queue-clear 192.168.1.120
+homectl sonos queue-clear 192.168.1.120 --dry-run
+```
+
+### `homectl sonos queue-reorder [ip]`
+Reorders tracks in the playback queue, moving a track range before a target position or bumping to play next. Supports `--dry-run`:
+```bash
+homectl sonos queue-reorder 192.168.1.120 --track 8 --as-next
+homectl sonos queue-reorder 192.168.1.120 --track 5 --insert-before 2
+homectl sonos queue-reorder 192.168.1.120 --track 8 --as-next --dry-run
 ```
 
 ### `homectl sonos services [ip]`

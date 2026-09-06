@@ -36,6 +36,7 @@ The MCP server communicates with AI agents over standard I/O using the official 
 | **`sonos_play_stream`** | ⚡ Mutating | `{"status": "ok", "url": ...}` | Streams an arbitrary HTTP/HTTPS audio URL (radio, podcast, or TTS). |
 | **`sonos_add_to_queue`** | ⚡ Mutating | `{"status": "ok", "track_position": ...}` | Enqueues track or container URI (with optional metadata and as-next flag). |
 | **`sonos_get_queue`** | 🔒 Read-Only | `QueueResult{Items, TotalMatches}` | Inspects playback queue tracks with pagination support. |
+| **`sonos_queue_edit`** | ⚡ Mutating | `{"status": "ok", "action": ...}` | Edits queue: removes tracks, clears queue, or reorders tracks. |
 | **`sonos_list_services`** | 🔒 Read-Only | `ListServicesResult{Count, Services}` | Lists registered music services and configured default provider. |
 
 All output schemas conform to **MCP SEP-2106** and OpenCode validation rules by returning Go records (JSON objects), never bare arrays.
