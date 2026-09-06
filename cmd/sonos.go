@@ -723,11 +723,208 @@ var queueSonosCmd = &cobra.Command{
 	},
 }
 
+var queueRemoveSonosCmd = &cobra.Command{
+	Use:   "queue-remove [ip]",
+	Short: "Remove a track or range of tracks from the Sonos playback queue",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var rawIP string
+		if len(args) > 0 {
+			rawIP = args[0]
+		}
+		ip, err := resolveSpeakerIP(rawIP)
+		if err != nil {
+			return err
+		}
+
+		track, _ := cmd.Flags().GetInt("track")
+		count, _ := cmd.Flags().GetInt("count")
+		if track < 1 {
+			return fmt.Errorf("track flag (--track) must be >= 1")
+		}
+		if count < 1 {
+			count = 1
+		}
+
+		if isDryRun(cmd) {
+			planned := map[string]any{"ip": ip, "track": track, "count": count}
+			msg := fmt.Sprintf("[DRY-RUN] Would remove %d track(s) starting at position %d from queue on %s", count, track, ip)
+			if isJSON(cmd) {
+				return json.NewEncoder(os.Stdout).Encode(DryRunResult{
+					DryRun:  true,
+					Command: "sonos queue-remove",
+					Planned: planned,
+					Message: msg,
+				})
+			}
+			fmt.Printf("[DRY-RUN] Simulating: %s (no changes made)\n", msg)
+			return nil
+		}
+
+		client := sonos.NewClient(ip)
+		if err := client.RemoveTrackRangeFromQueue(track, count); err != nil {
+			return fmt.Errorf("queue remove: %w", err)
+		}
+
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"status": "ok",
+				"action": "remove",
+				"ip":     ip,
+				"track":  track,
+				"count":  count,
+			})
+		}
+		fmt.Printf("Successfully removed %d track(s) starting at position %d from queue on %s.\n", count, track, ip)
+		return nil
+	},
+}
+
+var queueClearSonosCmd = &cobra.Command{
+	Use:   "queue-clear [ip]",
+	Short: "Clear all tracks from the Sonos playback queue",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var rawIP string
+		if len(args) > 0 {
+			rawIP = args[0]
+		}
+		ip, err := resolveSpeakerIP(rawIP)
+		if err != nil {
+			return err
+		}
+
+		if isDryRun(cmd) {
+			planned := map[string]any{"ip": ip}
+			msg := fmt.Sprintf("[DRY-RUN] Would clear all tracks from queue on %s", ip)
+			if isJSON(cmd) {
+				return json.NewEncoder(os.Stdout).Encode(DryRunResult{
+					DryRun:  true,
+					Command: "sonos queue-clear",
+					Planned: planned,
+					Message: msg,
+				})
+			}
+			fmt.Printf("[DRY-RUN] Simulating: %s (no changes made)\n", msg)
+			return nil
+		}
+
+		client := sonos.NewClient(ip)
+		if err := client.RemoveAllTracksFromQueue(); err != nil {
+			return fmt.Errorf("queue clear: %w", err)
+		}
+
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"status": "ok",
+				"action": "clear",
+				"ip":     ip,
+			})
+		}
+		fmt.Printf("Successfully cleared all tracks from queue on %s.\n", ip)
+		return nil
+	},
+}
+
+var queueReorderSonosCmd = &cobra.Command{
+	Use:   "queue-reorder [ip]",
+	Short: "Reorder a track or range of tracks in the Sonos playback queue",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var rawIP string
+		if len(args) > 0 {
+			rawIP = args[0]
+		}
+		ip, err := resolveSpeakerIP(rawIP)
+		if err != nil {
+			return err
+		}
+
+		track, _ := cmd.Flags().GetInt("track")
+		count, _ := cmd.Flags().GetInt("count")
+		insertBefore, _ := cmd.Flags().GetInt("insert-before")
+		asNext, _ := cmd.Flags().GetBool("as-next")
+
+		if track < 1 {
+			return fmt.Errorf("track flag (--track) must be >= 1")
+		}
+		if count < 1 {
+			count = 1
+		}
+		if !asNext && insertBefore < 1 {
+			return fmt.Errorf("must specify either --insert-before <position> or --as-next")
+		}
+		if asNext && insertBefore > 0 {
+			return fmt.Errorf("cannot specify both --insert-before and --as-next")
+		}
+
+		if isDryRun(cmd) {
+			planned := map[string]any{"ip": ip, "track": track, "count": count}
+			msg := ""
+			if asNext {
+				planned["as_next"] = true
+				msg = fmt.Sprintf("[DRY-RUN] Would move %d track(s) from position %d to play next on %s", count, track, ip)
+			} else {
+				planned["insert_before"] = insertBefore
+				msg = fmt.Sprintf("[DRY-RUN] Would move %d track(s) from position %d to before position %d on %s", count, track, insertBefore, ip)
+			}
+
+			if isJSON(cmd) {
+				return json.NewEncoder(os.Stdout).Encode(DryRunResult{
+					DryRun:  true,
+					Command: "sonos queue-reorder",
+					Planned: planned,
+					Message: msg,
+				})
+			}
+			fmt.Printf("[DRY-RUN] Simulating: %s (no changes made)\n", msg)
+			return nil
+		}
+
+		client := sonos.NewClient(ip)
+		targetInsert := insertBefore
+		if asNext {
+			pos, err := client.GetPositionInfo()
+			if err != nil {
+				return fmt.Errorf("resolve current track position: %w", err)
+			}
+			targetInsert = pos.Track + 1
+		}
+
+		if err := client.ReorderTracksInQueue(track, count, targetInsert); err != nil {
+			return fmt.Errorf("queue reorder: %w", err)
+		}
+
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"status":        "ok",
+				"action":        "reorder",
+				"ip":            ip,
+				"track":         track,
+				"count":         count,
+				"insert_before": targetInsert,
+			})
+		}
+		if asNext {
+			fmt.Printf("Successfully moved %d track(s) from position %d to play next (inserted before track %d) on %s.\n", count, track, targetInsert, ip)
+		} else {
+			fmt.Printf("Successfully moved %d track(s) from position %d to before position %d on %s.\n", count, track, targetInsert, ip)
+		}
+		return nil
+	},
+}
+
 func init() {
 	playStreamSonosCmd.Flags().String("title", "", "Descriptive title for the stream (defaults to URL host)")
 	queueAddSonosCmd.Flags().Bool("next", false, "Insert track as next in queue instead of appending to end")
 	queueSonosCmd.Flags().Int("start", 0, "0-based starting index in the queue (default 0)")
 	queueSonosCmd.Flags().Int("count", 20, "Number of tracks to return (default 20)")
+	queueRemoveSonosCmd.Flags().Int("track", 0, "1-based starting track number to remove (required)")
+	queueRemoveSonosCmd.Flags().Int("count", 1, "Number of tracks to remove (default 1)")
+	queueReorderSonosCmd.Flags().Int("track", 0, "1-based starting track number to move (required)")
+	queueReorderSonosCmd.Flags().Int("count", 1, "Number of tracks to move (default 1)")
+	queueReorderSonosCmd.Flags().Int("insert-before", 0, "1-based target track position to insert before")
+	queueReorderSonosCmd.Flags().Bool("as-next", false, "Move track(s) to play immediately after currently playing track")
 	seekSonosCmd.Flags().Int("track", 0, "1-based track number in the queue to jump to")
 	seekSonosCmd.Flags().String("time", "", "Time offset to seek to in [H:]MM:SS format (e.g. '1:30' or '0:02:15')")
 
@@ -747,5 +944,8 @@ func init() {
 	sonosCmd.AddCommand(playStreamSonosCmd)
 	sonosCmd.AddCommand(queueAddSonosCmd)
 	sonosCmd.AddCommand(queueSonosCmd)
+	sonosCmd.AddCommand(queueRemoveSonosCmd)
+	sonosCmd.AddCommand(queueClearSonosCmd)
+	sonosCmd.AddCommand(queueReorderSonosCmd)
 	sonosCmd.AddCommand(servicesSonosCmd)
 }
