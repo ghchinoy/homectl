@@ -1255,6 +1255,57 @@ func (c *Client) PlayFavorite(idOrTitle string) error {
 	return nil
 }
 
+// PlayResult describes the outcome of a SmartPlay or PlayTrackOrFavorite action.
+type PlayResult struct {
+	Source      string `json:"source"` // "favorite" | "queue" | "direct"
+	Title       string `json:"title"`
+	Artist      string `json:"artist,omitempty"`
+	TrackNumber int    `json:"track_number,omitempty"`
+	Message     string `json:"message"`
+}
+
+// PlayTrackOrFavorite attempts to play a pinned favorite first, falling back to seeking a track in the active queue.
+func (c *Client) PlayTrackOrFavorite(query string) (*PlayResult, error) {
+	if strings.TrimSpace(query) == "" {
+		return nil, fmt.Errorf("query cannot be empty")
+	}
+
+	// 1. Try playing as a favorite
+	err := c.PlayFavorite(query)
+	if err == nil {
+		return &PlayResult{
+			Source:  "favorite",
+			Title:   query,
+			Message: fmt.Sprintf("Successfully started playback of favorite %q on %s", query, c.ip),
+		}, nil
+	}
+
+	// 2. If not found in favorites, search the local queue (up to 100 tracks)
+	qResult, qErr := c.GetQueue(0, 100)
+	if qErr == nil && len(qResult.Items) > 0 {
+		cleanQuery := strings.ToLower(strings.TrimSpace(query))
+		for _, item := range qResult.Items {
+			iTitle := strings.ToLower(item.Title)
+			iArtist := strings.ToLower(item.Artist)
+			if strings.Contains(iTitle, cleanQuery) || strings.Contains(cleanQuery, iTitle) ||
+				strings.Contains(iArtist, cleanQuery) || strings.Contains(cleanQuery, iArtist) {
+				if seekErr := c.SeekTrack(item.Position); seekErr == nil {
+					_ = c.Play()
+					return &PlayResult{
+						Source:      "queue",
+						Title:       item.Title,
+						Artist:      item.Artist,
+						TrackNumber: item.Position,
+						Message:     fmt.Sprintf("Successfully jumped to track %d (%s by %s) in queue on %s", item.Position, item.Title, item.Artist, c.ip),
+					}, nil
+				}
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("could not find %q in favorites or current queue: %w", query, err)
+}
+
 // PlayStream validates an audio stream URL (http/https minimal scheme check),
 // defaults missing title to the URL host, creates minimal DIDL-Lite stream metadata,
 // resolves the group coordinator, sets the transport URI, and starts playback.

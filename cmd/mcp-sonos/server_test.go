@@ -179,6 +179,16 @@ func (m *MockClient) PlayFavorite(idOrTitle string) error {
 	return nil
 }
 
+func (m *MockClient) PlayTrackOrFavorite(query string) (*sonos.PlayResult, error) {
+	m.title = query
+	m.state = "PLAYING"
+	return &sonos.PlayResult{
+		Source:  "favorite",
+		Title:   query,
+		Message: "Successfully initiated playback of " + query,
+	}, nil
+}
+
 func (m *MockClient) PlayStream(streamURL, title string) error {
 	m.title = title
 	m.state = "PLAYING"

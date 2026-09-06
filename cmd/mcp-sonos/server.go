@@ -25,6 +25,7 @@ type ClientInterface interface {
 	GetZoneGroupState() (sonos.ZoneGroupState, error)
 	BrowseFavorites() ([]sonos.Favorite, error)
 	PlayFavorite(idOrTitle string) error
+	PlayTrackOrFavorite(query string) (*sonos.PlayResult, error)
 	PlayStream(streamURL, title string) error
 	AddURIToQueue(uri, metadata string, asNext bool) (int, error)
 	GetQueue(start, count int) (sonos.QueueResult, error)
@@ -617,16 +618,16 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		}
 
 		client := cfg.ClientFactory(args.IP)
-		if err := client.PlayFavorite(args.FavoriteID); err != nil {
-			return nil, nil, fmt.Errorf("failed to play favorite on %s: %w", args.IP, err)
+		res, err := client.PlayTrackOrFavorite(args.FavoriteID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to play %q on %s: %w", args.FavoriteID, args.IP, err)
 		}
 
-		msg := fmt.Sprintf("Successfully initiated playback of favorite %q on %s", args.FavoriteID, args.IP)
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
-				&mcp.TextContent{Text: msg},
+				&mcp.TextContent{Text: res.Message},
 			},
-		}, map[string]string{"status": "ok", "action": "play_favorite", "ip": args.IP, "favorite_id": args.FavoriteID}, nil
+		}, map[string]any{"status": "ok", "action": "play_favorite", "ip": args.IP, "favorite_id": args.FavoriteID, "source": res.Source, "title": res.Title}, nil
 	})
 
 	// Tool 8: sonos_play_stream (Mutating)
