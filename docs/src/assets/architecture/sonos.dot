@@ -79,6 +79,16 @@ digraph SonosVerticalArchitecture {
       fillcolor="#ffffff",
       color="#7c3aed"
     ];
+
+    jibo_node [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#7c3aed"><b>Jibo Social Robot</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Tegra K1 / Coral Dev Board</font></td></tr>
+        <tr><td><font color="#047857" point-size="8">Gemini 3.8 Flash Voice Capability</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#7c3aed"
+    ];
   }
 
   // 2. Plugin & MCP Stdio Server Layer
@@ -227,6 +237,8 @@ digraph SonosVerticalArchitecture {
 
   agent_node -> skill_doc [label="reads rules", color="#7c3aed"];
   skill_doc -> summarizer [label="delegates to", color="#7c3aed"];
+  jibo_node -> sonos_client [label="jiboplugins/sonos", color="#7c3aed"];
+  jibo_node -> core_deps [label="reads sonos_cache", color="#7c3aed", style="dotted"];
   agent_node -> mcp_ro_tools [label="calls tool", color="#0284c7"];
   agent_node -> mcp_mut_tools [label="calls tool", color="#dc2626"];
   manifests -> mcp_ro_tools [style="dotted", color="#0284c7"];

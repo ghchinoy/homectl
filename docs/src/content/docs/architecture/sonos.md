@@ -67,3 +67,11 @@ The core domain logic is isolated in `modules/sonos`:
   * `/ZoneGroupTopology/Control`
 * **SSDP M-SEARCH (UDP 1900):** Sends multicast probes to `239.255.255.250:1900` (`ST: urn:schemas-upnp-org:device:ZonePlayer:1`). Bypasses macOS port 5353 multicast conflicts to deliver sub-500ms discovery across all network nodes.
 * **Inbound GENA Push Events:** `GENAListener` (`events.go`) launches a background HTTP listener to receive real-time UPnP `NOTIFY` requests containing `LastChange` XML event fragments for instant volume and track synchronization.
+
+### 5. Jibo Social Robot Voice Capability (`jiboplugins/sonos`)
+The Sonos module also powers conversational smart home audio on the **Jibo Social Robot**:
+* **Shared Discovery Cache:** Jibo Cloud reads `~/.config/homectl/sonos_cache.json` on the LAN to resolve room names with zero runtime mDNS latency during speech turns.
+* **Auto-Resolution of Active Zone:** When an owner asks *"What song is this?"* without specifying a room, `ResolveActiveSpeaker()` polls zones to find which speaker is actively `PLAYING`.
+* **Queue Seeking by Song/Artist:** Allows owners to jump to any track up to 100 positions ahead in the queue by speaking song titles or artist names (*"Play Such Great Heights in the office"*).
+* **Embodied Performance:** Jibo smiles, sways rhythmically (`cat="dance" filter="music, slowdance"`), and renders circular album cover art on its face while announcing tracks.
+
