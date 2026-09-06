@@ -1381,6 +1381,74 @@ func (c *Client) RemoveAllTracksFromQueue() error {
 	return nil
 }
 
+// RemoveTrackRangeFromQueue removes a range of tracks starting at 1-based start index from the playback queue on the group coordinator.
+func (c *Client) RemoveTrackRangeFromQueue(start, count int) error {
+	if start < 1 {
+		return fmt.Errorf("invalid track position %d: start must be >= 1", start)
+	}
+	if count < 1 {
+		count = 1
+	}
+
+	coordIP, _ := c.GetCoordinatorIP()
+	targetClient := c
+	if coordIP != "" && coordIP != c.ip {
+		targetClient = NewClient(coordIP, WithHTTPClient(c.httpClient), WithLogger(c.log()), WithStorage(c.store()))
+	}
+
+	body, err := targetClient.SOAPAction(
+		"/MediaRenderer/AVTransport/Control",
+		"urn:schemas-upnp-org:service:AVTransport:1",
+		"RemoveTrackRangeFromQueue",
+		map[string]string{
+			"InstanceID":     "0",
+			"UpdateID":       "0",
+			"StartingIndex":  strconv.Itoa(start),
+			"NumberOfTracks": strconv.Itoa(count),
+		})
+	if err != nil {
+		return fmt.Errorf("remove track range from queue: %w", err)
+	}
+	body.Close()
+	return nil
+}
+
+// ReorderTracksInQueue moves a range of tracks starting at 1-based startingIndex to be inserted before 1-based insertBefore on the group coordinator.
+func (c *Client) ReorderTracksInQueue(startingIndex, numberOfTracks, insertBefore int) error {
+	if startingIndex < 1 {
+		return fmt.Errorf("invalid starting index %d: must be >= 1", startingIndex)
+	}
+	if numberOfTracks < 1 {
+		numberOfTracks = 1
+	}
+	if insertBefore < 1 {
+		return fmt.Errorf("invalid insert before index %d: must be >= 1", insertBefore)
+	}
+
+	coordIP, _ := c.GetCoordinatorIP()
+	targetClient := c
+	if coordIP != "" && coordIP != c.ip {
+		targetClient = NewClient(coordIP, WithHTTPClient(c.httpClient), WithLogger(c.log()), WithStorage(c.store()))
+	}
+
+	body, err := targetClient.SOAPAction(
+		"/MediaRenderer/AVTransport/Control",
+		"urn:schemas-upnp-org:service:AVTransport:1",
+		"ReorderTracksInQueue",
+		map[string]string{
+			"InstanceID":     "0",
+			"UpdateID":       "0",
+			"StartingIndex":  strconv.Itoa(startingIndex),
+			"NumberOfTracks": strconv.Itoa(numberOfTracks),
+			"InsertBefore":   strconv.Itoa(insertBefore),
+		})
+	if err != nil {
+		return fmt.Errorf("reorder tracks in queue: %w", err)
+	}
+	body.Close()
+	return nil
+}
+
 // QueueItem represents a single track entry within the Sonos playback queue.
 type QueueItem struct {
 	Position    int    `json:"position"`

@@ -33,6 +33,12 @@ type MockClient struct {
 	lastSeekTarget       string
 	nrTracks             int
 	mediaURI             string
+	lastRemoveStart      int
+	lastRemoveCount      int
+	clearQueueCalled     bool
+	lastReorderStart     int
+	lastReorderCount     int
+	lastReorderInsert    int
 }
 
 func (m *MockClient) GetVolume() (int, error) {
@@ -134,6 +140,24 @@ func (m *MockClient) SeekTrack(track int) error {
 
 func (m *MockClient) SeekTime(target string) error {
 	m.lastSeekTarget = target
+	return nil
+}
+
+func (m *MockClient) RemoveTrackRangeFromQueue(start, count int) error {
+	m.lastRemoveStart = start
+	m.lastRemoveCount = count
+	return nil
+}
+
+func (m *MockClient) RemoveAllTracksFromQueue() error {
+	m.clearQueueCalled = true
+	return nil
+}
+
+func (m *MockClient) ReorderTracksInQueue(startingIndex, numberOfTracks, insertBefore int) error {
+	m.lastReorderStart = startingIndex
+	m.lastReorderCount = numberOfTracks
+	m.lastReorderInsert = insertBefore
 	return nil
 }
 
@@ -269,6 +293,7 @@ func TestListTools(t *testing.T) {
 		"sonos_add_to_queue",
 		"sonos_list_services",
 		"sonos_get_queue",
+		"sonos_queue_edit",
 	}
 
 	for _, expected := range expectedTools {
@@ -931,6 +956,127 @@ func TestSonosGetQueueTool(t *testing.T) {
 
 	// Verify structuredContent is a record/object (SEP-2106)
 	if res.StructuredContent != nil {
+		if _, ok := res.StructuredContent.(map[string]any); !ok {
+			t.Errorf("expected StructuredContent to be a record, got %T", res.StructuredContent)
+		}
+	}
+}
+
+func TestSonosQueueEditTool(t *testing.T) {
+	mock := &MockClient{ip: "192.168.1.120"}
+	session, cleanup := setupTestSession(t, mock)
+	defer cleanup()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// 1. Remove action
+	res, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_queue_edit",
+		Arguments: map[string]any{
+			"ip":     "192.168.1.120",
+			"action": "remove",
+			"track":  3,
+			"count":  2,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool remove failed: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("expected remove success, got error: %+v", res)
+	}
+	if mock.lastRemoveStart != 3 || mock.lastRemoveCount != 2 {
+		t.Errorf("expected remove start 3 count 2, got start %d count %d", mock.lastRemoveStart, mock.lastRemoveCount)
+	}
+
+	// 2. Remove missing track parameter
+	res, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_queue_edit",
+		Arguments: map[string]any{
+			"ip":     "192.168.1.120",
+			"action": "remove",
+			"track":  0,
+		},
+	})
+	if err == nil && (res == nil || !res.IsError) {
+		t.Error("expected error for remove action with track 0, got success")
+	}
+
+	// 3. Clear action
+	res, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_queue_edit",
+		Arguments: map[string]any{
+			"ip":     "192.168.1.120",
+			"action": "clear",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool clear failed: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("expected clear success, got error: %+v", res)
+	}
+	if !mock.clearQueueCalled {
+		t.Error("expected clearQueueCalled to be true")
+	}
+
+	// 4. Reorder action with insert_before
+	res, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_queue_edit",
+		Arguments: map[string]any{
+			"ip":            "192.168.1.120",
+			"action":        "reorder",
+			"track":         5,
+			"count":         1,
+			"insert_before": 2,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool reorder failed: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("expected reorder success, got error: %+v", res)
+	}
+	if mock.lastReorderStart != 5 || mock.lastReorderCount != 1 || mock.lastReorderInsert != 2 {
+		t.Errorf("expected reorder 5, 1, 2, got %d, %d, %d", mock.lastReorderStart, mock.lastReorderCount, mock.lastReorderInsert)
+	}
+
+	// 5. Reorder action with as_next: true
+	res, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_queue_edit",
+		Arguments: map[string]any{
+			"ip":      "192.168.1.120",
+			"action":  "reorder",
+			"track":   8,
+			"as_next": true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool reorder as_next failed: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("expected reorder as_next success, got error: %+v", res)
+	}
+	// MockClient GetPositionInfo returns default Track 0, so 0 + 1 = 1
+	if mock.lastReorderStart != 8 || mock.lastReorderInsert != 1 {
+		t.Errorf("expected reorder as_next start 8 insert 1, got start %d insert %d", mock.lastReorderStart, mock.lastReorderInsert)
+	}
+
+	// 6. Invalid action
+	res, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_queue_edit",
+		Arguments: map[string]any{
+			"ip":     "192.168.1.120",
+			"action": "unknown",
+		},
+	})
+	if err == nil && (res == nil || !res.IsError) {
+		t.Error("expected error for unknown action, got success")
+	}
+
+	// 7. Verify structured content is a record
+	if res != nil && res.StructuredContent != nil {
 		if _, ok := res.StructuredContent.(map[string]any); !ok {
 			t.Errorf("expected StructuredContent to be a record, got %T", res.StructuredContent)
 		}

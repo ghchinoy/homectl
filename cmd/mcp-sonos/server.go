@@ -36,6 +36,9 @@ type ClientInterface interface {
 	Previous() error
 	SeekTrack(track int) error
 	SeekTime(target string) error
+	RemoveTrackRangeFromQueue(start, count int) error
+	RemoveAllTracksFromQueue() error
+	ReorderTracksInQueue(startingIndex, numberOfTracks, insertBefore int) error
 }
 
 // ClientFactory creates a ClientInterface for the specified IP.
@@ -171,6 +174,16 @@ type GetQueueParams struct {
 	IP    string `json:"ip" jsonschema:"IP address of the Sonos speaker (required)"`
 	Start int    `json:"start,omitempty" jsonschema:"0-based starting index for pagination (default 0)"`
 	Count int    `json:"count,omitempty" jsonschema:"Maximum number of queue items to return (default 100)"`
+}
+
+// QueueEditParams defines parameters for sonos_queue_edit.
+type QueueEditParams struct {
+	IP           string `json:"ip" jsonschema:"IP address of the Sonos speaker (required)"`
+	Action       string `json:"action" jsonschema:"Queue edit action: 'remove', 'clear', 'reorder' (required)"`
+	Track        int    `json:"track,omitempty" jsonschema:"1-based track number in the queue (required for 'remove', starting track for 'reorder')"`
+	Count        int    `json:"count,omitempty" jsonschema:"Number of tracks to remove or reorder (default 1)"`
+	InsertBefore int    `json:"insert_before,omitempty" jsonschema:"1-based target track position to insert before (for 'reorder')"`
+	AsNext       bool   `json:"as_next,omitempty" jsonschema:"If true, moves track(s) to play immediately after the currently playing track (for 'reorder')"`
 }
 
 // ListFavoritesResult represents the structured, object-wrapped output of sonos_list_favorites.
@@ -733,6 +746,84 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 				&mcp.TextContent{Text: string(jsonData)},
 			},
 		}, res, nil
+	})
+
+	// Tool 12: sonos_queue_edit (Mutating)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "sonos_queue_edit",
+		Description: "Edits the local playback queue on a Sonos speaker: 'remove' (delete track range), 'clear' (wipe entire queue), 'reorder' (move track range or bump to play next).",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args QueueEditParams) (*mcp.CallToolResult, any, error) {
+		if strings.TrimSpace(args.IP) == "" {
+			return nil, nil, fmt.Errorf("ip parameter is required")
+		}
+		action := strings.TrimSpace(strings.ToLower(args.Action))
+		if action == "" {
+			return nil, nil, fmt.Errorf("action parameter is required ('remove', 'clear', 'reorder')")
+		}
+
+		client := cfg.ClientFactory(args.IP)
+		count := args.Count
+		if count < 1 {
+			count = 1
+		}
+
+		outPayload := map[string]any{"status": "ok", "action": action, "ip": args.IP}
+		var msg string
+
+		switch action {
+		case "remove":
+			if args.Track < 1 {
+				return nil, nil, fmt.Errorf("track parameter must be >= 1 for remove action")
+			}
+			if err := client.RemoveTrackRangeFromQueue(args.Track, count); err != nil {
+				return nil, nil, fmt.Errorf("failed to remove track(s) from queue on %s: %w", args.IP, err)
+			}
+			msg = fmt.Sprintf("Successfully removed %d track(s) starting at position %d from queue on %s", count, args.Track, args.IP)
+			outPayload["track"] = args.Track
+			outPayload["count"] = count
+
+		case "clear":
+			if err := client.RemoveAllTracksFromQueue(); err != nil {
+				return nil, nil, fmt.Errorf("failed to clear queue on %s: %w", args.IP, err)
+			}
+			msg = fmt.Sprintf("Successfully cleared all tracks from queue on %s", args.IP)
+
+		case "reorder":
+			if args.Track < 1 {
+				return nil, nil, fmt.Errorf("track parameter must be >= 1 for reorder action")
+			}
+			insertBefore := args.InsertBefore
+			if args.AsNext {
+				pos, err := client.GetPositionInfo()
+				if err != nil {
+					return nil, nil, fmt.Errorf("failed to resolve current track position for as_next on %s: %w", args.IP, err)
+				}
+				insertBefore = pos.Track + 1
+			} else if insertBefore < 1 {
+				return nil, nil, fmt.Errorf("either insert_before (>= 1) or as_next: true must be specified for reorder action")
+			}
+
+			if err := client.ReorderTracksInQueue(args.Track, count, insertBefore); err != nil {
+				return nil, nil, fmt.Errorf("failed to reorder queue on %s: %w", args.IP, err)
+			}
+			if args.AsNext {
+				msg = fmt.Sprintf("Successfully moved %d track(s) from position %d to play next (inserted before track %d) on %s", count, args.Track, insertBefore, args.IP)
+			} else {
+				msg = fmt.Sprintf("Successfully moved %d track(s) from position %d to before position %d on %s", count, args.Track, insertBefore, args.IP)
+			}
+			outPayload["track"] = args.Track
+			outPayload["count"] = count
+			outPayload["insert_before"] = insertBefore
+
+		default:
+			return nil, nil, fmt.Errorf("unknown action %q (supported: 'remove', 'clear', 'reorder')", action)
+		}
+
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: msg},
+			},
+		}, outPayload, nil
 	})
 
 	return server

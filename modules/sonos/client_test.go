@@ -771,3 +771,94 @@ func TestNormalizeSeekTime(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoveTrackRangeFromQueueMock(t *testing.T) {
+	var requestedStart, requestedCount string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		soapAction := r.Header.Get("SOAPAction")
+		if strings.Contains(soapAction, "RemoveTrackRangeFromQueue") {
+			body, _ := io.ReadAll(r.Body)
+			sBody := string(body)
+			requestedStart = extractTagContent(sBody, "StartingIndex")
+			requestedCount = extractTagContent(sBody, "NumberOfTracks")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:RemoveTrackRangeFromQueueResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"/></s:Body></s:Envelope>`))
+			return
+		}
+		if strings.Contains(soapAction, "GetZoneGroupState") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetZoneGroupStateResponse xmlns:u="urn:schemas-upnp-org:service:ZoneGroupTopology:1"><ZoneGroupState>&lt;ZoneGroups&gt;&lt;/ZoneGroups&gt;</ZoneGroupState></u:GetZoneGroupStateResponse></s:Body></s:Envelope>`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "http://")
+	client := NewClient(host, WithHTTPClient(server.Client()))
+
+	// Valid remove
+	if err := client.RemoveTrackRangeFromQueue(4, 2); err != nil {
+		t.Fatalf("RemoveTrackRangeFromQueue failed: %v", err)
+	}
+	if requestedStart != "4" {
+		t.Errorf("expected StartingIndex 4, got %s", requestedStart)
+	}
+	if requestedCount != "2" {
+		t.Errorf("expected NumberOfTracks 2, got %s", requestedCount)
+	}
+
+	// Invalid start (< 1)
+	if err := client.RemoveTrackRangeFromQueue(0, 1); err == nil {
+		t.Error("expected error for start 0, got nil")
+	}
+}
+
+func TestReorderTracksInQueueMock(t *testing.T) {
+	var requestedStart, requestedCount, requestedInsert string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		soapAction := r.Header.Get("SOAPAction")
+		if strings.Contains(soapAction, "ReorderTracksInQueue") {
+			body, _ := io.ReadAll(r.Body)
+			sBody := string(body)
+			requestedStart = extractTagContent(sBody, "StartingIndex")
+			requestedCount = extractTagContent(sBody, "NumberOfTracks")
+			requestedInsert = extractTagContent(sBody, "InsertBefore")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:ReorderTracksInQueueResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"/></s:Body></s:Envelope>`))
+			return
+		}
+		if strings.Contains(soapAction, "GetZoneGroupState") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetZoneGroupStateResponse xmlns:u="urn:schemas-upnp-org:service:ZoneGroupTopology:1"><ZoneGroupState>&lt;ZoneGroups&gt;&lt;/ZoneGroups&gt;</ZoneGroupState></u:GetZoneGroupStateResponse></s:Body></s:Envelope>`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "http://")
+	client := NewClient(host, WithHTTPClient(server.Client()))
+
+	// Valid reorder
+	if err := client.ReorderTracksInQueue(5, 1, 2); err != nil {
+		t.Fatalf("ReorderTracksInQueue failed: %v", err)
+	}
+	if requestedStart != "5" {
+		t.Errorf("expected StartingIndex 5, got %s", requestedStart)
+	}
+	if requestedCount != "1" {
+		t.Errorf("expected NumberOfTracks 1, got %s", requestedCount)
+	}
+	if requestedInsert != "2" {
+		t.Errorf("expected InsertBefore 2, got %s", requestedInsert)
+	}
+
+	// Invalid parameters
+	if err := client.ReorderTracksInQueue(0, 1, 2); err == nil {
+		t.Error("expected error for startingIndex 0, got nil")
+	}
+	if err := client.ReorderTracksInQueue(1, 1, 0); err == nil {
+		t.Error("expected error for insertBefore 0, got nil")
+	}
+}
