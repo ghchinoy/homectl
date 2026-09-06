@@ -166,3 +166,16 @@ When running `homectl serve`, the dashboard includes a shared **Sonos Source Pan
 * **Music Services Catalog:** View registered streaming providers and verify the configured default service.
 
 For architecture details on extending ad-hoc track search via Spotify Web API or Apple MusicKit, see the [Music Service OAuth Research Spike](/homectl/reference/music-service-oauth-spike/).
+
+---
+
+## Jibo Social Robot Voice Integration
+
+`homectl`'s Sonos engine powers the **Jibo Social Robot voice capability** (`jiboplugins/sonos` in the Jibo repository).
+
+* **Shared Discovery Cache:** Jibo Cloud reads `~/.config/homectl/sonos_cache.json` on the local LAN to immediately resolve spoken room names ("the office", "kitchen speaker", "living room") without performing slow active mDNS scans during speech turns.
+* **Stereo Follower Resolution:** Automatically detects `x-rincon:` follower speakers and resolves the authoritative group coordinator so Jibo never receives blank metadata or false idle states.
+* **Gemini 3.8 Flash Tool Calling:** Exposes 7 conversational tools (`sonos_now_playing`, `sonos_playback_control`, `sonos_adjust_volume`, `sonos_queue_info`, `sonos_play_favorite`, `sonos_track_seek`, `sonos_group_speakers`).
+* **Embodied Performance:** Jibo smiles and sways side-to-side (`dance, slowdance`) when music plays, does an upbeat bounce with a spinning disco ball for favorites, and flashes musical note emoji hotframes on its circular screen.
+
+For complete voice phrase patterns, container queue protocols, and troubleshooting, see the [Jibo Sonos Voice Capability Guide](https://github.com/ghchinoy/jibo-2026/blob/main/docs/capabilities/sonos-voice-control.md).
