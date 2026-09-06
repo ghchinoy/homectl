@@ -39,6 +39,9 @@ func TestCommandRegistration(t *testing.T) {
 		{[]string{"sonos", "play-stream"}},
 		{[]string{"sonos", "queue-add"}},
 		{[]string{"sonos", "queue"}},
+		{[]string{"sonos", "queue-remove"}},
+		{[]string{"sonos", "queue-clear"}},
+		{[]string{"sonos", "queue-reorder"}},
 		{[]string{"sonos", "services"}},
 		{[]string{"qolsys"}},
 		{[]string{"qolsys", "monitor"}},
@@ -302,6 +305,83 @@ func TestDryRunCommands(t *testing.T) {
 			t.Errorf("unexpected dry run result: %+v", res)
 		}
 	})
+
+	t.Run("sonos queue-remove dry-run json", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"sonos", "queue-remove"})
+		_ = rootCmd.PersistentFlags().Set("dry-run", "true")
+		_ = rootCmd.PersistentFlags().Set("json", "true")
+		defer rootCmd.PersistentFlags().Set("dry-run", "false")
+		defer rootCmd.PersistentFlags().Set("json", "false")
+		_ = cmd.Flags().Set("track", "3")
+		_ = cmd.Flags().Set("count", "2")
+		defer cmd.Flags().Set("track", "0")
+		defer cmd.Flags().Set("count", "1")
+
+		out, err := captureOutput(func() error {
+			return cmd.RunE(cmd, []string{"192.168.1.100"})
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		var res DryRunResult
+		if err := json.Unmarshal([]byte(out), &res); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v, raw: %q", err, out)
+		}
+		if !res.DryRun || res.Command != "sonos queue-remove" || res.Planned["track"] != float64(3) || res.Planned["count"] != float64(2) {
+			t.Errorf("unexpected dry run result: %+v", res)
+		}
+	})
+
+	t.Run("sonos queue-clear dry-run json", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"sonos", "queue-clear"})
+		_ = rootCmd.PersistentFlags().Set("dry-run", "true")
+		_ = rootCmd.PersistentFlags().Set("json", "true")
+		defer rootCmd.PersistentFlags().Set("dry-run", "false")
+		defer rootCmd.PersistentFlags().Set("json", "false")
+
+		out, err := captureOutput(func() error {
+			return cmd.RunE(cmd, []string{"192.168.1.100"})
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		var res DryRunResult
+		if err := json.Unmarshal([]byte(out), &res); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v, raw: %q", err, out)
+		}
+		if !res.DryRun || res.Command != "sonos queue-clear" {
+			t.Errorf("unexpected dry run result: %+v", res)
+		}
+	})
+
+	t.Run("sonos queue-reorder dry-run json", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"sonos", "queue-reorder"})
+		_ = rootCmd.PersistentFlags().Set("dry-run", "true")
+		_ = rootCmd.PersistentFlags().Set("json", "true")
+		defer rootCmd.PersistentFlags().Set("dry-run", "false")
+		defer rootCmd.PersistentFlags().Set("json", "false")
+		_ = cmd.Flags().Set("track", "5")
+		_ = cmd.Flags().Set("insert-before", "2")
+		defer cmd.Flags().Set("track", "0")
+		defer cmd.Flags().Set("insert-before", "0")
+
+		out, err := captureOutput(func() error {
+			return cmd.RunE(cmd, []string{"192.168.1.100"})
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		var res DryRunResult
+		if err := json.Unmarshal([]byte(out), &res); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v, raw: %q", err, out)
+		}
+		if !res.DryRun || res.Command != "sonos queue-reorder" || res.Planned["track"] != float64(5) || res.Planned["insert_before"] != float64(2) {
+			t.Errorf("unexpected dry run result: %+v", res)
+		}
+	})
 }
 
 func TestValidationRanges(t *testing.T) {
@@ -350,5 +430,40 @@ func TestValidationRanges(t *testing.T) {
 		}
 		_ = cmd.Flags().Set("track", "0")
 		_ = cmd.Flags().Set("time", "")
+	})
+
+	t.Run("sonos queue-remove invalid args", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"sonos", "queue-remove"})
+		// Missing track
+		_ = cmd.Flags().Set("track", "0")
+		if err := cmd.RunE(cmd, []string{"192.168.1.1"}); err == nil {
+			t.Error("expected error when --track is 0, got nil")
+		}
+	})
+
+	t.Run("sonos queue-reorder invalid args", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"sonos", "queue-reorder"})
+		// Missing track
+		_ = cmd.Flags().Set("track", "0")
+		_ = cmd.Flags().Set("insert-before", "2")
+		if err := cmd.RunE(cmd, []string{"192.168.1.1"}); err == nil {
+			t.Error("expected error when --track is 0, got nil")
+		}
+		// Neither insert-before nor as-next
+		_ = cmd.Flags().Set("track", "3")
+		_ = cmd.Flags().Set("insert-before", "0")
+		_ = cmd.Flags().Set("as-next", "false")
+		if err := cmd.RunE(cmd, []string{"192.168.1.1"}); err == nil {
+			t.Error("expected error when neither --insert-before nor --as-next is specified, got nil")
+		}
+		// Both insert-before and as-next
+		_ = cmd.Flags().Set("insert-before", "2")
+		_ = cmd.Flags().Set("as-next", "true")
+		if err := cmd.RunE(cmd, []string{"192.168.1.1"}); err == nil {
+			t.Error("expected error when both --insert-before and --as-next are specified, got nil")
+		}
+		_ = cmd.Flags().Set("track", "0")
+		_ = cmd.Flags().Set("insert-before", "0")
+		_ = cmd.Flags().Set("as-next", "false")
 	})
 }
