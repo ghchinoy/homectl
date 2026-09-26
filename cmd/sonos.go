@@ -914,6 +914,151 @@ var queueReorderSonosCmd = &cobra.Command{
 	},
 }
 
+var queueModeSonosCmd = &cobra.Command{
+	Use:   "queue-mode [ip]",
+	Short: "Configure queue playback settings (shuffle, repeat, crossfade) on a Sonos speaker",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var rawIP string
+		if len(args) > 0 {
+			rawIP = args[0]
+		}
+		ip, err := resolveSpeakerIP(rawIP)
+		if err != nil {
+			return err
+		}
+
+		shuffleStr, _ := cmd.Flags().GetString("shuffle")
+		repeatStr, _ := cmd.Flags().GetString("repeat")
+		crossfadeStr, _ := cmd.Flags().GetString("crossfade")
+
+		if shuffleStr == "" && repeatStr == "" && crossfadeStr == "" {
+			return fmt.Errorf("at least one flag must be specified: --shuffle on|off, --repeat off|all|one, --crossfade on|off")
+		}
+
+		var shuffleVal *bool
+		if shuffleStr != "" {
+			switch strings.ToLower(strings.TrimSpace(shuffleStr)) {
+			case "on", "true", "1", "yes":
+				v := true
+				shuffleVal = &v
+			case "off", "false", "0", "no":
+				v := false
+				shuffleVal = &v
+			default:
+				return fmt.Errorf("invalid value for --shuffle %q: must be 'on' or 'off'", shuffleStr)
+			}
+		}
+
+		var repeatVal string
+		if repeatStr != "" {
+			switch strings.ToLower(strings.TrimSpace(repeatStr)) {
+			case "off", "none", "false", "0":
+				repeatVal = "off"
+			case "all", "queue", "true", "1":
+				repeatVal = "all"
+			case "one", "single", "track":
+				repeatVal = "one"
+			default:
+				return fmt.Errorf("invalid value for --repeat %q: must be 'off', 'all', or 'one'", repeatStr)
+			}
+		}
+
+		var crossfadeVal *bool
+		if crossfadeStr != "" {
+			switch strings.ToLower(strings.TrimSpace(crossfadeStr)) {
+			case "on", "true", "1", "yes":
+				v := true
+				crossfadeVal = &v
+			case "off", "false", "0", "no":
+				v := false
+				crossfadeVal = &v
+			default:
+				return fmt.Errorf("invalid value for --crossfade %q: must be 'on' or 'off'", crossfadeStr)
+			}
+		}
+
+		if isDryRun(cmd) {
+			planned := map[string]any{"ip": ip}
+			var actions []string
+			if shuffleVal != nil {
+				planned["shuffle"] = *shuffleVal
+				actions = append(actions, fmt.Sprintf("shuffle=%v", *shuffleVal))
+			}
+			if repeatVal != "" {
+				planned["repeat"] = repeatVal
+				actions = append(actions, fmt.Sprintf("repeat=%s", repeatVal))
+			}
+			if crossfadeVal != nil {
+				planned["crossfade"] = *crossfadeVal
+				actions = append(actions, fmt.Sprintf("crossfade=%v", *crossfadeVal))
+			}
+
+			msg := fmt.Sprintf("[DRY-RUN] Would update queue settings on %s (%s)", ip, strings.Join(actions, ", "))
+			if isJSON(cmd) {
+				return json.NewEncoder(os.Stdout).Encode(DryRunResult{
+					DryRun:  true,
+					Command: "sonos queue-mode",
+					Planned: planned,
+					Message: msg,
+				})
+			}
+			fmt.Printf("[DRY-RUN] Simulating: %s (no changes made)\n", msg)
+			return nil
+		}
+
+		client := sonos.NewClient(ip)
+		applied := map[string]any{"status": "ok", "ip": ip}
+
+		if shuffleVal != nil {
+			if err := client.SetShuffle(*shuffleVal); err != nil {
+				return fmt.Errorf("set shuffle: %w", err)
+			}
+			applied["shuffle"] = *shuffleVal
+		}
+
+		if repeatVal != "" {
+			if err := client.SetRepeat(repeatVal); err != nil {
+				return fmt.Errorf("set repeat: %w", err)
+			}
+			applied["repeat"] = repeatVal
+		}
+
+		if crossfadeVal != nil {
+			if err := client.SetCrossfadeMode(*crossfadeVal); err != nil {
+				return fmt.Errorf("set crossfade: %w", err)
+			}
+			applied["crossfade"] = *crossfadeVal
+		}
+
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(applied)
+		}
+
+		var summary []string
+		if shuffleVal != nil {
+			state := "disabled"
+			if *shuffleVal {
+				state = "enabled"
+			}
+			summary = append(summary, fmt.Sprintf("shuffle %s", state))
+		}
+		if repeatVal != "" {
+			summary = append(summary, fmt.Sprintf("repeat mode set to %q", repeatVal))
+		}
+		if crossfadeVal != nil {
+			state := "disabled"
+			if *crossfadeVal {
+				state = "enabled"
+			}
+			summary = append(summary, fmt.Sprintf("crossfade %s", state))
+		}
+
+		fmt.Printf("Successfully updated queue settings on %s: %s.\n", ip, strings.Join(summary, ", "))
+		return nil
+	},
+}
+
 func init() {
 	playStreamSonosCmd.Flags().String("title", "", "Descriptive title for the stream (defaults to URL host)")
 	queueAddSonosCmd.Flags().Bool("next", false, "Insert track as next in queue instead of appending to end")
@@ -927,6 +1072,9 @@ func init() {
 	queueReorderSonosCmd.Flags().Bool("as-next", false, "Move track(s) to play immediately after currently playing track")
 	seekSonosCmd.Flags().Int("track", 0, "1-based track number in the queue to jump to")
 	seekSonosCmd.Flags().String("time", "", "Time offset to seek to in [H:]MM:SS format (e.g. '1:30' or '0:02:15')")
+	queueModeSonosCmd.Flags().String("shuffle", "", "Set shuffle playback (on|off)")
+	queueModeSonosCmd.Flags().String("repeat", "", "Set repeat playback (off|all|one)")
+	queueModeSonosCmd.Flags().String("crossfade", "", "Set crossfade playback (on|off)")
 
 	rootCmd.AddCommand(sonosCmd)
 	sonosCmd.AddCommand(listSonosCmd)
@@ -947,5 +1095,6 @@ func init() {
 	sonosCmd.AddCommand(queueRemoveSonosCmd)
 	sonosCmd.AddCommand(queueClearSonosCmd)
 	sonosCmd.AddCommand(queueReorderSonosCmd)
+	sonosCmd.AddCommand(queueModeSonosCmd)
 	sonosCmd.AddCommand(servicesSonosCmd)
 }

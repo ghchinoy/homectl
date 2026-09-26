@@ -26,7 +26,7 @@ The `mcp-sonos` server exposes **10 focused tools** and **1 live resource**.
 | Tool Name | Mode | Purpose | Key Parameters |
 | :--- | :---: | :--- | :--- |
 | **`sonos_list_speakers`** | 🔒 Read-Only | Discovers or lists cached network speakers | `refresh?: bool` |
-| **`sonos_get_now_playing`** | 🔒 Read-Only | Retrieves authoritative track metadata & status | `ip: string` |
+| **`sonos_get_now_playing`** | 🔒 Read-Only | Retrieves authoritative track metadata, status, play mode, shuffle, repeat, crossfade | `ip: string` |
 | **`sonos_get_topology`** | 🔒 Read-Only | Inspects zone groups, members, and stereo pairs | `ip: string` |
 | **`sonos_list_favorites`** | 🔒 Read-Only | Lists pinned cloud tracks, playlists, and radio | `ip?: string` |
 | **`sonos_list_services`** | 🔒 Read-Only | Enumerates available music services on household | `ip?: string` |
@@ -36,7 +36,7 @@ The `mcp-sonos` server exposes **10 focused tools** and **1 live resource**.
 | **`sonos_play_stream`** | ⚡ Mutating | Streams an arbitrary HTTP/HTTPS audio URL | `ip: string`, `url: string`, `title?: string` |
 | **`sonos_add_to_queue`** | ⚡ Mutating | Enqueues a track URI into the active queue | `ip: string`, `uri: string`, `metadata?: string`, `as_next?: bool` |
 | **`sonos_get_queue`** | 🔒 Read-Only | Inspects tracks in playback queue with pagination | `ip: string`, `start?: int`, `count?: int` |
-| **`sonos_queue_edit`** | ⚡ Mutating | Edits queue (`remove`, `clear`, `reorder` / bump to next) | `ip: string`, `action: string`, `track?: int`, `count?: int`, `insert_before?: int`, `as_next?: bool` |
+| **`sonos_queue_edit`** | ⚡ Mutating | Edits queue (`remove`, `clear`, `reorder` / bump to next) or configures playback settings (`shuffle`, `repeat`, `crossfade`) | `ip: string`, `action: string`, `track?: int`, `count?: int`, `insert_before?: int`, `as_next?: bool`, `enabled?: bool`, `repeat_mode?: string` |
 
 ---
 
@@ -287,7 +287,7 @@ Inspects tracks in the Sonos playback queue on the speaker with track titles, ar
 ---
 
 ### `sonos_queue_edit` (Mutating)
-Edits the local playback queue on a Sonos speaker. Supports removing tracks (`action: "remove"`), clearing the entire queue (`action: "clear"`), and reordering tracks or bumping them to play next (`action: "reorder"`).
+Edits the local playback queue on a Sonos speaker. Supports removing tracks (`action: "remove"`), clearing the entire queue (`action: "clear"`), reordering tracks or bumping them to play next (`action: "reorder"`), and configuring queue playback settings (`action: "shuffle"`, `"repeat"`, `"crossfade"`).
 
 * **Parameters:**
   ```json
@@ -297,7 +297,7 @@ Edits the local playback queue on a Sonos speaker. Supports removing tracks (`ac
       "ip": { "type": "string", "description": "IP address of the Sonos speaker (required)" },
       "action": {
         "type": "string",
-        "enum": ["remove", "clear", "reorder"],
+        "enum": ["remove", "clear", "reorder", "shuffle", "repeat", "crossfade"],
         "description": "Queue edit action to execute (required)"
       },
       "track": {
@@ -315,6 +315,15 @@ Edits the local playback queue on a Sonos speaker. Supports removing tracks (`ac
       "as_next": {
         "type": "boolean",
         "description": "If true, moves track(s) to play immediately after the currently playing track (for reorder)"
+      },
+      "enabled": {
+        "type": "boolean",
+        "description": "Enable or disable state (used for shuffle, crossfade, and boolean repeat)"
+      },
+      "repeat_mode": {
+        "type": "string",
+        "enum": ["off", "all", "one"],
+        "description": "Repeat mode for repeat action ('off', 'all', or 'one')"
       }
     },
     "required": ["ip", "action"]

@@ -41,6 +41,14 @@ type MockClient struct {
 	lastReorderCount     int
 	lastReorderInsert    int
 	failTopology         bool
+	playMode             sonos.PlayModeSettings
+	crossfade            bool
+	lastSetPlayMode      sonos.PlayMode
+	lastSetShuffle       *bool
+	lastSetRepeat        string
+	lastSetCrossfade     *bool
+	failPlayMode         bool
+	failCrossfade        bool
 }
 
 func (m *MockClient) GetVolume() (int, error) {
@@ -163,6 +171,61 @@ func (m *MockClient) ReorderTracksInQueue(startingIndex, numberOfTracks, insertB
 	m.lastReorderStart = startingIndex
 	m.lastReorderCount = numberOfTracks
 	m.lastReorderInsert = insertBefore
+	return nil
+}
+
+func (m *MockClient) GetPlayMode() (sonos.PlayModeSettings, error) {
+	if m.failPlayMode {
+		return sonos.PlayModeSettings{}, errors.New("play mode read failure")
+	}
+	if m.playMode.Mode == "" {
+		return sonos.PlayModeSettings{Mode: sonos.PlayModeNormal, Shuffle: false, RepeatMode: "off"}, nil
+	}
+	return m.playMode, nil
+}
+
+func (m *MockClient) SetPlayMode(mode sonos.PlayMode) error {
+	if m.failPlayMode {
+		return errors.New("play mode write failure")
+	}
+	m.lastSetPlayMode = mode
+	m.playMode = sonos.ParsePlayMode(string(mode))
+	return nil
+}
+
+func (m *MockClient) SetShuffle(enabled bool) error {
+	if m.failPlayMode {
+		return errors.New("shuffle write failure")
+	}
+	m.lastSetShuffle = &enabled
+	current, _ := m.GetPlayMode()
+	newMode := sonos.BuildPlayMode(enabled, current.RepeatMode)
+	return m.SetPlayMode(newMode)
+}
+
+func (m *MockClient) SetRepeat(repeatMode string) error {
+	if m.failPlayMode {
+		return errors.New("repeat write failure")
+	}
+	m.lastSetRepeat = repeatMode
+	current, _ := m.GetPlayMode()
+	newMode := sonos.BuildPlayMode(current.Shuffle, repeatMode)
+	return m.SetPlayMode(newMode)
+}
+
+func (m *MockClient) GetCrossfadeMode() (bool, error) {
+	if m.failCrossfade {
+		return false, errors.New("crossfade read failure")
+	}
+	return m.crossfade, nil
+}
+
+func (m *MockClient) SetCrossfadeMode(enabled bool) error {
+	if m.failCrossfade {
+		return errors.New("crossfade write failure")
+	}
+	m.lastSetCrossfade = &enabled
+	m.crossfade = enabled
 	return nil
 }
 
@@ -370,6 +433,12 @@ func TestSonosGetNowPlayingTool(t *testing.T) {
 		album:    "Time Out",
 		nrTracks: 15,
 		mediaURI: "x-rincon-queue:RINCON_123456#0",
+		playMode: sonos.PlayModeSettings{
+			Mode:       sonos.PlayModeShuffle,
+			Shuffle:    true,
+			RepeatMode: "all",
+		},
+		crossfade: true,
 	}
 	session, cleanup := setupTestSession(t, mock)
 	defer cleanup()
@@ -405,6 +474,18 @@ func TestSonosGetNowPlayingTool(t *testing.T) {
 	}
 	if nowPlaying.MediaURI != "x-rincon-queue:RINCON_123456#0" {
 		t.Errorf("expected MediaURI 'x-rincon-queue:RINCON_123456#0', got %s", nowPlaying.MediaURI)
+	}
+	if nowPlaying.PlayMode != "SHUFFLE" {
+		t.Errorf("expected PlayMode 'SHUFFLE', got %s", nowPlaying.PlayMode)
+	}
+	if !nowPlaying.Shuffle {
+		t.Errorf("expected Shuffle true, got false")
+	}
+	if nowPlaying.Repeat != "all" {
+		t.Errorf("expected Repeat 'all', got %s", nowPlaying.Repeat)
+	}
+	if !nowPlaying.Crossfade {
+		t.Errorf("expected Crossfade true, got false")
 	}
 }
 
@@ -1078,7 +1159,127 @@ func TestSonosQueueEditTool(t *testing.T) {
 		t.Errorf("expected reorder as_next start 8 insert 1, got start %d insert %d", mock.lastReorderStart, mock.lastReorderInsert)
 	}
 
-	// 6. Invalid action
+	// 6. Shuffle action (enable)
+	res, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_queue_edit",
+		Arguments: map[string]any{
+			"ip":      "192.168.1.120",
+			"action":  "shuffle",
+			"enabled": true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool shuffle failed: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("expected shuffle success, got error: %+v", res)
+	}
+	if mock.lastSetShuffle == nil || !*mock.lastSetShuffle {
+		t.Errorf("expected lastSetShuffle true, got %+v", mock.lastSetShuffle)
+	}
+	if mock.lastSetPlayMode != sonos.PlayModeShuffleNoRepeat {
+		t.Errorf("expected lastSetPlayMode SHUFFLE_NOREPEAT, got %s", mock.lastSetPlayMode)
+	}
+
+	// 7. Shuffle missing enabled parameter
+	res, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_queue_edit",
+		Arguments: map[string]any{
+			"ip":     "192.168.1.120",
+			"action": "shuffle",
+		},
+	})
+	if err == nil && (res == nil || !res.IsError) {
+		t.Error("expected error for shuffle without enabled parameter, got success")
+	}
+
+	// 8. Repeat action with repeat_mode: "all"
+	res, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_queue_edit",
+		Arguments: map[string]any{
+			"ip":          "192.168.1.120",
+			"action":      "repeat",
+			"repeat_mode": "all",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool repeat failed: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("expected repeat success, got error: %+v", res)
+	}
+	if mock.lastSetRepeat != "all" {
+		t.Errorf("expected lastSetRepeat 'all', got %s", mock.lastSetRepeat)
+	}
+	// Since shuffle was enabled previously, repeat: all -> SHUFFLE
+	if mock.lastSetPlayMode != sonos.PlayModeShuffle {
+		t.Errorf("expected lastSetPlayMode SHUFFLE, got %s", mock.lastSetPlayMode)
+	}
+
+	// 9. Repeat action with enabled: false (should map to repeat "off")
+	res, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_queue_edit",
+		Arguments: map[string]any{
+			"ip":      "192.168.1.120",
+			"action":  "repeat",
+			"enabled": false,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool repeat with enabled: false failed: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("expected repeat success, got error: %+v", res)
+	}
+	if mock.lastSetRepeat != "off" {
+		t.Errorf("expected lastSetRepeat 'off', got %s", mock.lastSetRepeat)
+	}
+
+	// 10. Repeat action with invalid repeat_mode
+	res, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_queue_edit",
+		Arguments: map[string]any{
+			"ip":          "192.168.1.120",
+			"action":      "repeat",
+			"repeat_mode": "random_mode",
+		},
+	})
+	if err == nil && (res == nil || !res.IsError) {
+		t.Error("expected error for invalid repeat_mode, got success")
+	}
+
+	// 11. Crossfade action (enable)
+	res, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_queue_edit",
+		Arguments: map[string]any{
+			"ip":      "192.168.1.120",
+			"action":  "crossfade",
+			"enabled": true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool crossfade failed: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("expected crossfade success, got error: %+v", res)
+	}
+	if mock.lastSetCrossfade == nil || !*mock.lastSetCrossfade {
+		t.Errorf("expected lastSetCrossfade true, got %+v", mock.lastSetCrossfade)
+	}
+
+	// 12. Crossfade missing enabled parameter
+	res, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "sonos_queue_edit",
+		Arguments: map[string]any{
+			"ip":     "192.168.1.120",
+			"action": "crossfade",
+		},
+	})
+	if err == nil && (res == nil || !res.IsError) {
+		t.Error("expected error for crossfade without enabled parameter, got success")
+	}
+
+	// 13. Invalid action
 	res, err = session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "sonos_queue_edit",
 		Arguments: map[string]any{

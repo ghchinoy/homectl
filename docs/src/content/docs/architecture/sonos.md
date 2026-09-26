@@ -27,7 +27,7 @@ The MCP server communicates with AI agents over standard I/O using the official 
 | Tool | Mode | Schema Wrapper | Description |
 | :--- | :---: | :--- | :--- |
 | **`sonos_list_speakers`** | 🔒 Read-Only | `ListSpeakersResult{Count, Speakers}` | Discovers or lists cached speakers on LAN. |
-| **`sonos_get_now_playing`** | 🔒 Read-Only | `NowPlayingResult` | Compact playback state, progress, and track metadata. |
+| **`sonos_get_now_playing`** | 🔒 Read-Only | `NowPlayingResult` | Compact playback state, progress, play mode, shuffle, repeat, crossfade, and track metadata. |
 | **`sonos_get_topology`** | 🔒 Read-Only | `TopologyResult{Count, Groups}` | Exposes zone groups and stereo-pair coordinator/follower relationships. |
 | **`sonos_list_favorites`** | 🔒 Read-Only | `ListFavoritesResult{Count, Favorites}` | Lists pinned cloud tracks/playlists from Spotify, Apple Music, and Sonos Radio. |
 | **`sonos_control`** | ⚡ Mutating | `{"status": "ok", "action": ...}` | Sends playback actions: `play`, `pause`, `stop`, `next`, `previous`, `seek_track`, `seek_time`. |
@@ -36,7 +36,7 @@ The MCP server communicates with AI agents over standard I/O using the official 
 | **`sonos_play_stream`** | ⚡ Mutating | `{"status": "ok", "url": ...}` | Streams an arbitrary HTTP/HTTPS audio URL (radio, podcast, or TTS). |
 | **`sonos_add_to_queue`** | ⚡ Mutating | `{"status": "ok", "track_position": ...}` | Enqueues track or container URI (with optional metadata and as-next flag). |
 | **`sonos_get_queue`** | 🔒 Read-Only | `QueueResult{Items, TotalMatches}` | Inspects playback queue tracks with pagination support. |
-| **`sonos_queue_edit`** | ⚡ Mutating | `{"status": "ok", "action": ...}` | Edits queue: removes tracks, clears queue, or reorders tracks. |
+| **`sonos_queue_edit`** | ⚡ Mutating | `{"status": "ok", "action": ...}` | Edits queue: removes tracks, clears queue, reorders tracks, or configures shuffle/repeat/crossfade. |
 | **`sonos_list_services`** | 🔒 Read-Only | `ListServicesResult{Count, Services}` | Lists registered music services and configured default provider. |
 
 All output schemas conform to **MCP SEP-2106** and OpenCode validation rules by returning Go records (JSON objects), never bare arrays.

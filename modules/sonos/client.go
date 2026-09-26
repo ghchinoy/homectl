@@ -949,6 +949,214 @@ func (c *Client) GetPositionInfo() (PositionInfo, error) {
 	}, nil
 }
 
+// PlayMode represents the Sonos playback mode combining shuffle and repeat states.
+type PlayMode string
+
+const (
+	PlayModeNormal           PlayMode = "NORMAL"
+	PlayModeRepeatAll        PlayMode = "REPEAT_ALL"
+	PlayModeRepeatOne        PlayMode = "REPEAT_ONE"
+	PlayModeShuffleNoRepeat  PlayMode = "SHUFFLE_NOREPEAT"
+	PlayModeShuffle          PlayMode = "SHUFFLE" // Shuffle + Repeat All
+	PlayModeShuffleRepeatOne PlayMode = "SHUFFLE_REPEAT_ONE"
+)
+
+// PlayModeSettings represents decomposed shuffle and repeat states.
+type PlayModeSettings struct {
+	Mode       PlayMode `json:"mode"`
+	Shuffle    bool     `json:"shuffle"`
+	RepeatMode string   `json:"repeat_mode"` // "off", "all", "one"
+}
+
+// ParsePlayMode parses a raw UPnP PlayMode string into structured PlayModeSettings.
+func ParsePlayMode(mode string) PlayModeSettings {
+	switch PlayMode(strings.ToUpper(strings.TrimSpace(mode))) {
+	case PlayModeShuffle:
+		return PlayModeSettings{Mode: PlayModeShuffle, Shuffle: true, RepeatMode: "all"}
+	case PlayModeShuffleRepeatOne:
+		return PlayModeSettings{Mode: PlayModeShuffleRepeatOne, Shuffle: true, RepeatMode: "one"}
+	case PlayModeShuffleNoRepeat:
+		return PlayModeSettings{Mode: PlayModeShuffleNoRepeat, Shuffle: true, RepeatMode: "off"}
+	case PlayModeRepeatAll:
+		return PlayModeSettings{Mode: PlayModeRepeatAll, Shuffle: false, RepeatMode: "all"}
+	case PlayModeRepeatOne:
+		return PlayModeSettings{Mode: PlayModeRepeatOne, Shuffle: false, RepeatMode: "one"}
+	case PlayModeNormal:
+		fallthrough
+	default:
+		return PlayModeSettings{Mode: PlayModeNormal, Shuffle: false, RepeatMode: "off"}
+	}
+}
+
+// BuildPlayMode constructs the UPnP PlayMode string from shuffle and repeat settings.
+func BuildPlayMode(shuffle bool, repeatMode string) PlayMode {
+	switch strings.ToLower(strings.TrimSpace(repeatMode)) {
+	case "one", "single":
+		if shuffle {
+			return PlayModeShuffleRepeatOne
+		}
+		return PlayModeRepeatOne
+	case "all", "queue":
+		if shuffle {
+			return PlayModeShuffle
+		}
+		return PlayModeRepeatAll
+	default: // "off", "none", or empty
+		if shuffle {
+			return PlayModeShuffleNoRepeat
+		}
+		return PlayModeNormal
+	}
+}
+
+func isStreamOrRadioURI(uri string) bool {
+	u := strings.ToLower(uri)
+	return strings.HasPrefix(u, "x-sonosapi-stream:") ||
+		strings.HasPrefix(u, "x-sonosapi-radio:") ||
+		strings.HasPrefix(u, "tunein:") ||
+		strings.HasPrefix(u, "x-rincon-mp3radio:") ||
+		strings.HasPrefix(u, "hls-radio:") ||
+		strings.HasPrefix(u, "aac:")
+}
+
+// GetPlayMode retrieves the current playback mode (shuffle and repeat states) from the group coordinator.
+func (c *Client) GetPlayMode() (PlayModeSettings, error) {
+	coordIP, _ := c.GetCoordinatorIP()
+	targetClient := c
+	if coordIP != "" && coordIP != c.ip {
+		targetClient = NewClient(coordIP, WithHTTPClient(c.httpClient), WithLogger(c.log()), WithStorage(c.store()))
+	}
+
+	body, err := targetClient.SOAPAction(
+		"/MediaRenderer/AVTransport/Control",
+		"urn:schemas-upnp-org:service:AVTransport:1",
+		"GetTransportSettings",
+		map[string]string{
+			"InstanceID": "0",
+		})
+	if err != nil {
+		return PlayModeSettings{}, fmt.Errorf("get transport settings: %w", err)
+	}
+	defer body.Close()
+
+	data, _ := io.ReadAll(body)
+	var resp struct {
+		PlayMode string `xml:"Body>GetTransportSettingsResponse>PlayMode"`
+	}
+	if err := xml.Unmarshal(data, &resp); err != nil {
+		return PlayModeSettings{}, fmt.Errorf("unmarshal transport settings: %w", err)
+	}
+
+	return ParsePlayMode(resp.PlayMode), nil
+}
+
+// SetPlayMode sets the raw UPnP PlayMode on the group coordinator.
+func (c *Client) SetPlayMode(mode PlayMode) error {
+	coordIP, _ := c.GetCoordinatorIP()
+	targetClient := c
+	if coordIP != "" && coordIP != c.ip {
+		targetClient = NewClient(coordIP, WithHTTPClient(c.httpClient), WithLogger(c.log()), WithStorage(c.store()))
+	}
+
+	media, err := targetClient.GetMediaInfo()
+	if err == nil && isStreamOrRadioURI(media.CurrentURI) {
+		return fmt.Errorf("playback mode (shuffle/repeat) cannot be set on live streams or radio: %s", media.CurrentURI)
+	}
+
+	body, err := targetClient.SOAPAction(
+		"/MediaRenderer/AVTransport/Control",
+		"urn:schemas-upnp-org:service:AVTransport:1",
+		"SetPlayMode",
+		map[string]string{
+			"InstanceID":  "0",
+			"NewPlayMode": string(mode),
+		})
+	if err != nil {
+		return fmt.Errorf("set play mode: %w", err)
+	}
+	body.Close()
+	return nil
+}
+
+// SetShuffle enables or disables shuffle on the group coordinator while preserving the current repeat mode.
+func (c *Client) SetShuffle(enabled bool) error {
+	current, err := c.GetPlayMode()
+	if err != nil {
+		return err
+	}
+	newMode := BuildPlayMode(enabled, current.RepeatMode)
+	return c.SetPlayMode(newMode)
+}
+
+// SetRepeat sets the repeat mode ("off", "all", "one") on the group coordinator while preserving the current shuffle state.
+func (c *Client) SetRepeat(repeatMode string) error {
+	current, err := c.GetPlayMode()
+	if err != nil {
+		return err
+	}
+	newMode := BuildPlayMode(current.Shuffle, repeatMode)
+	return c.SetPlayMode(newMode)
+}
+
+// GetCrossfadeMode retrieves whether crossfade is enabled from the group coordinator.
+func (c *Client) GetCrossfadeMode() (bool, error) {
+	coordIP, _ := c.GetCoordinatorIP()
+	targetClient := c
+	if coordIP != "" && coordIP != c.ip {
+		targetClient = NewClient(coordIP, WithHTTPClient(c.httpClient), WithLogger(c.log()), WithStorage(c.store()))
+	}
+
+	body, err := targetClient.SOAPAction(
+		"/MediaRenderer/AVTransport/Control",
+		"urn:schemas-upnp-org:service:AVTransport:1",
+		"GetCrossfadeMode",
+		map[string]string{
+			"InstanceID": "0",
+		})
+	if err != nil {
+		return false, fmt.Errorf("get crossfade mode: %w", err)
+	}
+	defer body.Close()
+
+	data, _ := io.ReadAll(body)
+	var resp struct {
+		CrossfadeMode string `xml:"Body>GetCrossfadeModeResponse>CrossfadeMode"`
+	}
+	if err := xml.Unmarshal(data, &resp); err != nil {
+		return false, fmt.Errorf("unmarshal crossfade mode: %w", err)
+	}
+
+	return resp.CrossfadeMode == "1" || strings.EqualFold(resp.CrossfadeMode, "true"), nil
+}
+
+// SetCrossfadeMode enables or disables crossfade on the group coordinator.
+func (c *Client) SetCrossfadeMode(enabled bool) error {
+	coordIP, _ := c.GetCoordinatorIP()
+	targetClient := c
+	if coordIP != "" && coordIP != c.ip {
+		targetClient = NewClient(coordIP, WithHTTPClient(c.httpClient), WithLogger(c.log()), WithStorage(c.store()))
+	}
+
+	val := "0"
+	if enabled {
+		val = "1"
+	}
+
+	body, err := targetClient.SOAPAction(
+		"/MediaRenderer/AVTransport/Control",
+		"urn:schemas-upnp-org:service:AVTransport:1",
+		"SetCrossfadeMode",
+		map[string]string{
+			"InstanceID":    "0",
+			"CrossfadeMode": val,
+		})
+	if err != nil {
+		return fmt.Errorf("set crossfade mode: %w", err)
+	}
+	body.Close()
+	return nil
+}
+
 func (c *Client) GetZoneGroupAttributes() (string, error) {
 	body, err := c.SOAPAction(
 		"/ZoneGroupTopology/Control",

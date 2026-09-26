@@ -95,6 +95,10 @@ Play arbitrary internet radio streams, podcasts, or TTS voice announcements dire
 # Reorder track: move track 5 before track 2
 ./homectl sonos queue-reorder 192.168.1.120 --track 5 --insert-before 2
 
+# Configure playback settings (shuffle, repeat, crossfade)
+./homectl sonos queue-mode 192.168.1.120 --shuffle on --repeat all --crossfade off
+./homectl sonos queue-mode 192.168.1.120 --repeat one --dry-run
+
 # Clear all tracks from queue
 ./homectl sonos queue-clear 192.168.1.120
 ```

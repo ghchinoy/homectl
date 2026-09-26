@@ -47,6 +47,7 @@ homectl
 │   ├── queue-remove # Remove track(s) from playback queue
 │   ├── queue-clear  # Clear all tracks from playback queue
 │   ├── queue-reorder# Reorder tracks in playback queue
+│   ├── queue-mode   # Configure playback modes (shuffle, repeat, crossfade)
 │   └── services     # List streaming services catalog
 └── qolsys           # Qolsys alarm panel integration
     └── monitor      # Stream live panel events via WebSocket
@@ -161,6 +162,14 @@ Reorders tracks in the playback queue, moving a track range before a target posi
 homectl sonos queue-reorder 192.168.1.120 --track 8 --as-next
 homectl sonos queue-reorder 192.168.1.120 --track 5 --insert-before 2
 homectl sonos queue-reorder 192.168.1.120 --track 8 --as-next --dry-run
+```
+
+### `homectl sonos queue-mode [ip]`
+Configures queue playback modes (shuffle, repeat, crossfade) on the speaker or group coordinator. Supports `--dry-run` and `--json`:
+```bash
+homectl sonos queue-mode 192.168.1.120 --shuffle on --repeat all --crossfade off
+homectl sonos queue-mode 192.168.1.120 --shuffle on --dry-run
+homectl sonos queue-mode 192.168.1.120 --repeat one --json
 ```
 
 ### `homectl sonos services [ip]`

@@ -104,6 +104,11 @@ For internet radio, podcasts, or TTS voice announcements:
    - Remove tracks: `sonos_queue_edit(ip: "<ip>", action: "remove", track: <n>, count?: <m>)`.
    - Clear entire queue: `sonos_queue_edit(ip: "<ip>", action: "clear")`.
    - Reorder tracks: `sonos_queue_edit(ip: "<ip>", action: "reorder", track: <n>, insert_before: <pos>)` or with `as_next: true` to bump a song to play next.
+6. **Configuring Queue Playback Settings (`sonos_queue_edit`):**
+   - Shuffle playback: `sonos_queue_edit(ip: "<ip>", action: "shuffle", enabled: true|false)`.
+   - Repeat playback: `sonos_queue_edit(ip: "<ip>", action: "repeat", repeat_mode: "off"|"all"|"one")` (or `enabled: true|false`).
+   - Crossfade transitions: `sonos_queue_edit(ip: "<ip>", action: "crossfade", enabled: true|false)`.
+   - *Note:* Shuffle, repeat, and crossfade settings apply exclusively to queue playback and are automatically coordinated on the group coordinator. They are rejected on live radio and internet streams.
 
 ---
 
@@ -114,7 +119,7 @@ When interacting with `homectl-sonos-mcp`:
 | Tool | Mode | Purpose | Key Parameters |
 |---|---|---|---|
 | `sonos_list_speakers` | 🔒 Read-Only | Discover speakers on LAN | `refresh: bool` |
-| `sonos_get_now_playing`| 🔒 Read-Only | Track metadata, progress, queue length (resolves followers) | `ip: string` |
+| `sonos_get_now_playing`| 🔒 Read-Only | Track metadata, progress, queue length, play mode, shuffle, repeat, crossfade | `ip: string` |
 | `sonos_get_topology`   | 🔒 Read-Only | Group & stereo-pair structure with coordinators | `ip: string` |
 | `sonos_control`        | ⚡ Mutating | Playback: play, pause, stop, next, prev, seek_track, seek_time | `ip: string`, `action: string`, `track?: int`, `target?: string` |
 | `sonos_set_volume`     | ⚡ Mutating | Adjust absolute or relative volume | `ip: string`, `volume?: int`, `delta?: int` |
@@ -123,7 +128,7 @@ When interacting with `homectl-sonos-mcp`:
 | `sonos_play_stream`    | ⚡ Mutating | Play HTTP/HTTPS audio stream (radio/podcast/TTS) | `ip: string`, `url: string`, `title?: string` |
 | `sonos_add_to_queue`   | ⚡ Mutating | Add audio URI to queue (optionally as next track) | `ip: string`, `uri: string`, `metadata?: string`, `as_next?: bool` |
 | `sonos_get_queue`      | 🔒 Read-Only | Inspect tracks in queue with titles, artists, positions | `ip: string`, `start?: int`, `count?: int` |
-| `sonos_queue_edit`     | ⚡ Mutating | Edit queue: remove tracks, clear all, or reorder (bump to next) | `ip: string`, `action: string`, `track?: int`, `count?: int`, `insert_before?: int`, `as_next?: bool` |
+| `sonos_queue_edit`     | ⚡ Mutating | Edit queue: remove, clear, reorder, or configure shuffle/repeat/crossfade | `ip: string`, `action: string`, `track?: int`, `count?: int`, `insert_before?: int`, `as_next?: bool`, `enabled?: bool`, `repeat_mode?: string` |
 | `sonos_list_services`  | 🔒 Read-Only | List streaming services & default provider | `ip: string` |
 
 ---

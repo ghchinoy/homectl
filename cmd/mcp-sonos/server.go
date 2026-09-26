@@ -37,6 +37,12 @@ type ClientInterface interface {
 	Previous() error
 	SeekTrack(track int) error
 	SeekTime(target string) error
+	GetPlayMode() (sonos.PlayModeSettings, error)
+	SetPlayMode(mode sonos.PlayMode) error
+	SetShuffle(enabled bool) error
+	SetRepeat(repeatMode string) error
+	GetCrossfadeMode() (bool, error)
+	SetCrossfadeMode(enabled bool) error
 	RemoveTrackRangeFromQueue(start, count int) error
 	RemoveAllTracksFromQueue() error
 	ReorderTracksInQueue(startingIndex, numberOfTracks, insertBefore int) error
@@ -180,11 +186,13 @@ type GetQueueParams struct {
 // QueueEditParams defines parameters for sonos_queue_edit.
 type QueueEditParams struct {
 	IP           string `json:"ip" jsonschema:"IP address of the Sonos speaker (required)"`
-	Action       string `json:"action" jsonschema:"Queue edit action: 'remove', 'clear', 'reorder' (required)"`
+	Action       string `json:"action" jsonschema:"Queue edit action: 'remove', 'clear', 'reorder', 'shuffle', 'repeat', 'crossfade' (required)"`
 	Track        int    `json:"track,omitempty" jsonschema:"1-based track number in the queue (required for 'remove', starting track for 'reorder')"`
 	Count        int    `json:"count,omitempty" jsonschema:"Number of tracks to remove or reorder (default 1)"`
 	InsertBefore int    `json:"insert_before,omitempty" jsonschema:"1-based target track position to insert before (for 'reorder')"`
 	AsNext       bool   `json:"as_next,omitempty" jsonschema:"If true, moves track(s) to play immediately after the currently playing track (for 'reorder')"`
+	Enabled      *bool  `json:"enabled,omitempty" jsonschema:"Enable or disable state (used for 'shuffle', 'crossfade', and boolean 'repeat')"`
+	RepeatMode   string `json:"repeat_mode,omitempty" jsonschema:"Repeat mode for 'repeat' action: 'off', 'all', or 'one'"`
 }
 
 // ListFavoritesResult represents the structured, object-wrapped output of sonos_list_favorites.
@@ -217,6 +225,10 @@ type NowPlayingResult struct {
 	Duration      string `json:"duration,omitempty"`
 	Progress      string `json:"progress,omitempty"`
 	StreamContent string `json:"stream_content,omitempty"`
+	PlayMode      string `json:"play_mode,omitempty"`
+	Shuffle       bool   `json:"shuffle"`
+	Repeat        string `json:"repeat,omitempty"`
+	Crossfade     bool   `json:"crossfade"`
 	// TrackURI is the raw transport URI. For a stereo-pair/group follower this is
 	// an "x-rincon:<coordinator-rincon>" reference rather than real media.
 	TrackURI string `json:"track_uri,omitempty"`
@@ -358,6 +370,8 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		vol, _ := client.GetVolume()
 		meta, _ := client.ParseTrackMetadata(pos.TrackMetaData)
 		media, _ := client.GetMediaInfo()
+		playMode, _ := client.GetPlayMode()
+		crossfade, _ := client.GetCrossfadeMode()
 
 		res := NowPlayingResult{
 			IP:            targetIP,
@@ -369,6 +383,10 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 			Duration:      pos.TrackDuration,
 			Progress:      pos.RelTime,
 			StreamContent: meta.StreamContent,
+			PlayMode:      string(playMode.Mode),
+			Shuffle:       playMode.Shuffle,
+			Repeat:        playMode.RepeatMode,
+			Crossfade:     crossfade,
 			TrackURI:      pos.TrackURI,
 			QueueLength:   media.NrTracks,
 			MediaURI:      media.CurrentURI,
@@ -389,6 +407,12 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		}
 		if res.QueueLength > 0 {
 			summary += fmt.Sprintf(" [Queue: %d tracks]", res.QueueLength)
+		}
+		if res.PlayMode != "" && res.PlayMode != "NORMAL" {
+			summary += fmt.Sprintf(" [Mode: %s]", res.PlayMode)
+		}
+		if res.Crossfade {
+			summary += " [Crossfade: on]"
 		}
 		if res.IsFollower {
 			summary = fmt.Sprintf("%s (resolved from stereo-pair/group coordinator %s)", summary, res.CoordinatorIP)
@@ -773,14 +797,14 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 	// Tool 12: sonos_queue_edit (Mutating)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "sonos_queue_edit",
-		Description: "Edits the local playback queue on a Sonos speaker: 'remove' (delete track range), 'clear' (wipe entire queue), 'reorder' (move track range or bump to play next).",
+		Description: "Edits the local playback queue on a Sonos speaker: 'remove' (delete track range), 'clear' (wipe entire queue), 'reorder' (move track range or bump to play next), and queue playback settings: 'shuffle' (enable/disable), 'repeat' (mode 'off'|'all'|'one'), 'crossfade' (enable/disable).",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args QueueEditParams) (*mcp.CallToolResult, any, error) {
 		if strings.TrimSpace(args.IP) == "" {
 			return nil, nil, fmt.Errorf("ip parameter is required")
 		}
 		action := strings.TrimSpace(strings.ToLower(args.Action))
 		if action == "" {
-			return nil, nil, fmt.Errorf("action parameter is required ('remove', 'clear', 'reorder')")
+			return nil, nil, fmt.Errorf("action parameter is required ('remove', 'clear', 'reorder', 'shuffle', 'repeat', 'crossfade')")
 		}
 
 		client := cfg.ClientFactory(args.IP)
@@ -837,8 +861,58 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 			outPayload["count"] = count
 			outPayload["insert_before"] = insertBefore
 
+		case "shuffle":
+			if args.Enabled == nil {
+				return nil, nil, fmt.Errorf("enabled parameter (true/false) is required for shuffle action")
+			}
+			if err := client.SetShuffle(*args.Enabled); err != nil {
+				return nil, nil, fmt.Errorf("failed to set shuffle on %s: %w", args.IP, err)
+			}
+			stateStr := "disabled"
+			if *args.Enabled {
+				stateStr = "enabled"
+			}
+			msg = fmt.Sprintf("Successfully %s shuffle on Sonos speaker at %s", stateStr, args.IP)
+			outPayload["shuffle"] = *args.Enabled
+
+		case "repeat":
+			mode := strings.TrimSpace(strings.ToLower(args.RepeatMode))
+			if mode == "" {
+				if args.Enabled != nil {
+					if *args.Enabled {
+						mode = "all"
+					} else {
+						mode = "off"
+					}
+				} else {
+					return nil, nil, fmt.Errorf("repeat_mode ('off', 'all', 'one') or enabled (true/false) is required for repeat action")
+				}
+			}
+			if mode != "off" && mode != "all" && mode != "one" {
+				return nil, nil, fmt.Errorf("invalid repeat_mode %q: expected 'off', 'all', or 'one'", mode)
+			}
+			if err := client.SetRepeat(mode); err != nil {
+				return nil, nil, fmt.Errorf("failed to set repeat on %s: %w", args.IP, err)
+			}
+			msg = fmt.Sprintf("Successfully set repeat mode to %q on Sonos speaker at %s", mode, args.IP)
+			outPayload["repeat_mode"] = mode
+
+		case "crossfade":
+			if args.Enabled == nil {
+				return nil, nil, fmt.Errorf("enabled parameter (true/false) is required for crossfade action")
+			}
+			if err := client.SetCrossfadeMode(*args.Enabled); err != nil {
+				return nil, nil, fmt.Errorf("failed to set crossfade on %s: %w", args.IP, err)
+			}
+			stateStr := "disabled"
+			if *args.Enabled {
+				stateStr = "enabled"
+			}
+			msg = fmt.Sprintf("Successfully %s crossfade on Sonos speaker at %s", stateStr, args.IP)
+			outPayload["crossfade"] = *args.Enabled
+
 		default:
-			return nil, nil, fmt.Errorf("unknown action %q (supported: 'remove', 'clear', 'reorder')", action)
+			return nil, nil, fmt.Errorf("unknown action %q (supported: 'remove', 'clear', 'reorder', 'shuffle', 'repeat', 'crossfade')", action)
 		}
 
 		return &mcp.CallToolResult{

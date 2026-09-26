@@ -862,3 +862,348 @@ func TestReorderTracksInQueueMock(t *testing.T) {
 		t.Error("expected error for insertBefore 0, got nil")
 	}
 }
+
+func TestParseAndBuildPlayMode(t *testing.T) {
+	testCases := []struct {
+		rawMode    string
+		expected   PlayModeSettings
+		shuffle    bool
+		repeatMode string
+		rebuilt    PlayMode
+	}{
+		{
+			rawMode:    "NORMAL",
+			expected:   PlayModeSettings{Mode: PlayModeNormal, Shuffle: false, RepeatMode: "off"},
+			shuffle:    false,
+			repeatMode: "off",
+			rebuilt:    PlayModeNormal,
+		},
+		{
+			rawMode:    "REPEAT_ALL",
+			expected:   PlayModeSettings{Mode: PlayModeRepeatAll, Shuffle: false, RepeatMode: "all"},
+			shuffle:    false,
+			repeatMode: "all",
+			rebuilt:    PlayModeRepeatAll,
+		},
+		{
+			rawMode:    "REPEAT_ONE",
+			expected:   PlayModeSettings{Mode: PlayModeRepeatOne, Shuffle: false, RepeatMode: "one"},
+			shuffle:    false,
+			repeatMode: "one",
+			rebuilt:    PlayModeRepeatOne,
+		},
+		{
+			rawMode:    "SHUFFLE_NOREPEAT",
+			expected:   PlayModeSettings{Mode: PlayModeShuffleNoRepeat, Shuffle: true, RepeatMode: "off"},
+			shuffle:    true,
+			repeatMode: "off",
+			rebuilt:    PlayModeShuffleNoRepeat,
+		},
+		{
+			rawMode:    "SHUFFLE",
+			expected:   PlayModeSettings{Mode: PlayModeShuffle, Shuffle: true, RepeatMode: "all"},
+			shuffle:    true,
+			repeatMode: "all",
+			rebuilt:    PlayModeShuffle,
+		},
+		{
+			rawMode:    "SHUFFLE_REPEAT_ONE",
+			expected:   PlayModeSettings{Mode: PlayModeShuffleRepeatOne, Shuffle: true, RepeatMode: "one"},
+			shuffle:    true,
+			repeatMode: "one",
+			rebuilt:    PlayModeShuffleRepeatOne,
+		},
+		{
+			rawMode:    "UNKNOWN_MODE",
+			expected:   PlayModeSettings{Mode: PlayModeNormal, Shuffle: false, RepeatMode: "off"},
+			shuffle:    false,
+			repeatMode: "none",
+			rebuilt:    PlayModeNormal,
+		},
+	}
+
+	for _, tc := range testCases {
+		parsed := ParsePlayMode(tc.rawMode)
+		if parsed != tc.expected {
+			t.Errorf("ParsePlayMode(%q) = %+v, expected %+v", tc.rawMode, parsed, tc.expected)
+		}
+		rebuilt := BuildPlayMode(tc.shuffle, tc.repeatMode)
+		if rebuilt != tc.rebuilt {
+			t.Errorf("BuildPlayMode(%v, %q) = %q, expected %q", tc.shuffle, tc.repeatMode, rebuilt, tc.rebuilt)
+		}
+	}
+}
+
+func TestGetPlayModeMock(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		soapAction := r.Header.Get("SOAPAction")
+		if strings.Contains(soapAction, "GetTransportSettings") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetTransportSettingsResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><PlayMode>SHUFFLE_NOREPEAT</PlayMode><RecQualityMode>NOT_IMPLEMENTED</RecQualityMode></u:GetTransportSettingsResponse></s:Body></s:Envelope>`))
+			return
+		}
+		if strings.Contains(soapAction, "GetZoneGroupState") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetZoneGroupStateResponse xmlns:u="urn:schemas-upnp-org:service:ZoneGroupTopology:1"><ZoneGroupState>&lt;ZoneGroups&gt;&lt;/ZoneGroups&gt;</ZoneGroupState></u:GetZoneGroupStateResponse></s:Body></s:Envelope>`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "http://")
+	client := NewClient(host, WithHTTPClient(server.Client()))
+
+	settings, err := client.GetPlayMode()
+	if err != nil {
+		t.Fatalf("GetPlayMode failed: %v", err)
+	}
+	if settings.Mode != PlayModeShuffleNoRepeat {
+		t.Errorf("expected Mode SHUFFLE_NOREPEAT, got %s", settings.Mode)
+	}
+	if !settings.Shuffle {
+		t.Errorf("expected Shuffle true, got false")
+	}
+	if settings.RepeatMode != "off" {
+		t.Errorf("expected RepeatMode off, got %s", settings.RepeatMode)
+	}
+}
+
+func TestSetShuffleAndRepeatPreservationMock(t *testing.T) {
+	currentPlayMode := "REPEAT_ALL"
+	var lastSetPlayMode string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		soapAction := r.Header.Get("SOAPAction")
+		body, _ := io.ReadAll(r.Body)
+		sBody := string(body)
+
+		if strings.Contains(soapAction, "GetTransportSettings") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprintf(w, `<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetTransportSettingsResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><PlayMode>%s</PlayMode><RecQualityMode>NOT_IMPLEMENTED</RecQualityMode></u:GetTransportSettingsResponse></s:Body></s:Envelope>`, currentPlayMode)
+			return
+		}
+		if strings.Contains(soapAction, "GetMediaInfo") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetMediaInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><CurrentURI>x-rincon-queue:RINCON_12345#0</CurrentURI><NrTracks>10</NrTracks></u:GetMediaInfoResponse></s:Body></s:Envelope>`))
+			return
+		}
+		if strings.Contains(soapAction, "SetPlayMode") {
+			lastSetPlayMode = extractTagContent(sBody, "NewPlayMode")
+			currentPlayMode = lastSetPlayMode
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:SetPlayModeResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"/></s:Body></s:Envelope>`))
+			return
+		}
+		if strings.Contains(soapAction, "GetZoneGroupState") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetZoneGroupStateResponse xmlns:u="urn:schemas-upnp-org:service:ZoneGroupTopology:1"><ZoneGroupState>&lt;ZoneGroups&gt;&lt;/ZoneGroups&gt;</ZoneGroupState></u:GetZoneGroupStateResponse></s:Body></s:Envelope>`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "http://")
+	client := NewClient(host, WithHTTPClient(server.Client()))
+
+	// 1. Initial state: REPEAT_ALL (shuffle: false, repeat: all).
+	// Calling SetShuffle(true) should transition to SHUFFLE (shuffle: true, repeat: all).
+	if err := client.SetShuffle(true); err != nil {
+		t.Fatalf("SetShuffle(true) failed: %v", err)
+	}
+	if lastSetPlayMode != "SHUFFLE" {
+		t.Errorf("expected NewPlayMode SHUFFLE, got %s", lastSetPlayMode)
+	}
+
+	// 2. Current state is SHUFFLE (shuffle: true, repeat: all).
+	// Calling SetRepeat("one") should preserve shuffle and set SHUFFLE_REPEAT_ONE.
+	if err := client.SetRepeat("one"); err != nil {
+		t.Fatalf("SetRepeat(one) failed: %v", err)
+	}
+	if lastSetPlayMode != "SHUFFLE_REPEAT_ONE" {
+		t.Errorf("expected NewPlayMode SHUFFLE_REPEAT_ONE, got %s", lastSetPlayMode)
+	}
+
+	// 3. Current state is SHUFFLE_REPEAT_ONE.
+	// Calling SetShuffle(false) should preserve repeat: one and set REPEAT_ONE.
+	if err := client.SetShuffle(false); err != nil {
+		t.Fatalf("SetShuffle(false) failed: %v", err)
+	}
+	if lastSetPlayMode != "REPEAT_ONE" {
+		t.Errorf("expected NewPlayMode REPEAT_ONE, got %s", lastSetPlayMode)
+	}
+
+	// 4. Calling SetRepeat("off") should transition to NORMAL.
+	if err := client.SetRepeat("off"); err != nil {
+		t.Fatalf("SetRepeat(off) failed: %v", err)
+	}
+	if lastSetPlayMode != "NORMAL" {
+		t.Errorf("expected NewPlayMode NORMAL, got %s", lastSetPlayMode)
+	}
+}
+
+func TestSetPlayModeRadioRejectionMock(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		soapAction := r.Header.Get("SOAPAction")
+		if strings.Contains(soapAction, "GetMediaInfo") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetMediaInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><CurrentURI>x-sonosapi-stream:s12345?sid=254&amp;flags=8224&amp;sn=0</CurrentURI><NrTracks>1</NrTracks></u:GetMediaInfoResponse></s:Body></s:Envelope>`))
+			return
+		}
+		if strings.Contains(soapAction, "GetZoneGroupState") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetZoneGroupStateResponse xmlns:u="urn:schemas-upnp-org:service:ZoneGroupTopology:1"><ZoneGroupState>&lt;ZoneGroups&gt;&lt;/ZoneGroups&gt;</ZoneGroupState></u:GetZoneGroupStateResponse></s:Body></s:Envelope>`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "http://")
+	client := NewClient(host, WithHTTPClient(server.Client()))
+
+	err := client.SetPlayMode(PlayModeShuffle)
+	if err == nil {
+		t.Fatal("expected error setting play mode on live radio stream, got nil")
+	}
+	if !strings.Contains(err.Error(), "live streams or radio") {
+		t.Errorf("expected clear radio rejection error, got: %v", err)
+	}
+}
+
+func TestCrossfadeModeMock(t *testing.T) {
+	crossfadeState := "1"
+	var lastSetCrossfade string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		soapAction := r.Header.Get("SOAPAction")
+		body, _ := io.ReadAll(r.Body)
+		sBody := string(body)
+
+		if strings.Contains(soapAction, "GetCrossfadeMode") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprintf(w, `<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetCrossfadeModeResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><CrossfadeMode>%s</CrossfadeMode></u:GetCrossfadeModeResponse></s:Body></s:Envelope>`, crossfadeState)
+			return
+		}
+		if strings.Contains(soapAction, "SetCrossfadeMode") {
+			lastSetCrossfade = extractTagContent(sBody, "CrossfadeMode")
+			crossfadeState = lastSetCrossfade
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:SetCrossfadeModeResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"/></s:Body></s:Envelope>`))
+			return
+		}
+		if strings.Contains(soapAction, "GetZoneGroupState") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetZoneGroupStateResponse xmlns:u="urn:schemas-upnp-org:service:ZoneGroupTopology:1"><ZoneGroupState>&lt;ZoneGroups&gt;&lt;/ZoneGroups&gt;</ZoneGroupState></u:GetZoneGroupStateResponse></s:Body></s:Envelope>`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "http://")
+	client := NewClient(host, WithHTTPClient(server.Client()))
+
+	enabled, err := client.GetCrossfadeMode()
+	if err != nil {
+		t.Fatalf("GetCrossfadeMode failed: %v", err)
+	}
+	if !enabled {
+		t.Errorf("expected initial crossfade true, got false")
+	}
+
+	if err := client.SetCrossfadeMode(false); err != nil {
+		t.Fatalf("SetCrossfadeMode(false) failed: %v", err)
+	}
+	if lastSetCrossfade != "0" {
+		t.Errorf("expected SetCrossfadeMode sent '0', got %s", lastSetCrossfade)
+	}
+
+	enabled, err = client.GetCrossfadeMode()
+	if err != nil {
+		t.Fatalf("GetCrossfadeMode failed: %v", err)
+	}
+	if enabled {
+		t.Errorf("expected updated crossfade false, got true")
+	}
+}
+
+func TestPlayModeCoordinatorResolutionMock(t *testing.T) {
+	var coordSetPlayMode string
+
+	coordHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		soapAction := r.Header.Get("SOAPAction")
+		body, _ := io.ReadAll(r.Body)
+		sBody := string(body)
+
+		if strings.Contains(soapAction, "GetTransportSettings") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetTransportSettingsResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><PlayMode>NORMAL</PlayMode><RecQualityMode>NOT_IMPLEMENTED</RecQualityMode></u:GetTransportSettingsResponse></s:Body></s:Envelope>`))
+			return
+		}
+		if strings.Contains(soapAction, "GetMediaInfo") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetMediaInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><CurrentURI>x-rincon-queue:RINCON_COORD#0</CurrentURI><NrTracks>5</NrTracks></u:GetMediaInfoResponse></s:Body></s:Envelope>`))
+			return
+		}
+		if strings.Contains(soapAction, "SetPlayMode") {
+			coordSetPlayMode = extractTagContent(sBody, "NewPlayMode")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:SetPlayModeResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"/></s:Body></s:Envelope>`))
+			return
+		}
+		if strings.Contains(soapAction, "GetZoneGroupState") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetZoneGroupStateResponse xmlns:u="urn:schemas-upnp-org:service:ZoneGroupTopology:1"><ZoneGroupState>&lt;ZoneGroups&gt;&lt;/ZoneGroups&gt;</ZoneGroupState></u:GetZoneGroupStateResponse></s:Body></s:Envelope>`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	followerHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		soapAction := r.Header.Get("SOAPAction")
+		if strings.Contains(soapAction, "GetZoneGroupState") {
+			w.WriteHeader(http.StatusOK)
+			// Return topology pointing coordinator to 10.0.0.1
+			xmlTopology := `&lt;ZoneGroupState&gt;&lt;ZoneGroups&gt;&lt;ZoneGroup Coordinator="RINCON_COORD" ID="ZG1"&gt;&lt;ZoneGroupMember UUID="RINCON_COORD" Location="http://10.0.0.1:1400/xml/device_description.xml" /&gt;&lt;ZoneGroupMember UUID="RINCON_FOLLOWER" Location="http://10.0.0.2:1400/xml/device_description.xml" /&gt;&lt;/ZoneGroup&gt;&lt;/ZoneGroups&gt;&lt;/ZoneGroupState&gt;`
+			_, _ = fmt.Fprintf(w, `<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetZoneGroupStateResponse xmlns:u="urn:schemas-upnp-org:service:ZoneGroupTopology:1"><ZoneGroupState>%s</ZoneGroupState></u:GetZoneGroupStateResponse></s:Body></s:Envelope>`, xmlTopology)
+			return
+		}
+		// If follower is directly called for SetPlayMode, fail test
+		if strings.Contains(soapAction, "SetPlayMode") {
+			t.Errorf("SetPlayMode was dispatched directly to follower instead of coordinator!")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mockTransport := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		rec := httptest.NewRecorder()
+		if strings.HasPrefix(req.URL.Host, "10.0.0.1") {
+			coordHandler.ServeHTTP(rec, req)
+		} else {
+			followerHandler.ServeHTTP(rec, req)
+		}
+		return rec.Result(), nil
+	})
+
+	httpClient := &http.Client{Transport: mockTransport}
+	followerClient := NewClient("10.0.0.2", WithHTTPClient(httpClient))
+
+	// Calling SetShuffle on the follower client should resolve to coordinator (10.0.0.1) and execute SetPlayMode there
+	if err := followerClient.SetShuffle(true); err != nil {
+		t.Fatalf("SetShuffle on follower failed: %v", err)
+	}
+	if coordSetPlayMode != "SHUFFLE_NOREPEAT" {
+		t.Errorf("expected coordinator to receive NewPlayMode SHUFFLE_NOREPEAT, got %s", coordSetPlayMode)
+	}
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+

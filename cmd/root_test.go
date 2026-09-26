@@ -382,6 +382,41 @@ func TestDryRunCommands(t *testing.T) {
 			t.Errorf("unexpected dry run result: %+v", res)
 		}
 	})
+
+	t.Run("sonos queue-mode dry-run json", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"sonos", "queue-mode"})
+		_ = rootCmd.PersistentFlags().Set("dry-run", "true")
+		_ = rootCmd.PersistentFlags().Set("json", "true")
+		defer rootCmd.PersistentFlags().Set("dry-run", "false")
+		defer rootCmd.PersistentFlags().Set("json", "false")
+
+		_ = cmd.Flags().Set("shuffle", "on")
+		_ = cmd.Flags().Set("repeat", "all")
+		_ = cmd.Flags().Set("crossfade", "off")
+		defer func() {
+			_ = cmd.Flags().Set("shuffle", "")
+			_ = cmd.Flags().Set("repeat", "")
+			_ = cmd.Flags().Set("crossfade", "")
+		}()
+
+		out, err := captureOutput(func() error {
+			return cmd.RunE(cmd, []string{"192.168.1.100"})
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		var res DryRunResult
+		if err := json.Unmarshal([]byte(out), &res); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v, raw: %q", err, out)
+		}
+		if !res.DryRun || res.Command != "sonos queue-mode" {
+			t.Errorf("unexpected dry run result: %+v", res)
+		}
+		if res.Planned["shuffle"] != true || res.Planned["repeat"] != "all" || res.Planned["crossfade"] != false {
+			t.Errorf("unexpected planned values: %+v", res.Planned)
+		}
+	})
 }
 
 func TestValidationRanges(t *testing.T) {
@@ -465,5 +500,33 @@ func TestValidationRanges(t *testing.T) {
 		_ = cmd.Flags().Set("track", "0")
 		_ = cmd.Flags().Set("insert-before", "0")
 		_ = cmd.Flags().Set("as-next", "false")
+	})
+
+	t.Run("sonos queue-mode invalid args", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"sonos", "queue-mode"})
+		// Neither flag specified
+		if err := cmd.RunE(cmd, []string{"192.168.1.1"}); err == nil {
+			t.Error("expected error when no flags are specified, got nil")
+		}
+		// Invalid shuffle flag
+		_ = cmd.Flags().Set("shuffle", "invalid")
+		if err := cmd.RunE(cmd, []string{"192.168.1.1"}); err == nil {
+			t.Error("expected error for invalid --shuffle value, got nil")
+		}
+		_ = cmd.Flags().Set("shuffle", "")
+
+		// Invalid repeat flag
+		_ = cmd.Flags().Set("repeat", "invalid")
+		if err := cmd.RunE(cmd, []string{"192.168.1.1"}); err == nil {
+			t.Error("expected error for invalid --repeat value, got nil")
+		}
+		_ = cmd.Flags().Set("repeat", "")
+
+		// Invalid crossfade flag
+		_ = cmd.Flags().Set("crossfade", "invalid")
+		if err := cmd.RunE(cmd, []string{"192.168.1.1"}); err == nil {
+			t.Error("expected error for invalid --crossfade value, got nil")
+		}
+		_ = cmd.Flags().Set("crossfade", "")
 	})
 }
