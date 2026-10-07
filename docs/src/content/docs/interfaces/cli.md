@@ -84,7 +84,7 @@ homectl lutron set all 0
 ```
 
 ### `homectl sonos list`
-Lists all Sonos speakers, cached or discovered, with volume and now-playing track:
+Lists all Sonos speakers, cached or discovered, with generation (S1/S2), device type (Speaker vs. Bridge), volume, and now-playing track:
 ```bash
 homectl sonos list
 ```
@@ -178,6 +178,18 @@ Lists the catalog of supported streaming services and identifies the configured 
 homectl sonos services 192.168.1.120 --json
 ```
 
+### `homectl sonos join <speaker-ip> <target-ip>`
+Joins a speaker to another speaker's group. Validates that both devices belong to the same hardware generation (S1 with S1, S2 with S2) and rejects grouping with non-rendering devices (bridges):
+```bash
+homectl sonos join 192.168.1.121 192.168.1.120
+```
+
+### `homectl sonos leave <speaker-ip>`
+Unjoins a speaker into an independent standalone coordinator group:
+```bash
+homectl sonos leave 192.168.1.121
+```
+
 ### `homectl qolsys monitor`
 Connects to a Qolsys IQ Panel and prints incoming event frames:
 ```bash
@@ -190,5 +202,15 @@ Starts the HTTP API server:
 homectl serve --port 8080 --ui ./ui/dist
 ```
 Flags:
+* `-H, --host string`: Host/IP address to bind the API server to (default `0.0.0.0`; supports `127.0.0.1`, Tailscale `100.x.y.z`).
 * `-p, --port int`: Port to listen on (default `8080`).
 * `--ui string`: Path to directory containing built Web UI assets (default `./ui/dist`).
+
+Security examples:
+```bash
+# Bind to localhost for reverse-proxy or local-only agent access
+homectl serve --host 127.0.0.1 --port 8080
+
+# Bind to Tailscale IP for secure off-LAN remote access
+homectl serve -H 100.85.12.34 -p 8080
+```

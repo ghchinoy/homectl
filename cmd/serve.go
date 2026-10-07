@@ -608,8 +608,12 @@ var serveCmd = &cobra.Command{
 		uiDir, _ := cmd.Flags().GetString("ui")
 		mux.Handle("/", http.FileServer(http.Dir(uiDir)))
 
+		flagHost, _ := cmd.Flags().GetString("host")
+		host := ResolveAPIHost(flagHost)
+		addr := net.JoinHostPort(host, strconv.Itoa(port))
+
 		server := &http.Server{
-			Addr:              fmt.Sprintf(":%d", port),
+			Addr:              addr,
 			Handler:           mux,
 			ReadHeaderTimeout: 10 * time.Second,
 			ReadTimeout:       30 * time.Second,
@@ -619,7 +623,17 @@ var serveCmd = &cobra.Command{
 
 		errCh := make(chan error, 1)
 		go func() {
-			fmt.Printf("Starting homectl API server on :%d (serving UI from %s)\n", port, uiDir)
+			fmt.Printf("Starting homectl API server on %s (serving UI from %s)\n", addr, uiDir)
+			if host == "0.0.0.0" || host == "" {
+				fmt.Println("[SECURITY ADVISORY] API server bound to 0.0.0.0 (all network interfaces) without authentication.")
+				fmt.Println("                   To restrict access, bind to loopback (-H 127.0.0.1) or your Tailscale IP (-H 100.x.y.z),")
+				fmt.Println("                   or set \"api_host\" in ~/.config/homectl/config.json.")
+			} else if IsTailscaleIP(host) {
+				fmt.Printf("[SECURITY] Bound to Tailscale interface (%s) for secure off-LAN access.\n", host)
+			} else if IsLoopbackHost(host) {
+				fmt.Printf("[SECURITY] Bound to local loopback interface (%s). External network access is blocked.\n", host)
+			}
+
 			if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				errCh <- err
 			}
@@ -637,8 +651,60 @@ var serveCmd = &cobra.Command{
 	},
 }
 
+var (
+	tailscaleIPv4CIDR = mustParseCIDR("100.64.0.0/10")
+	tailscaleIPv6CIDR = mustParseCIDR("fd7a:115c:a1e0::/48")
+)
+
+func mustParseCIDR(cidr string) *net.IPNet {
+	_, ipnet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		panic(fmt.Sprintf("invalid CIDR %q: %v", cidr, err))
+	}
+	return ipnet
+}
+
+// IsTailscaleIP checks if an IP string belongs to Tailscale IPv4 (100.64.0.0/10) or IPv6 (fd7a:115c:a1e0::/48) ranges.
+func IsTailscaleIP(host string) bool {
+	ip := net.ParseIP(strings.TrimSpace(host))
+	if ip == nil {
+		return false
+	}
+	return tailscaleIPv4CIDR.Contains(ip) || tailscaleIPv6CIDR.Contains(ip)
+}
+
+// IsLoopbackHost checks if the host string refers to a local loopback interface (localhost, 127.0.0.1, ::1).
+func IsLoopbackHost(host string) bool {
+	h := strings.TrimSpace(host)
+	if strings.EqualFold(h, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(h)
+	return ip != nil && ip.IsLoopback()
+}
+
+// ResolveAPIHost resolves the host address to bind the API server to according to strict precedence:
+// 1. Explicit CLI flag (--host / -H)
+// 2. HOMECTL_API_HOST environment variable
+// 3. config.json "api_host" setting
+// 4. Default fallback: "0.0.0.0"
+func ResolveAPIHost(flagHost string) string {
+	if trimmed := strings.TrimSpace(flagHost); trimmed != "" {
+		return trimmed
+	}
+	if envHost := strings.TrimSpace(os.Getenv("HOMECTL_API_HOST")); envHost != "" {
+		return envHost
+	}
+	cfg := config.LoadConfig()
+	if cfgHost := strings.TrimSpace(cfg.APIHost); cfgHost != "" {
+		return cfgHost
+	}
+	return "0.0.0.0"
+}
+
 func init() {
 	rootCmd.AddCommand(serveCmd)
+	serveCmd.Flags().StringP("host", "H", "", "Host/IP address to bind the server to (default: 0.0.0.0; supports 127.0.0.1, Tailscale 100.x.y.z)")
 	serveCmd.Flags().IntP("port", "p", 8080, "Port to listen on")
 	serveCmd.Flags().String("ui", "./ui/dist", "Directory to serve the UI from")
 }

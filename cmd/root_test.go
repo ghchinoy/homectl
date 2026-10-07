@@ -5,7 +5,12 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"strings"
 	"testing"
+
+	"github.com/ghchinoy/homectl/modules/core"
+	"github.com/ghchinoy/homectl/modules/sonos"
+	"github.com/ghchinoy/homectl/pkg/config"
 )
 
 func TestCommandRegistration(t *testing.T) {
@@ -43,6 +48,8 @@ func TestCommandRegistration(t *testing.T) {
 		{[]string{"sonos", "queue-clear"}},
 		{[]string{"sonos", "queue-reorder"}},
 		{[]string{"sonos", "services"}},
+		{[]string{"sonos", "join"}},
+		{[]string{"sonos", "leave"}},
 		{[]string{"qolsys"}},
 		{[]string{"qolsys", "monitor"}},
 	}
@@ -67,6 +74,26 @@ func TestSubcommandArgValidation(t *testing.T) {
 		}
 		if err := cmd.Args(cmd, []string{}); err == nil {
 			t.Error("cmd.Args(cmd, []) = nil, want error")
+		}
+	})
+
+	t.Run("sonos join requires 2 args", func(t *testing.T) {
+		cmd, _, err := rootCmd.Find([]string{"sonos", "join"})
+		if err != nil || cmd == nil {
+			t.Fatalf("could not find sonos join: %v", err)
+		}
+		if err := cmd.Args(cmd, []string{"192.168.1.10"}); err == nil {
+			t.Error("expected error when sonos join called with 1 arg, got nil")
+		}
+	})
+
+	t.Run("sonos leave requires 1 arg", func(t *testing.T) {
+		cmd, _, err := rootCmd.Find([]string{"sonos", "leave"})
+		if err != nil || cmd == nil {
+			t.Fatalf("could not find sonos leave: %v", err)
+		}
+		if err := cmd.Args(cmd, []string{}); err == nil {
+			t.Error("expected error when sonos leave called with 0 args, got nil")
 		}
 	})
 
@@ -99,6 +126,103 @@ func TestResolveLutronBridgePrecedence(t *testing.T) {
 	addr, err = ResolveLutronBridge("10.0.0.99")
 	if err != nil || addr != "10.0.0.99" {
 		t.Errorf("ResolveLutronBridge(%q) with override = %q, want %q (err: %v)", "10.0.0.99", addr, "10.0.0.99", err)
+	}
+}
+
+func TestServeCommandFlags(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"serve"})
+	if err != nil || cmd == nil {
+		t.Fatalf("could not find serve command: %v", err)
+	}
+	hostFlag := cmd.Flags().Lookup("host")
+	if hostFlag == nil {
+		t.Fatal("expected --host flag on serve command")
+	}
+	if hostFlag.Shorthand != "H" {
+		t.Errorf("expected shorthand 'H', got %q", hostFlag.Shorthand)
+	}
+	portFlag := cmd.Flags().Lookup("port")
+	if portFlag == nil || portFlag.Shorthand != "p" {
+		t.Error("expected --port flag with shorthand 'p'")
+	}
+}
+
+func TestResolveAPIHostPrecedence(t *testing.T) {
+	tempDir := t.TempDir()
+	origConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	os.Setenv("XDG_CONFIG_HOME", tempDir)
+	defer os.Setenv("XDG_CONFIG_HOME", origConfigHome)
+
+	// 1. Explicit CLI flag takes precedence over everything
+	t.Setenv("HOMECTL_API_HOST", "192.168.1.50")
+	if host := ResolveAPIHost("127.0.0.1"); host != "127.0.0.1" {
+		t.Errorf("expected flag '127.0.0.1', got %q", host)
+	}
+
+	// 2. HOMECTL_API_HOST environment variable takes precedence over config.json
+	_ = config.EnsureDir()
+	configJSON := `{"api_host": "100.85.12.34"}`
+	_ = os.WriteFile(config.GetPath("config.json"), []byte(configJSON), 0644)
+
+	t.Setenv("HOMECTL_API_HOST", "192.168.1.50")
+	if host := ResolveAPIHost(""); host != "192.168.1.50" {
+		t.Errorf("expected env '192.168.1.50', got %q", host)
+	}
+
+	// 3. config.json api_host takes precedence over default
+	t.Setenv("HOMECTL_API_HOST", "")
+	if host := ResolveAPIHost(""); host != "100.85.12.34" {
+		t.Errorf("expected config.json '100.85.12.34', got %q", host)
+	}
+
+	// 4. Default fallback returns "0.0.0.0"
+	_ = os.Remove(config.GetPath("config.json"))
+	if host := ResolveAPIHost(""); host != "0.0.0.0" {
+		t.Errorf("expected default '0.0.0.0', got %q", host)
+	}
+}
+
+func TestTailscaleAndLoopbackDetection(t *testing.T) {
+	tailscaleTests := []struct {
+		host string
+		want bool
+	}{
+		{"100.64.0.1", true},
+		{"100.85.12.34", true},
+		{"100.127.255.254", true},
+		{"100.128.0.1", false},
+		{"192.168.1.1", false},
+		{"127.0.0.1", false},
+		{"fd7a:115c:a1e0::1", true},
+		{"2001:db8::1", false},
+		{"", false},
+		{"localhost", false},
+	}
+	for _, tc := range tailscaleTests {
+		got := IsTailscaleIP(tc.host)
+		if got != tc.want {
+			t.Errorf("IsTailscaleIP(%q) = %v; want %v", tc.host, got, tc.want)
+		}
+	}
+
+	loopbackTests := []struct {
+		host string
+		want bool
+	}{
+		{"127.0.0.1", true},
+		{"localhost", true},
+		{"LocalHost", true},
+		{"::1", true},
+		{"0.0.0.0", false},
+		{"192.168.1.100", false},
+		{"100.85.12.34", false},
+		{"", false},
+	}
+	for _, tc := range loopbackTests {
+		got := IsLoopbackHost(tc.host)
+		if got != tc.want {
+			t.Errorf("IsLoopbackHost(%q) = %v; want %v", tc.host, got, tc.want)
+		}
 	}
 }
 
@@ -528,5 +652,58 @@ func TestValidationRanges(t *testing.T) {
 			t.Error("cmd.RunE with invalid --crossfade = nil, want error")
 		}
 		_ = cmd.Flags().Set("crossfade", "")
+	})
+}
+
+func TestSonosGenerationAndRendererValidation(t *testing.T) {
+	memStorage := core.NewMemoryStorage()
+	sonos.SetDefaultStorage(memStorage)
+	defer sonos.SetDefaultStorage(nil)
+
+	devices := []sonos.Device{
+		{Name: "Play:5 Gen 1", IP: "192.168.1.10", RinconID: "RINCON_S1", Generation: "S1", IsRenderer: true},
+		{Name: "Sonos One", IP: "192.168.1.20", RinconID: "RINCON_S2", Generation: "S2", IsRenderer: true},
+		{Name: "Bridge", IP: "192.168.1.50", RinconID: "RINCON_BRIDGE", ModelName: "Sonos Bridge", Generation: "S1", IsRenderer: false},
+	}
+	_ = sonos.SaveCache(devices)
+
+	t.Run("play rejected on non-renderer bridge", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"sonos", "play"})
+		err := cmd.RunE(cmd, []string{"192.168.1.50"})
+		if err == nil || !strings.Contains(err.Error(), "non-rendering device") {
+			t.Errorf("expected non-rendering device error, got %v", err)
+		}
+	})
+
+	t.Run("volume rejected on non-renderer bridge", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"sonos", "volume"})
+		err := cmd.RunE(cmd, []string{"192.168.1.50", "25"})
+		if err == nil || !strings.Contains(err.Error(), "non-rendering device") {
+			t.Errorf("expected non-rendering device error, got %v", err)
+		}
+	})
+
+	t.Run("join rejected when source is non-renderer", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"sonos", "join"})
+		err := cmd.RunE(cmd, []string{"192.168.1.50", "192.168.1.10"})
+		if err == nil || !strings.Contains(err.Error(), "non-rendering device") {
+			t.Errorf("expected non-rendering device error, got %v", err)
+		}
+	})
+
+	t.Run("join rejected when target is non-renderer", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"sonos", "join"})
+		err := cmd.RunE(cmd, []string{"192.168.1.10", "192.168.1.50"})
+		if err == nil || !strings.Contains(err.Error(), "non-rendering device") {
+			t.Errorf("expected non-rendering device error, got %v", err)
+		}
+	})
+
+	t.Run("join rejected across generations S1 and S2", func(t *testing.T) {
+		cmd, _, _ := rootCmd.Find([]string{"sonos", "join"})
+		err := cmd.RunE(cmd, []string{"192.168.1.10", "192.168.1.20"})
+		if err == nil || !strings.Contains(err.Error(), "cannot group S1 speaker") {
+			t.Errorf("expected cross-generation error, got %v", err)
+		}
 	})
 }

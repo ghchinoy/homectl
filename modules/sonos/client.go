@@ -52,6 +52,12 @@ func (p *DiscoveryProvider) Discover(ctx context.Context) ([]core.Device, error)
 	return devices, nil
 }
 
+// Generation indicates the Sonos software generation (S1 or S2).
+const (
+	GenerationS1 = "S1"
+	GenerationS2 = "S2"
+)
+
 // Device represents a discovered Sonos device
 type Device struct {
 	Name        string `json:"Name"`
@@ -59,6 +65,60 @@ type Device struct {
 	RinconID    string `json:"RinconID"`
 	ModelName   string `json:"ModelName"`
 	ModelNumber string `json:"ModelNumber"`
+	Generation  string `json:"Generation,omitempty"`
+	IsRenderer  bool   `json:"IsRenderer"`
+}
+
+// DeviceDetails represents the metadata extracted from a Sonos UPnP device description.
+type DeviceDetails struct {
+	Name        string
+	RinconID    string
+	ModelName   string
+	ModelNumber string
+	Generation  string
+	IsRenderer  bool
+}
+
+// S1/S2 hardware classification and non-renderer bridge detection heuristics are
+// inspired by prior art from frankensonos (https://github.com/dickelstoneworth/frankensonos).
+
+// IsS1OnlyModel reports whether the model number can only ever run S1 firmware.
+func IsS1OnlyModel(modelNumber string) bool {
+	switch strings.ToUpper(strings.TrimSpace(modelNumber)) {
+	case "ZP80", "ZP90", "ZP100", "ZP120",
+		"ZB100", "BR100",
+		"CR100", "CR200",
+		"WD100",
+		"S5":
+		return true
+	default:
+		return false
+	}
+}
+
+// IsNonRendererModel reports whether the hardware is a bridge, controller, or dock
+// without audio playback capability.
+func IsNonRendererModel(modelNumber string) bool {
+	switch strings.ToUpper(strings.TrimSpace(modelNumber)) {
+	case "ZB100", "BR100", "CR100", "CR200", "WD100":
+		return true
+	default:
+		return false
+	}
+}
+
+// ClassifyGeneration determines whether a Sonos device is S1 or S2 based on swGen and model number.
+func ClassifyGeneration(swGen string, modelNumber string) string {
+	switch strings.TrimSpace(swGen) {
+	case "1":
+		return GenerationS1
+	case "2":
+		return GenerationS2
+	}
+	if IsS1OnlyModel(modelNumber) {
+		return GenerationS1
+	}
+	return GenerationS2
 }
 
 // selectBestIP selects the most appropriate IP address from mDNS service addresses.
@@ -102,20 +162,27 @@ func Discover(timeout time.Duration) ([]Device, error) {
 			continue
 		}
 
-		name, rincon, modelName, modelNum, err := GetDeviceName(ip)
+		details, err := FetchDeviceDetails(ip)
 		if err != nil {
-			name = entry.Instance
+			name := entry.Instance
 			if atIdx := strings.Index(name, "@"); atIdx != -1 {
 				name = name[atIdx+1:]
+			}
+			details = DeviceDetails{
+				Name:       name,
+				Generation: GenerationS2,
+				IsRenderer: true,
 			}
 		}
 
 		devices = append(devices, Device{
 			IP:          ip,
-			Name:        name,
-			RinconID:    rincon,
-			ModelName:   modelName,
-			ModelNumber: modelNum,
+			Name:        details.Name,
+			RinconID:    details.RinconID,
+			ModelName:   details.ModelName,
+			ModelNumber: details.ModelNumber,
+			Generation:  details.Generation,
+			IsRenderer:  details.IsRenderer,
 		})
 		foundIPs[ip] = true
 	}
@@ -131,16 +198,22 @@ func Discover(timeout time.Duration) ([]Device, error) {
 				if foundIPs[ip] {
 					continue
 				}
-				name, rincon, modelName, modelNum, err := GetDeviceName(ip)
+				details, err := FetchDeviceDetails(ip)
 				if err != nil {
-					name = fmt.Sprintf("Sonos %s", ip)
+					details = DeviceDetails{
+						Name:       fmt.Sprintf("Sonos %s", ip),
+						Generation: GenerationS2,
+						IsRenderer: true,
+					}
 				}
 				devices = append(devices, Device{
 					IP:          ip,
-					Name:        name,
-					RinconID:    rincon,
-					ModelName:   modelName,
-					ModelNumber: modelNum,
+					Name:        details.Name,
+					RinconID:    details.RinconID,
+					ModelName:   details.ModelName,
+					ModelNumber: details.ModelNumber,
+					Generation:  details.Generation,
+					IsRenderer:  details.IsRenderer,
 				})
 				foundIPs[ip] = true
 			}
@@ -285,31 +358,21 @@ func hostPort(addr string, defaultPort int) string {
 	return fmt.Sprintf("%s:%d", addr, defaultPort)
 }
 
-// GetDeviceName fetches the device name, Rincon ID, model name and model number from the Sonos XML description
-func GetDeviceName(ip string) (string, string, string, string, error) {
-	url := fmt.Sprintf("http://%s/xml/device_description.xml", hostPort(ip, 1400))
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(url)
-	if err != nil {
-		return "", "", "", "", err
-	}
-	defer resp.Body.Close()
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", "", "", "", err
-	}
-
+// ParseDeviceDescription parses raw device_description.xml payload into a DeviceDetails record.
+func ParseDeviceDescription(data []byte) (DeviceDetails, error) {
 	var desc struct {
 		RoomName    string `xml:"device>roomName"`
 		DisplayName string `xml:"device>displayName"`
 		UDN         string `xml:"device>UDN"`
 		ModelName   string `xml:"device>modelName"`
 		ModelNumber string `xml:"device>modelNumber"`
+		SWGen       string `xml:"device>swGen"`
+		Services    []struct {
+			ServiceType string `xml:"serviceType"`
+		} `xml:"device>serviceList>service"`
 	}
-	err = xml.Unmarshal(data, &desc)
-	if err != nil {
-		return "", "", "", "", err
+	if err := xml.Unmarshal(data, &desc); err != nil {
+		return DeviceDetails{}, fmt.Errorf("parsing device description XML: %w", err)
 	}
 
 	rincon := desc.UDN
@@ -317,10 +380,65 @@ func GetDeviceName(ip string) (string, string, string, string, error) {
 		rincon = rincon[5:]
 	}
 
-	if desc.RoomName != "" {
-		return desc.RoomName, rincon, desc.ModelName, desc.ModelNumber, nil
+	name := desc.RoomName
+	if name == "" {
+		name = desc.DisplayName
 	}
-	return desc.DisplayName, rincon, desc.ModelName, desc.ModelNumber, nil
+
+	isRenderer := false
+	if len(desc.Services) > 0 {
+		for _, s := range desc.Services {
+			if strings.Contains(s.ServiceType, "AVTransport") {
+				isRenderer = true
+				break
+			}
+		}
+	} else {
+		isRenderer = !IsNonRendererModel(desc.ModelNumber)
+	}
+
+	if IsNonRendererModel(desc.ModelNumber) {
+		isRenderer = false
+	}
+
+	generation := ClassifyGeneration(desc.SWGen, desc.ModelNumber)
+
+	return DeviceDetails{
+		Name:        name,
+		RinconID:    rincon,
+		ModelName:   desc.ModelName,
+		ModelNumber: desc.ModelNumber,
+		Generation:  generation,
+		IsRenderer:  isRenderer,
+	}, nil
+}
+
+// FetchDeviceDetails fetches device metadata, Rincon ID, generation (S1/S2), and renderer status from the Sonos XML description.
+func FetchDeviceDetails(ip string) (DeviceDetails, error) {
+	url := fmt.Sprintf("http://%s/xml/device_description.xml", hostPort(ip, 1400))
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return DeviceDetails{}, fmt.Errorf("fetching device description from %s: %w", ip, err)
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return DeviceDetails{}, fmt.Errorf("reading device description from %s: %w", ip, err)
+	}
+
+	return ParseDeviceDescription(data)
+}
+
+// GetDeviceName fetches the device name, Rincon ID, model name and model number from the Sonos XML description.
+// Deprecated: Prefer FetchDeviceDetails to retrieve complete device metadata including generation and renderer status.
+func GetDeviceName(ip string) (string, string, string, string, error) {
+	details, err := FetchDeviceDetails(ip)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	return details.Name, details.RinconID, details.ModelName, details.ModelNumber, nil
 }
 
 // Client represents a Sonos UPnP client
@@ -824,6 +942,31 @@ func (c *Client) SetAVTransportURI(uri, metadata string) error {
 	return nil
 }
 
+// Join connects this speaker to another speaker's group via the coordinator's Rincon ID.
+func (c *Client) Join(coordinatorRincon string) error {
+	coordinatorRincon = strings.TrimPrefix(coordinatorRincon, "uuid:")
+	if !strings.HasPrefix(coordinatorRincon, "RINCON_") {
+		coordinatorRincon = "RINCON_" + coordinatorRincon
+	}
+	return c.SetAVTransportURI("x-rincon:"+coordinatorRincon, "")
+}
+
+// LeaveGroup ungroups this speaker, making it an independent group coordinator.
+func (c *Client) LeaveGroup() error {
+	body, err := c.SOAPAction(
+		"/MediaRenderer/AVTransport/Control",
+		"urn:schemas-upnp-org:service:AVTransport:1",
+		"BecomeCoordinatorOfStandaloneGroup",
+		map[string]string{
+			"InstanceID": "0",
+		})
+	if err != nil {
+		return fmt.Errorf("leave group: %w", err)
+	}
+	body.Close()
+	return nil
+}
+
 // Subscribe registers a callback URL for GENA events from a specific service
 func (c *Client) Subscribe(serviceURL, callbackURL string, timeout int) (string, error) {
 	url := fmt.Sprintf("http://%s%s", hostPort(c.ip, 1400), serviceURL)
@@ -1255,6 +1398,7 @@ type ZoneGroupMember struct {
 	RoomName         string `xml:"ZoneName,attr"`
 	Invisible        bool   `xml:"Invisible,attr"`
 	IsZoneStandAlone bool   `xml:"IsZoneStandAlone,attr"`
+	SWGen            string `xml:"SWGen,attr"`
 }
 
 type ZoneGroupState struct {
@@ -1307,7 +1451,6 @@ func ParseTrackMetadata(xmlStr string) (TrackMetadata, error) {
 func (c *Client) ParseTrackMetadata(xmlStr string) (TrackMetadata, error) {
 	return ParseTrackMetadata(xmlStr)
 }
-
 // Favorite represents a pinned Sonos favorite item (playlist, album, radio station, etc.).
 type Favorite struct {
 	ID          string `json:"id"`

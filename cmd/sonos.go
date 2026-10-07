@@ -20,6 +20,8 @@ type SonosSpeakerSummary struct {
 	IP         string `json:"ip"`
 	RinconID   string `json:"rincon_id,omitempty"`
 	Model      string `json:"model,omitempty"`
+	Generation string `json:"generation,omitempty"`
+	IsRenderer bool   `json:"is_renderer"`
 	Volume     int    `json:"volume"`
 	Status     string `json:"status"`
 	NowPlaying string `json:"now_playing,omitempty"`
@@ -45,6 +47,8 @@ type SonosDetailsOutput struct {
 	IP          string              `json:"ip"`
 	ModelName   string              `json:"model_name"`
 	ModelNumber string              `json:"model_number"`
+	Generation  string              `json:"generation,omitempty"`
+	IsRenderer  bool                `json:"is_renderer"`
 	ID          string              `json:"id"`
 	Status      string              `json:"status"`
 	Volume      int                 `json:"volume"`
@@ -120,26 +124,35 @@ var listSonosCmd = &cobra.Command{
 		if jsonOut {
 			var summaries []SonosSpeakerSummary
 			for _, s := range speakers {
-				client := sonos.NewClient(s.IP)
-				vol, _ := client.GetVolume()
+				vol := 0
 				status := "-"
 				track := ""
-				info, err := client.GetTransportInfo()
-				if err == nil {
-					status = info.CurrentTransportState
-					pos, _ := client.GetPositionInfo()
-					meta, _ := client.ParseTrackMetadata(pos.TrackMetaData)
-					if meta.Title != "" {
-						track = meta.Title
-					} else if meta.StreamContent != "" {
-						track = meta.StreamContent
+				if s.IsRenderer {
+					client := sonos.NewClient(s.IP)
+					vol, _ = client.GetVolume()
+					info, err := client.GetTransportInfo()
+					if err == nil {
+						status = info.CurrentTransportState
+						pos, _ := client.GetPositionInfo()
+						meta, _ := client.ParseTrackMetadata(pos.TrackMetaData)
+						if meta.Title != "" {
+							track = meta.Title
+						} else if meta.StreamContent != "" {
+							track = meta.StreamContent
+						}
 					}
+				}
+				gen := s.Generation
+				if gen == "" {
+					gen = sonos.GenerationS2
 				}
 				summaries = append(summaries, SonosSpeakerSummary{
 					Name:       s.Name,
 					IP:         s.IP,
 					RinconID:   s.RinconID,
 					Model:      fmt.Sprintf("%s (%s)", s.ModelName, s.ModelNumber),
+					Generation: gen,
+					IsRenderer: s.IsRenderer,
 					Volume:     vol,
 					Status:     status,
 					NowPlaying: track,
@@ -153,32 +166,66 @@ var listSonosCmd = &cobra.Command{
 			return nil
 		}
 
-		fmt.Printf("%-20s %-15s %-10s %-15s %-30s\n", "NAME", "IP", "VOLUME", "STATUS", "NOW PLAYING")
-		fmt.Println("---------------------------------------------------------------------------------------------------------")
+		fmt.Printf("%-20s %-15s %-5s %-10s %-10s %-15s %-30s\n", "NAME", "IP", "GEN", "TYPE", "VOLUME", "STATUS", "NOW PLAYING")
+		fmt.Println("-------------------------------------------------------------------------------------------------------------------------")
 		for _, s := range speakers {
-			client := sonos.NewClient(s.IP)
-			vol, err := client.GetVolume()
-			volStr := strconv.Itoa(vol) + "%"
-			if err != nil {
-				volStr = "Error"
-			}
-
+			volStr := "N/A"
 			status := "-"
 			track := "-"
-			info, err := client.GetTransportInfo()
-			if err == nil {
-				status = info.CurrentTransportState
-				pos, _ := client.GetPositionInfo()
-				meta, _ := client.ParseTrackMetadata(pos.TrackMetaData)
-				if meta.Title != "" {
-					track = meta.Title
+			devType := "Speaker"
+			if !s.IsRenderer {
+				devType = "Bridge"
+			} else {
+				client := sonos.NewClient(s.IP)
+				vol, err := client.GetVolume()
+				volStr = strconv.Itoa(vol) + "%"
+				if err != nil {
+					volStr = "Error"
+				}
+
+				info, err := client.GetTransportInfo()
+				if err == nil {
+					status = info.CurrentTransportState
+					pos, _ := client.GetPositionInfo()
+					meta, _ := client.ParseTrackMetadata(pos.TrackMetaData)
+					if meta.Title != "" {
+						track = meta.Title
+					}
 				}
 			}
 
-			fmt.Printf("%-20s %-15s %-10s %-15s %-30s\n", s.Name, s.IP, volStr, status, track)
+			gen := s.Generation
+			if gen == "" {
+				gen = sonos.GenerationS2
+			}
+
+			fmt.Printf("%-20s %-15s %-5s %-10s %-10s %-15s %-30s\n", s.Name, s.IP, gen, devType, volStr, status, track)
 		}
 		return nil
 	},
+}
+
+// findCachedDevice searches cached Sonos devices by IP, room name, or Rincon ID.
+func findCachedDevice(target string) (sonos.Device, bool) {
+	cached, err := sonos.LoadCache()
+	if err != nil || len(cached) == 0 {
+		return sonos.Device{}, false
+	}
+	trimmed := strings.TrimSpace(target)
+	for _, d := range cached {
+		if strings.EqualFold(d.IP, trimmed) || strings.EqualFold(d.Name, trimmed) || strings.EqualFold(d.RinconID, trimmed) {
+			return d, true
+		}
+	}
+	return sonos.Device{}, false
+}
+
+// verifyRenderer checks if the cached device at ip is known to be a non-renderer (bridge/dock).
+func verifyRenderer(ip string) error {
+	if d, found := findCachedDevice(ip); found && !d.IsRenderer {
+		return fmt.Errorf("device %q (%s) is a non-rendering device and does not support audio playback", ip, d.ModelName)
+	}
+	return nil
 }
 
 var playSonosCmd = &cobra.Command{
@@ -186,6 +233,9 @@ var playSonosCmd = &cobra.Command{
 	Short: "Start playback on a Sonos speaker",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := verifyRenderer(args[0]); err != nil {
+			return err
+		}
 		client := sonos.NewClient(args[0])
 		if err := client.Play(); err != nil {
 			return fmt.Errorf("play: %w", err)
@@ -200,6 +250,9 @@ var pauseSonosCmd = &cobra.Command{
 	Short: "Pause playback on a Sonos speaker",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := verifyRenderer(args[0]); err != nil {
+			return err
+		}
 		client := sonos.NewClient(args[0])
 		if err := client.Pause(); err != nil {
 			return fmt.Errorf("pause: %w", err)
@@ -214,6 +267,9 @@ var stopSonosCmd = &cobra.Command{
 	Short: "Stop playback on a Sonos speaker",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := verifyRenderer(args[0]); err != nil {
+			return err
+		}
 		client := sonos.NewClient(args[0])
 		if err := client.Stop(); err != nil {
 			return fmt.Errorf("stop: %w", err)
@@ -228,6 +284,9 @@ var nextSonosCmd = &cobra.Command{
 	Short: "Skip to the next track on a Sonos speaker",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := verifyRenderer(args[0]); err != nil {
+			return err
+		}
 		client := sonos.NewClient(args[0])
 		if err := client.Next(); err != nil {
 			return fmt.Errorf("next: %w", err)
@@ -242,6 +301,9 @@ var prevSonosCmd = &cobra.Command{
 	Short: "Skip to the previous track on a Sonos speaker",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := verifyRenderer(args[0]); err != nil {
+			return err
+		}
 		client := sonos.NewClient(args[0])
 		if err := client.Previous(); err != nil {
 			return fmt.Errorf("prev: %w", err)
@@ -291,6 +353,10 @@ var seekSonosCmd = &cobra.Command{
 			}
 			fmt.Printf("[DRY-RUN] Simulating: %s (no changes made)\n", msg)
 			return nil
+		}
+
+		if err := verifyRenderer(ip); err != nil {
+			return err
 		}
 
 		client := sonos.NewClient(ip)
@@ -383,7 +449,27 @@ var sonosDetailsCmd = &cobra.Command{
 		media, _ := client.GetMediaInfo()
 		meta, _ := client.ParseTrackMetadata(pos.TrackMetaData)
 		nextMeta, _ := client.ParseTrackMetadata(media.NextURIMetaData)
-		name, rincon, modelName, modelNum, _ := sonos.GetDeviceName(args[0])
+		details, _ := sonos.FetchDeviceDetails(args[0])
+		name := details.Name
+		rincon := details.RinconID
+		modelName := details.ModelName
+		modelNum := details.ModelNumber
+		generation := details.Generation
+		if generation == "" {
+			generation = sonos.GenerationS2
+		}
+		isRenderer := details.IsRenderer
+
+		if name == "" {
+			if d, found := findCachedDevice(args[0]); found {
+				name = d.Name
+				rincon = d.RinconID
+				modelName = d.ModelName
+				modelNum = d.ModelNumber
+				generation = d.Generation
+				isRenderer = d.IsRenderer
+			}
+		}
 
 		if isJSON(cmd) {
 			return json.NewEncoder(os.Stdout).Encode(SonosDetailsOutput{
@@ -391,6 +477,8 @@ var sonosDetailsCmd = &cobra.Command{
 				IP:          args[0],
 				ModelName:   modelName,
 				ModelNumber: modelNum,
+				Generation:  generation,
+				IsRenderer:  isRenderer,
 				ID:          rincon,
 				Status:      transport.CurrentTransportState,
 				Volume:      vol,
@@ -402,10 +490,16 @@ var sonosDetailsCmd = &cobra.Command{
 			})
 		}
 
-		fmt.Printf("Name:     %s\n", name)
-		fmt.Printf("IP:       %s\n", args[0])
-		fmt.Printf("Model:    %s (%s)\n", modelName, modelNum)
-		fmt.Printf("ID:       %s\n", rincon)
+		fmt.Printf("Name:       %s\n", name)
+		fmt.Printf("IP:         %s\n", args[0])
+		fmt.Printf("Model:      %s (%s)\n", modelName, modelNum)
+		fmt.Printf("Generation: %s\n", generation)
+		devType := "Speaker (Renderer)"
+		if !isRenderer {
+			devType = "Bridge / Non-Renderer"
+		}
+		fmt.Printf("Type:       %s\n", devType)
+		fmt.Printf("ID:         %s\n", rincon)
 		fmt.Printf("Status:   %s\n", transport.CurrentTransportState)
 		fmt.Printf("Volume:   %d%%\n", vol)
 		fmt.Printf("Queue:    %d tracks\n", media.NrTracks)
@@ -453,6 +547,10 @@ var setSonosVolumeCmd = &cobra.Command{
 			}
 			fmt.Printf("[DRY-RUN] Simulating: Would set volume for %s to %d%% (no changes made)\n", ip, vol)
 			return nil
+		}
+
+		if err := verifyRenderer(ip); err != nil {
+			return err
 		}
 
 		client := sonos.NewClient(ip)
@@ -527,6 +625,10 @@ var playFavoriteSonosCmd = &cobra.Command{
 			return nil
 		}
 
+		if err := verifyRenderer(ip); err != nil {
+			return err
+		}
+
 		client := sonos.NewClient(ip)
 		fmt.Printf("Playing favorite %q on %s...\n", favID, ip)
 		if err := client.PlayFavorite(favID); err != nil {
@@ -571,6 +673,10 @@ var playStreamSonosCmd = &cobra.Command{
 			return nil
 		}
 
+		if err := verifyRenderer(ip); err != nil {
+			return err
+		}
+
 		client := sonos.NewClient(ip)
 		fmt.Printf("Starting stream %q (%s) on %s...\n", title, streamURL, ip)
 		if err := client.PlayStream(streamURL, title); err != nil {
@@ -601,6 +707,10 @@ var queueAddSonosCmd = &cobra.Command{
 			}
 			fmt.Printf("[DRY-RUN] Simulating: Would add URI %q to queue on %s (next=%v, no changes made)\n", uri, ip, asNext)
 			return nil
+		}
+
+		if err := verifyRenderer(ip); err != nil {
+			return err
 		}
 
 		client := sonos.NewClient(ip)
@@ -1059,6 +1169,83 @@ var queueModeSonosCmd = &cobra.Command{
 	},
 }
 
+var joinSonosCmd = &cobra.Command{
+	Use:   "join [speaker-ip] [target-speaker-ip]",
+	Short: "Join a speaker to another speaker's group",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		speakerIP := args[0]
+		targetIP := args[1]
+
+		devA, foundA := findCachedDevice(speakerIP)
+		devB, foundB := findCachedDevice(targetIP)
+
+		if foundA && !devA.IsRenderer {
+			return fmt.Errorf("device %q (%s) is a non-rendering device and cannot join a group", speakerIP, devA.ModelName)
+		}
+		if foundB && !devB.IsRenderer {
+			return fmt.Errorf("target device %q (%s) is a non-rendering device and cannot be joined", targetIP, devB.ModelName)
+		}
+		if foundA && foundB && devA.Generation != "" && devB.Generation != "" && devA.Generation != devB.Generation {
+			return fmt.Errorf("cannot group S1 speaker %q with S2 speaker %q: Sonos S1 and S2 systems operate as separate households", devA.Name, devB.Name)
+		}
+
+		targetRincon := targetIP
+		if foundB && devB.RinconID != "" {
+			targetRincon = devB.RinconID
+		} else {
+			details, err := sonos.FetchDeviceDetails(targetIP)
+			if err == nil && details.RinconID != "" {
+				targetRincon = details.RinconID
+				if details.Generation != "" && foundA && devA.Generation != "" && devA.Generation != details.Generation {
+					return fmt.Errorf("cannot group S1 speaker %q with S2 speaker %q: Sonos S1 and S2 systems operate as separate households", devA.Name, details.Name)
+				}
+			}
+		}
+
+		client := sonos.NewClient(speakerIP)
+		if err := client.Join(targetRincon); err != nil {
+			return fmt.Errorf("join group: %w", err)
+		}
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"status": "ok",
+				"action": "join",
+				"ip":     speakerIP,
+				"target": targetIP,
+			})
+		}
+		fmt.Printf("Successfully joined speaker at %s to group %s\n", speakerIP, targetIP)
+		return nil
+	},
+}
+
+var leaveSonosCmd = &cobra.Command{
+	Use:     "leave [speaker-ip]",
+	Aliases: []string{"unjoin"},
+	Short:   "Unjoin a speaker into a standalone group",
+	Args:    cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		speakerIP := args[0]
+		if err := verifyRenderer(speakerIP); err != nil {
+			return err
+		}
+		client := sonos.NewClient(speakerIP)
+		if err := client.LeaveGroup(); err != nil {
+			return fmt.Errorf("leave group: %w", err)
+		}
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"status": "ok",
+				"action": "leave",
+				"ip":     speakerIP,
+			})
+		}
+		fmt.Printf("Successfully unjoined speaker at %s into a standalone group\n", speakerIP)
+		return nil
+	},
+}
+
 func init() {
 	playStreamSonosCmd.Flags().String("title", "", "Descriptive title for the stream (defaults to URL host)")
 	queueAddSonosCmd.Flags().Bool("next", false, "Insert track as next in queue instead of appending to end")
@@ -1097,4 +1284,6 @@ func init() {
 	sonosCmd.AddCommand(queueReorderSonosCmd)
 	sonosCmd.AddCommand(queueModeSonosCmd)
 	sonosCmd.AddCommand(servicesSonosCmd)
+	sonosCmd.AddCommand(joinSonosCmd)
+	sonosCmd.AddCommand(leaveSonosCmd)
 }

@@ -19,7 +19,8 @@ Location: `~/.config/homectl/config.json`
 ```json
 {
   "callback_ip": "192.168.1.100",
-  "camera_auth": "admin:MyCameraPassword"
+  "camera_auth": "admin:MyCameraPassword",
+  "api_host": "127.0.0.1"
 }
 ```
 
@@ -27,6 +28,7 @@ Location: `~/.config/homectl/config.json`
 
 | Key | Type | Description |
 | :--- | :--- | :--- |
+| `api_host` | string | **Optional.** Host or IP address for `homectl serve` to bind to (e.g. `"127.0.0.1"`, `"0.0.0.0"`, or a Tailscale IP `"100.x.y.z"`). Defaults to `"0.0.0.0"`. |
 | `callback_ip` | string | **Optional.** The local IP address of your host machine. IoT devices (like Sonos speakers) send inbound HTTP `NOTIFY` events to this IP. Essential when running `homectl` in multi-homed or containerized environments. |
 | `camera_auth` | string | **Optional.** Global `username:password` credentials automatically prepended to discovered RTSP camera URLs when streaming. |
 
@@ -60,6 +62,6 @@ Nicknames can be set:
 ## Discovery Caches
 
 * **`lutron_cache.json`**: Caches bridge name and IP address discovered via mDNS.
-* **`sonos_cache.json`**: Caches speaker names, IPs, models, and Rincon IDs.
+* **`sonos_cache.json`**: Caches speaker names, IPs, models, Rincon IDs, software generation (`Generation`: `"S1"` | `"S2"`), and renderer status (`IsRenderer`: `bool`).
 
 These cache files permit instant TUI and CLI startup without waiting for network discovery loops.

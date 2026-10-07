@@ -48,7 +48,21 @@ Audio volume is a physical actuator with immediate real-world acoustic impact. A
 
 ---
 
-## 3. Playback Recovery & Queue Restoration Workflow
+## 3. System Generations (S1/S2) & Bridge Filtering
+
+Sonos hardware and software operate across two incompatible platform generations:
+
+1. **S1 vs. S2 Separation:**
+   - **S1 Only:** Legacy hardware (ZonePlayer `ZP80`/`ZP90`/`ZP100`/`ZP120`, Play:5 Gen 1 `S5`, Bridge `ZB100`/`BR100`, Controllers `CR100`/`CR200`, Dock `WD100`) runs S1 firmware (`swGen: "1"`).
+   - **S2 Capable / Modern:** Modern speakers (Sonos One, Beam, Arc, Move, Roam, Era, Five) run S2 firmware (`swGen: "2"`).
+   - **Cross-Generation Grouping Forbidden:** S1 and S2 systems operate as separate households. Agents must never attempt to group an S1 speaker with an S2 speaker; `sonos_control(action: "join")` will reject cross-generation join attempts before issuing SOAP requests.
+2. **Non-Rendering Devices (Bridges & Docks):**
+   - Network bridges (`ZB100`, `BR100`) and wireless docks (`WD100`) lack `AVTransport` media rendering capabilities and report `is_renderer: false`.
+   - Never direct playback, volume, stream, or queue commands to non-rendering devices.
+
+---
+
+## 4. Playback Recovery & Queue Restoration Workflow
 
 When issuing a `play` action to an idle or group-switched Sonos speaker, UPnP may fail with error code `701 (Transition Not Available)`. This occurs when the current transport URI has no active track loaded.
 
@@ -66,7 +80,7 @@ When issuing a `play` action to an idle or group-switched Sonos speaker, UPnP ma
 
 ---
 
-## 4. Favorites as Intent Routing & Cloud Playlists
+## 5. Favorites as Intent Routing & Cloud Playlists
 
 Sonos Favorites (`FV:2`) are pinned cloud playlists, radio stations, podcasts, and albums saved in the official Sonos app. They are the primary mechanism for playing cloud content without needing third-party API credentials (Spotify, Apple Music, YouTube Music, etc.).
 
@@ -81,7 +95,7 @@ Sonos Favorites (`FV:2`) are pinned cloud playlists, radio stations, podcasts, a
 
 ---
 
-## 5. Direct Audio Streams & Queue Management
+## 6. Direct Audio Streams & Queue Management
 
 For internet radio, podcasts, or TTS voice announcements:
 
@@ -112,16 +126,16 @@ For internet radio, podcasts, or TTS voice announcements:
 
 ---
 
-## 6. MCP Tools Quick Reference
+## 7. MCP Tools Quick Reference
 
 When interacting with `homectl-sonos-mcp`:
 
 | Tool | Mode | Purpose | Key Parameters |
 |---|---|---|---|
-| `sonos_list_speakers` | 🔒 Read-Only | Discover speakers on LAN | `refresh: bool` |
+| `sonos_list_speakers` | 🔒 Read-Only | Discover speakers on LAN, returns generation (S1/S2) and is_renderer | `refresh: bool` |
 | `sonos_get_now_playing`| 🔒 Read-Only | Track metadata, progress, queue length, play mode, shuffle, repeat, crossfade | `ip: string` |
 | `sonos_get_topology`   | 🔒 Read-Only | Group & stereo-pair structure with coordinators | `ip: string` |
-| `sonos_control`        | ⚡ Mutating | Playback: play, pause, stop, next, prev, seek_track, seek_time | `ip: string`, `action: string`, `track?: int`, `target?: string` |
+| `sonos_control`        | ⚡ Mutating | Playback & grouping: play, pause, stop, next, prev, seek_track, seek_time, join, leave, unjoin | `ip: string`, `action: string`, `track?: int`, `target?: string` |
 | `sonos_set_volume`     | ⚡ Mutating | Adjust absolute or relative volume | `ip: string`, `volume?: int`, `delta?: int` |
 | `sonos_list_favorites` | 🔒 Read-Only | Browse pinned cloud playlists & radio stations | `ip: string` |
 | `sonos_play_favorite`  | ⚡ Mutating | Start playback of a pinned favorite by ID | `ip: string`, `favorite_id: string` |
@@ -133,11 +147,16 @@ When interacting with `homectl-sonos-mcp`:
 
 ---
 
-## 7. Pre-flight Execution Checklist for Agents
+## 8. Pre-flight Execution Checklist for Agents
 
 Before adjusting audio in any room:
 - [ ] Has the speaker IP or name been verified via `sonos_list_speakers`?
+- [ ] Is the speaker a rendering device (`is_renderer: true`) and not a bridge or dock?
+- [ ] If grouping speakers, are both speakers in the same Sonos generation (`Generation: "S1"` vs. `"S2"`)?
 - [ ] Is the proposed volume change within safe limits (≤ 60% or step delta ≤ 10%)?
+- [ ] If playing a stream, is the URL scheme `http` or `https`?
+- [ ] If selecting music, did you check `sonos_list_favorites` or the default service first?
+- [ ] If track info is required, did you use `sonos_get_now_playing` to conserve context?
 - [ ] If playing a stream, is the URL scheme `http` or `https`?
 - [ ] If selecting music, did you check `sonos_list_favorites` or the default service first?
 - [ ] If track info is required, did you use `sonos_get_now_playing` to conserve context?
