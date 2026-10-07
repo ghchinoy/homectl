@@ -72,40 +72,43 @@ func (p *DiscoveryProvider) Discover(ctx context.Context) ([]discovery.Device, e
 			continue
 		}
 
-		resp := string(buf[:n])
-
-		// Very basic XML parsing to extract name/model from Scopes
-		name := "ONVIF Camera"
-		model := "Unknown"
-
-		// Scopes often look like: onvif://www.onvif.org/name/Front_Door onvif://www.onvif.org/hardware/ADC-V522IR
-		scopesIdx := strings.Index(resp, "<d:Scopes>")
-		if scopesIdx != -1 {
-			scopesEnd := strings.Index(resp[scopesIdx:], "</d:Scopes>")
-			if scopesEnd != -1 {
-				scopes := resp[scopesIdx+10 : scopesIdx+scopesEnd]
-				parts := strings.Fields(scopes)
-				for _, p := range parts {
-					if strings.Contains(p, "/name/") {
-						name = p[strings.LastIndex(p, "/")+1:]
-						name = strings.ReplaceAll(name, "_", " ")
-					} else if strings.Contains(p, "/hardware/") {
-						model = p[strings.LastIndex(p, "/")+1:]
-					}
-				}
-			}
-		}
-
-		devices = append(devices, discovery.Device{
-			ID:       ip, // Use IP as ID if UDN is too complex to parse here
-			Name:     name,
-			IP:       ip,
-			Provider: "onvif",
-			Type:     "Camera",
-			Model:    model,
-		})
+		device := parseProbeMatch(string(buf[:n]), ip)
+		devices = append(devices, device)
 		foundIPs[ip] = true
 	}
 
 	return devices, nil
+}
+
+// parseProbeMatch parses a WS-Discovery probe match response XML and constructs a discovery.Device.
+func parseProbeMatch(resp string, ip string) discovery.Device {
+	name := "ONVIF Camera"
+	model := "Unknown"
+
+	// Scopes often look like: onvif://www.onvif.org/name/Front_Door onvif://www.onvif.org/hardware/ADC-V522IR
+	scopesIdx := strings.Index(resp, "<d:Scopes>")
+	if scopesIdx != -1 {
+		scopesEnd := strings.Index(resp[scopesIdx:], "</d:Scopes>")
+		if scopesEnd != -1 {
+			scopes := resp[scopesIdx+10 : scopesIdx+scopesEnd]
+			parts := strings.Fields(scopes)
+			for _, p := range parts {
+				if strings.Contains(p, "/name/") {
+					name = p[strings.LastIndex(p, "/")+1:]
+					name = strings.ReplaceAll(name, "_", " ")
+				} else if strings.Contains(p, "/hardware/") {
+					model = p[strings.LastIndex(p, "/")+1:]
+				}
+			}
+		}
+	}
+
+	return discovery.Device{
+		ID:       ip,
+		Name:     name,
+		IP:       ip,
+		Provider: "onvif",
+		Type:     "Camera",
+		Model:    model,
+	}
 }

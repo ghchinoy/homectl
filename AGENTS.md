@@ -37,12 +37,18 @@ bd dolt push          # Push issues to remote when authorized
 - **Metadata Handling:** Always use `html.UnescapeString` on IoT-provided metadata before using it in the UI or proxy requests to avoid issues with escaped characters (e.g., `&amp;`).
 
 ### 3. Deployment & Standards
-- **XDG Compliance:** Always use `pkg/config.GetPath(filename)` for all persistent configuration, certificates, logs, and state files. Never hardcode home directory paths.
+- **XDG Compliance:** Always use `pkg/config.Path(filename)` (or `pkg/config.ConfigDir()`) for all persistent configuration, certificates, logs, and state files. Never hardcode home directory paths.
 - **Service Deployment:** Maintain `scripts/install.sh` as the primary installation and update method for Linux. The service runs the `serve` command and points to `/usr/local/share/homectl/ui` by default.
 - **State Persistence:** Use `pkg/config` utilities like `LoadNicknames` and `SaveNicknames` to manage user-defined metadata consistently across CLI, TUI, and Web UI.
 
 ### 4. Coding Conventions & Common Pitfalls
 - **Commits:** Use [Conventional Commits](https://www.conventionalcommits.org/) (e.g. `feat:`, `fix:`, `refactor:`, `docs:`).
+- **Go Readability & Reliability:**
+  - **Canonical Test Assertions:** Format test failure messages as `got: %v, want: %v` or `got != want` (never reverse `expected/actual`).
+  - **Modern Test Contexts & Environment:** Use `t.Context()` for test cancellation contexts and `t.Setenv()` for environment variable scoping rather than manual cleanup.
+  - **No Side-Effecting `init()`:** Avoid file I/O, socket opening, or process mutations in package `init()`. Prefer lazy initialization via `sync.Once` or explicit constructors.
+  - **Safe Stream Consumption:** Use bounded readers (`io.LimitReader`) when reading unbounded network payloads; always check return values from XML/JSON decoders and `io.ReadAll`.
+  - **Isolated HTTP Routing:** Never bind routes to the global `http.DefaultServeMux`. Always instantiate dedicated `http.NewServeMux()` with explicit server timeouts and graceful shutdown via context.
 - **RTSP 401 Unauthorized:** Security cameras require `camera_auth` in `config.json` (format: `user:pass`).
 - **Art Proxy 404:** Check for double-escaped `&amp;` in the `path` query parameter.
 - **Omnivision / OV Ready:** ADC cameras often identify as `Server: OV Ready` on ports 6080/6443. These use a proprietary protocol; RTSP on port 554 is the standard local stream.
@@ -86,7 +92,7 @@ bd list --status closed --json | jq -r 'sort_by(.closed_at) | reverse | map(sele
   - **Node Style:** `shape=box, style="filled,rounded"`, HTML-like table labels with subtitle rows.
   - **Color Palette:** Blue (`#0284c7`) for clients/Lutron, Purple (`#7c3aed`) for plugins/skills, Green (`#059669`) for gateways/Cast, Amber/Orange (`#d97706`/`#ea580c`) for modules/Sonos, Red (`#dc2626`) for physical hardware/Qolsys.
 - **Git Hygiene:** Always commit `.dot` source files and compiled `.webp` images together in the same commit. Intermediate `*.png` files are strictly gitignored.
-- **Documentation Verification Gate:** Before completing an architecture change, assert that `npm --prefix docs run build` succeeds with zero errors and zero broken links.
+- **Documentation Verification Gate:** Before completing an architecture change, assert that `npm --prefix docs run build` succeeds with zero errors and zero broken links (run `npm --prefix docs ci` first if dependencies are not installed).
 
 ### 9. Feature Addition & Documentation Synchronization
 Whenever a new feature, CLI command, or MCP tool is added or modified, the implementing agent MUST update all associated layers in the same atomic change:
@@ -115,9 +121,9 @@ Before concluding a work session or declaring a task complete, run the following
 ### 2. Quality Gates Execution
 Run the project quality verification commands:
 ```bash
-make test                   # Go tests across workspace & modules
+make test                   # Go tests across workspace & modules (root, modules/core, modules/sonos)
 make check-skills           # Asserts zero drift in plugin bundles & valid script paths
-npm --prefix docs run build # Asserts zero broken links or markdown errors in docs
+npm --prefix docs run build # Asserts zero broken links or markdown errors in docs (requires npm --prefix docs ci)
 git diff                    # Asserts zero real MACs or unmasked private IPs are staged
 ```
 

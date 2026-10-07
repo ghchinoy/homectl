@@ -55,18 +55,48 @@ func (p *DiscoveryProvider) Discover(ctx context.Context) ([]discovery.Device, e
 var (
 	tagCounter uint64
 	leapLogger *log.Logger
+	loggerOnce sync.Once
 )
 
 func nextTag() string {
 	return fmt.Sprintf("%d", atomic.AddUint64(&tagCounter, 1))
 }
 
-func init() {
-	config.EnsureDir()
-	f, _ := os.OpenFile(config.GetPath("leap.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if f != nil {
-		leapLogger = log.New(f, "LEAP: ", log.LstdFlags)
+func getLogger() *log.Logger {
+	loggerOnce.Do(func() {
+		if leapLogger != nil {
+			return
+		}
+		if err := config.EnsureDir(); err != nil {
+			return
+		}
+		f, err := os.OpenFile(config.Path("leap.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err == nil {
+			leapLogger = log.New(f, "LEAP: ", log.LstdFlags)
+		}
+	})
+	return leapLogger
+}
+
+// SetLogger overrides the package-level logger. Passing nil disables logging.
+func SetLogger(l *log.Logger) {
+	leapLogger = l
+}
+
+// selectBestIP selects the most appropriate IP address from mDNS service addresses.
+// It prioritizes IPv4 addresses and rejects link-local (fe80::) or loopback IPv6 addresses.
+func selectBestIP(ipv4 []net.IP, ipv6 []net.IP) string {
+	for _, ip := range ipv4 {
+		if ip.To4() != nil && !ip.IsLoopback() && !ip.IsUnspecified() {
+			return ip.String()
+		}
 	}
+	for _, ip := range ipv6 {
+		if ip != nil && !ip.IsLinkLocalUnicast() && !ip.IsLinkLocalMulticast() && !ip.IsLoopback() && !ip.IsUnspecified() {
+			return ip.String()
+		}
+	}
+	return ""
 }
 
 // Bridge represents a discovered Lutron Bridge
@@ -95,13 +125,7 @@ func Discover(timeout time.Duration) ([]Bridge, error) {
 	foundIPs := make(map[string]bool)
 
 	for entry := range entries {
-		var ip string
-		if len(entry.AddrIPv4) > 0 {
-			ip = entry.AddrIPv4[0].String()
-		} else if len(entry.AddrIPv6) > 0 {
-			ip = entry.AddrIPv6[0].String()
-		}
-
+		ip := selectBestIP(entry.AddrIPv4, entry.AddrIPv6)
 		if ip == "" || foundIPs[ip] {
 			continue
 		}
@@ -117,7 +141,7 @@ func Discover(timeout time.Duration) ([]Bridge, error) {
 }
 
 func cacheFile() string {
-	return config.GetPath("lutron_cache.json")
+	return config.Path("lutron_cache.json")
 }
 
 // SaveCache persists discovered bridges to a local file
@@ -359,8 +383,8 @@ func (c *Client) doRequest(req Message) (Message, error) {
 		return Message{}, err
 	}
 
-	if leapLogger != nil {
-		leapLogger.Printf("-> %s\n", string(data))
+	if l := getLogger(); l != nil {
+		l.Printf("-> %s\n", string(data))
 	}
 	_, err = c.conn.Write(append(data, '\n'))
 	if err != nil {
@@ -371,14 +395,14 @@ func (c *Client) doRequest(req Message) (Message, error) {
 		c.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 		line, err := c.reader.ReadBytes('\n')
 		if err != nil {
-			if leapLogger != nil {
-				leapLogger.Printf("Read Error: %v\n", err)
+			if l := getLogger(); l != nil {
+				l.Printf("Read Error: %v\n", err)
 			}
 			return Message{}, err
 		}
 
-		if leapLogger != nil {
-			leapLogger.Printf("<- %s\n", string(line))
+		if l := getLogger(); l != nil {
+			l.Printf("<- %s\n", string(line))
 		}
 		var resp Message
 		if err := json.Unmarshal(line, &resp); err != nil {

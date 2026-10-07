@@ -31,9 +31,11 @@ sync-skills:
 check-skills:
 	go run ./cmd/sync-skills --check
 
-# Run test suites across the workspace
+# Run test suites across the workspace and modules
 test:
 	go test -v ./...
+	go test -v ./modules/core/...
+	go test -v ./modules/sonos/...
 
 clean:
 	rm -rf $(BIN_DIR)

@@ -3,6 +3,7 @@ package miio
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"net"
 	"time"
@@ -88,19 +89,34 @@ func Discover(timeout time.Duration) ([]Device, error) {
 			break // Timeout or other error
 		}
 
-		if n >= 32 && !seen[addr.IP.String()] {
-			// bytes 8-11: Device ID
-			// bytes 12-15: Timestamp
-			deviceID := hex.EncodeToString(buf[8:12])
-			devices = append(devices, Device{
-				IP:       addr.IP.String(),
-				DeviceID: deviceID,
-			})
-			seen[addr.IP.String()] = true
+		ip := addr.IP.String()
+		if !seen[ip] {
+			if dev, ok := parseHandshakeResponse(buf[:n], ip); ok {
+				devices = append(devices, dev)
+				seen[ip] = true
+			}
 		}
 	}
 
 	return devices, nil
+}
+
+// parseHandshakeResponse validates and parses a 32-byte Mi Home handshake response packet.
+func parseHandshakeResponse(buf []byte, ip string) (Device, bool) {
+	if len(buf) < 32 {
+		return Device{}, false
+	}
+
+	// bytes 8-11: Device ID
+	// bytes 12-15: Timestamp (big-endian uint32 epoch)
+	deviceID := hex.EncodeToString(buf[8:12])
+	ts := binary.BigEndian.Uint32(buf[12:16])
+
+	return Device{
+		IP:        ip,
+		DeviceID:  deviceID,
+		Timestamp: ts,
+	}, true
 }
 
 func getBroadcastAddresses() ([]string, error) {
