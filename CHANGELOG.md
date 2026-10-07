@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Sonos Queue Management Suite:** Added `sonos_queue_edit` MCP tool and CLI subcommands `homectl sonos queue-remove`, `queue-clear`, and `queue-reorder` (with `--as-next` convenience and `--dry-run`), providing local queue editing via UPnP `RemoveTrackRangeFromQueue`, `RemoveAllTracksFromQueue`, and `ReorderTracksInQueue` ([control-znc], [control-6ht], [control-s5y]).
+- **Sonos Queue Playback Modes:** Added playback mode controls (shuffle, repeat mode, and crossfade) to `sonos_queue_edit` MCP tool and CLI `homectl sonos queue-mode` with state preservation across coordinator transitions ([control-abh]).
+- **Multi-Module Test Runner:** Updated `Makefile` test target to run test suites across the root workspace and submodules (`modules/core`, `modules/sonos`) in one command ([control-g7s]).
+- **Discovery Packages Test Coverage:** Added unit test suites for `pkg/discovery` (concurrent aggregation, provider isolation, context cancellation), `pkg/onvif` (WS-Discovery probe matches and scopes), and `pkg/miio` (handshake packet parsing) ([control-6te]).
+
+### Changed
+- **Go Reliability & Readability Standards:** Modernized codebase with `t.Context()` and `t.Setenv()` in tests, standardized canonical `got != want` assertions, eliminated unbounded `io.ReadAll` in favor of checked stream decoders, and updated configuration access to `pkg/config.Path` ([control-xck], [control-9mf], [control-a85], [control-6hw], [control-0v7]).
+- **LEAP Client Initialization:** Eliminated side-effecting file operations from `pkg/leap` `init()`, replacing with lazy `sync.Once` logger initialization and dynamic logger injection (`SetLogger`) ([control-4cv]).
+- **IPv6 Link-Local Rejection:** Enforced IoT guideline link-local IPv6 rejection (`ip.IsLinkLocalUnicast()`) across LEAP mDNS discovery ([control-4cv]).
+- **Isolated HTTP Server Architecture:** Replaced global `http.DefaultServeMux` bindings in `homectl serve` with isolated `http.NewServeMux()`, explicit read/write timeouts, and graceful shutdown via context cancellation ([control-4h2]).
 
 ## [0.2.0] - 2026-09-05
 

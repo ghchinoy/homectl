@@ -2,6 +2,7 @@
 
 [![Docs](https://img.shields.io/badge/docs-Starlight-blue)](https://ghchinoy.github.io/homectl/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Go Version](https://img.shields.io/badge/go-1.25+-00ADD8?logo=go)](go.mod)
 
 A modern, Go-powered toolkit for local smart home management, providing unified control of Lutron Caséta lighting, Sonos whole-home audio, Google Cast devices, and RTSP security cameras via CLI, Terminal UI (TUI), Web UI, and Model Context Protocol (MCP) Agent Plugins.
 
@@ -29,6 +30,7 @@ A modern, Go-powered toolkit for local smart home management, providing unified 
   - [Web UI Development](#web-ui-development)
   - [Documentation Site Development](#documentation-site-development)
 - [Deployment (Linux Service)](#deployment-linux-service)
+- [Acknowledgements](#acknowledgements)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -235,6 +237,12 @@ sudo systemctl restart homectl
 sudo systemctl stop homectl
 journalctl -u homectl -f
 ```
+
+---
+
+## Acknowledgements
+
+* [frankensonos](https://github.com/dickelstoneworth/frankensonos) by [@dickelstoneworth](https://github.com/dickelstoneworth) for Sonos S1/S2 hardware generation classification and non-renderer bridge detection heuristics.
 
 ---
 
