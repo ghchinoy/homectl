@@ -43,6 +43,8 @@ Description=homectl Smart Home API Server
 After=network.target
 
 [Service]
+# By default, homectl binds to 0.0.0.0. To restrict to localhost or a Tailscale IP,
+# add --host 127.0.0.1 or -H 100.x.y.z (or configure "api_host" in ~/.config/homectl/config.json).
 ExecStart=${BINARY_DEST} serve --port 8086 --ui ${UI_DEST}
 Restart=always
 User=${USER_NAME}

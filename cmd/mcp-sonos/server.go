@@ -46,6 +46,8 @@ type ClientInterface interface {
 	RemoveTrackRangeFromQueue(start, count int) error
 	RemoveAllTracksFromQueue() error
 	ReorderTracksInQueue(startingIndex, numberOfTracks, insertBefore int) error
+	Join(coordinatorRincon string) error
+	LeaveGroup() error
 }
 
 // ClientFactory creates a ClientInterface for the specified IP.
@@ -133,9 +135,9 @@ type NowPlayingParams struct {
 // ControlParams defines parameters for sonos_control.
 type ControlParams struct {
 	IP     string `json:"ip" jsonschema:"IP address of the Sonos speaker (required)"`
-	Action string `json:"action" jsonschema:"Playback action: 'play', 'pause', 'stop', 'next', 'previous', 'seek_track', 'seek_time' (required)"`
+	Action string `json:"action" jsonschema:"Playback or grouping action: 'play', 'pause', 'stop', 'next', 'previous', 'seek_track', 'seek_time', 'join', 'leave', 'unjoin' (required)"`
 	Track  int    `json:"track,omitempty" jsonschema:"1-based queue track number to jump to (required when action is 'seek_track')"`
-	Target string `json:"target,omitempty" jsonschema:"Time offset to seek to in [H:]MM:SS format e.g. '1:30' or '0:02:15' (required when action is 'seek_time')"`
+	Target string `json:"target,omitempty" jsonschema:"Time offset for seek_time, or target speaker IP/room/Rincon for join action"`
 }
 
 // SetVolumeParams defines parameters for sonos_set_volume.
@@ -283,6 +285,32 @@ func locationToIP(loc string) string {
 	return loc
 }
 
+// findDeviceByTarget searches a list of cached devices by IP, room name, or Rincon ID.
+func findDeviceByTarget(devices []sonos.Device, target string) (sonos.Device, bool) {
+	trimmed := strings.TrimSpace(target)
+	for _, d := range devices {
+		if strings.EqualFold(d.IP, trimmed) || strings.EqualFold(d.Name, trimmed) || strings.EqualFold(d.RinconID, trimmed) {
+			return d, true
+		}
+	}
+	return sonos.Device{}, false
+}
+
+// checkRenderer verifies that the target device at ip is an audio renderer and not a bridge or dock.
+func checkRenderer(cfg ServerConfig, ip string) error {
+	if cfg.CacheLoader == nil {
+		return nil
+	}
+	cached, err := cfg.CacheLoader()
+	if err != nil || len(cached) == 0 {
+		return nil
+	}
+	if d, found := findDeviceByTarget(cached, ip); found && !d.IsRenderer {
+		return fmt.Errorf("device %q (%s) is a non-rendering device and does not support audio playback", ip, d.ModelName)
+	}
+	return nil
+}
+
 // CreateMCPServer constructs and registers all Sonos tools on an MCP server.
 func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 	cfg := defaultServerConfig()
@@ -298,7 +326,7 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 	// Tool 1: sonos_list_speakers (Read-Only)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "sonos_list_speakers",
-		Description: "Lists all discovered Sonos speakers on the network, returning IP, room name, Rincon ID, and model.",
+		Description: "Lists all discovered Sonos speakers on the network, returning IP, room name, Rincon ID, model, generation (S1/S2), and renderer status (bridges have is_renderer=false).",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args ListSpeakersParams) (*mcp.CallToolResult, any, error) {
 		var speakers []sonos.Device
 		var err error
@@ -500,14 +528,18 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 	// Tool 4: sonos_control (Mutating)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "sonos_control",
-		Description: "Controls playback on a Sonos speaker: 'play', 'pause', 'stop', 'next', 'previous', 'seek_track' (jump to track number), 'seek_time' (seek offset).",
+		Description: "Controls playback and grouping on a Sonos speaker: 'play', 'pause', 'stop', 'next', 'previous', 'seek_track' (jump to track number), 'seek_time' (seek offset), 'join' (join group of target speaker), 'leave' / 'unjoin' (ungroup into standalone).",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args ControlParams) (*mcp.CallToolResult, any, error) {
 		if strings.TrimSpace(args.IP) == "" {
 			return nil, nil, fmt.Errorf("ip parameter is required")
 		}
 		action := strings.TrimSpace(strings.ToLower(args.Action))
 		if action == "" {
-			return nil, nil, fmt.Errorf("action parameter is required ('play', 'pause', 'stop', 'next', 'previous', 'seek_track', 'seek_time')")
+			return nil, nil, fmt.Errorf("action parameter is required ('play', 'pause', 'stop', 'next', 'previous', 'seek_track', 'seek_time', 'join', 'leave', 'unjoin')")
+		}
+
+		if err := checkRenderer(cfg, args.IP); err != nil {
+			return nil, nil, err
 		}
 
 		client := cfg.ClientFactory(args.IP)
@@ -534,8 +566,37 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 				return nil, nil, fmt.Errorf("target parameter (e.g. '0:01:30' or '1:45') is required for seek_time action")
 			}
 			err = client.SeekTime(args.Target)
+		case "join":
+			targetParam := strings.TrimSpace(args.Target)
+			if targetParam == "" {
+				return nil, nil, fmt.Errorf("target parameter (IP, room name, or Rincon ID) is required for join action")
+			}
+			var cached []sonos.Device
+			if cfg.CacheLoader != nil {
+				cached, _ = cfg.CacheLoader()
+			}
+			devA, foundA := findDeviceByTarget(cached, args.IP)
+			devB, foundB := findDeviceByTarget(cached, targetParam)
+
+			if foundA && !devA.IsRenderer {
+				return nil, nil, fmt.Errorf("device %q (%s) is a non-rendering device and cannot join a group", args.IP, devA.ModelName)
+			}
+			if foundB && !devB.IsRenderer {
+				return nil, nil, fmt.Errorf("target device %q (%s) is a non-rendering device and cannot be joined", targetParam, devB.ModelName)
+			}
+			if foundA && foundB && devA.Generation != "" && devB.Generation != "" && devA.Generation != devB.Generation {
+				return nil, nil, fmt.Errorf("cannot group S1 speaker %q with S2 speaker %q: Sonos S1 and S2 systems operate as separate households", devA.Name, devB.Name)
+			}
+
+			targetRincon := targetParam
+			if foundB && devB.RinconID != "" {
+				targetRincon = devB.RinconID
+			}
+			err = client.Join(targetRincon)
+		case "leave", "unjoin":
+			err = client.LeaveGroup()
 		default:
-			return nil, nil, fmt.Errorf("unknown action %q (supported: 'play', 'pause', 'stop', 'next', 'previous', 'seek_track', 'seek_time')", action)
+			return nil, nil, fmt.Errorf("unknown action %q (supported: 'play', 'pause', 'stop', 'next', 'previous', 'seek_track', 'seek_time', 'join', 'leave', 'unjoin')", action)
 		}
 
 		if err != nil {
@@ -550,6 +611,11 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		} else if action == "seek_time" {
 			msg = fmt.Sprintf("Successfully sought to %s on Sonos speaker at %s", args.Target, args.IP)
 			outPayload["target"] = args.Target
+		} else if action == "join" {
+			msg = fmt.Sprintf("Successfully joined speaker at %s to group %s", args.IP, args.Target)
+			outPayload["target"] = args.Target
+		} else if action == "leave" || action == "unjoin" {
+			msg = fmt.Sprintf("Successfully unjoined speaker at %s into a standalone group", args.IP)
 		}
 
 		return &mcp.CallToolResult{
@@ -566,6 +632,9 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args SetVolumeParams) (*mcp.CallToolResult, any, error) {
 		if strings.TrimSpace(args.IP) == "" {
 			return nil, nil, fmt.Errorf("ip parameter is required")
+		}
+		if err := checkRenderer(cfg, args.IP); err != nil {
+			return nil, nil, err
 		}
 
 		client := cfg.ClientFactory(args.IP)
@@ -640,6 +709,9 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		if strings.TrimSpace(args.FavoriteID) == "" {
 			return nil, nil, fmt.Errorf("favorite_id parameter is required")
 		}
+		if err := checkRenderer(cfg, args.IP); err != nil {
+			return nil, nil, err
+		}
 
 		client := cfg.ClientFactory(args.IP)
 		res, err := client.PlayTrackOrFavorite(args.FavoriteID)
@@ -664,6 +736,9 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		}
 		if strings.TrimSpace(args.URL) == "" {
 			return nil, nil, fmt.Errorf("url parameter is required")
+		}
+		if err := checkRenderer(cfg, args.IP); err != nil {
+			return nil, nil, err
 		}
 
 		u, err := url.Parse(strings.TrimSpace(args.URL))
@@ -702,6 +777,9 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		}
 		if strings.TrimSpace(args.URI) == "" {
 			return nil, nil, fmt.Errorf("uri parameter is required")
+		}
+		if err := checkRenderer(cfg, args.IP); err != nil {
+			return nil, nil, err
 		}
 
 		client := cfg.ClientFactory(args.IP)

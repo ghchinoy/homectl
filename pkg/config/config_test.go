@@ -44,3 +44,31 @@ func TestNicknamesSaveAndLoad(t *testing.T) {
 		t.Errorf("expected 'Kitchen Pendant', got '%s'", loaded["/zone/1"])
 	}
 }
+
+func TestLoadConfigWithAPIHost(t *testing.T) {
+	tempDir := t.TempDir()
+	origConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	os.Setenv("XDG_CONFIG_HOME", tempDir)
+	defer os.Setenv("XDG_CONFIG_HOME", origConfigHome)
+
+	if err := EnsureDir(); err != nil {
+		t.Fatalf("EnsureDir failed: %v", err)
+	}
+
+	configJSON := `{
+		"callback_ip": "192.168.1.100",
+		"camera_auth": "user:pass",
+		"api_host": "100.85.12.34"
+	}`
+	if err := os.WriteFile(GetPath("config.json"), []byte(configJSON), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	cfg := LoadConfig()
+	if cfg.APIHost != "100.85.12.34" {
+		t.Errorf("expected APIHost to be '100.85.12.34', got %q", cfg.APIHost)
+	}
+	if cfg.CallbackIP != "192.168.1.100" {
+		t.Errorf("expected CallbackIP to be '192.168.1.100', got %q", cfg.CallbackIP)
+	}
+}

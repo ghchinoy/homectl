@@ -6,13 +6,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/ghchinoy/homectl/modules/sonos"
 	"github.com/ghchinoy/homectl/pkg/camera"
 	"github.com/ghchinoy/homectl/pkg/cast"
 	"github.com/ghchinoy/homectl/pkg/discovery"
 	"github.com/ghchinoy/homectl/pkg/leap"
 	"github.com/ghchinoy/homectl/pkg/miio"
 	"github.com/ghchinoy/homectl/pkg/onvif"
-	"github.com/ghchinoy/homectl/modules/sonos"
 	"github.com/spf13/cobra"
 )
 

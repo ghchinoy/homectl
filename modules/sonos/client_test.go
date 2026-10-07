@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -239,7 +240,6 @@ func TestCachePersistenceWithMemoryStorage(t *testing.T) {
 	}
 }
 
-
 func TestParseSSDPLocation(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -317,7 +317,6 @@ func TestSelectBestIP(t *testing.T) {
 		})
 	}
 }
-
 
 func TestParseFavorites(t *testing.T) {
 	xmlStr := `<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">
@@ -434,7 +433,6 @@ func TestResolveDefaultService(t *testing.T) {
 		t.Error("expected false for empty services list, got true")
 	}
 }
-
 
 func TestIsContainerFavorite(t *testing.T) {
 	tests := []struct {
@@ -1207,3 +1205,258 @@ func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
 }
 
+func TestClassifyGeneration(t *testing.T) {
+	tests := []struct {
+		name        string
+		swGen       string
+		modelNumber string
+		want        string
+	}{
+		{name: "swGen_1_explicit", swGen: "1", modelNumber: "S5", want: GenerationS1},
+		{name: "swGen_2_explicit", swGen: "2", modelNumber: "S13", want: GenerationS2},
+		{name: "swGen_1_on_s2_capable_hardware", swGen: "1", modelNumber: "S1", want: GenerationS1},
+		{name: "swGen_missing_s1_only_play5", swGen: "", modelNumber: "S5", want: GenerationS1},
+		{name: "swGen_missing_s1_only_bridge", swGen: "", modelNumber: "ZB100", want: GenerationS1},
+		{name: "swGen_missing_s1_only_connect", swGen: "", modelNumber: "ZP90", want: GenerationS1},
+		{name: "swGen_missing_modern_speaker", swGen: "", modelNumber: "S18", want: GenerationS2},
+		{name: "swGen_missing_unknown_model", swGen: "", modelNumber: "UnknownFutureSpeaker", want: GenerationS2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ClassifyGeneration(tt.swGen, tt.modelNumber)
+			if got != tt.want {
+				t.Errorf("ClassifyGeneration(%q, %q) = %q, want %q", tt.swGen, tt.modelNumber, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsNonRendererModel(t *testing.T) {
+	tests := []struct {
+		modelNumber string
+		want        bool
+	}{
+		{modelNumber: "ZB100", want: true},
+		{modelNumber: "BR100", want: true},
+		{modelNumber: "CR100", want: true},
+		{modelNumber: "CR200", want: true},
+		{modelNumber: "WD100", want: true},
+		{modelNumber: "zb100", want: true},
+		{modelNumber: "S5", want: false},
+		{modelNumber: "S13", want: false},
+		{modelNumber: "S18", want: false},
+		{modelNumber: "ZP100", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.modelNumber, func(t *testing.T) {
+			got := IsNonRendererModel(tt.modelNumber)
+			if got != tt.want {
+				t.Errorf("IsNonRendererModel(%q) = %v, want %v", tt.modelNumber, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseDeviceDescription(t *testing.T) {
+	tests := []struct {
+		name           string
+		xmlData        string
+		wantName       string
+		wantRincon     string
+		wantModelName  string
+		wantModelNum   string
+		wantGeneration string
+		wantIsRenderer bool
+	}{
+		{
+			name: "s2_sonos_one_with_avtransport",
+			xmlData: `<?xml version="1.0" encoding="utf-8" ?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <device>
+    <deviceType>urn:schemas-upnp-org:device:ZonePlayer:1</deviceType>
+    <roomName>Living Room</roomName>
+    <displayName>One</displayName>
+    <UDN>uuid:RINCON_000E58A0000E01400</UDN>
+    <modelName>Sonos One</modelName>
+    <modelNumber>S13</modelNumber>
+    <swGen>2</swGen>
+    <serviceList>
+      <service>
+        <serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
+      </service>
+      <service>
+        <serviceType>urn:schemas-upnp-org:service:RenderingControl:1</serviceType>
+      </service>
+    </serviceList>
+  </device>
+</root>`,
+			wantName:       "Living Room",
+			wantRincon:     "RINCON_000E58A0000E01400",
+			wantModelName:  "Sonos One",
+			wantModelNum:   "S13",
+			wantGeneration: GenerationS2,
+			wantIsRenderer: true,
+		},
+		{
+			name: "s1_play5_gen1_with_avtransport",
+			xmlData: `<?xml version="1.0" encoding="utf-8" ?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <device>
+    <deviceType>urn:schemas-upnp-org:device:ZonePlayer:1</deviceType>
+    <roomName>Basement</roomName>
+    <displayName>Play:5</displayName>
+    <UDN>uuid:RINCON_000E58A0000101400</UDN>
+    <modelName>Sonos Play:5</modelName>
+    <modelNumber>S5</modelNumber>
+    <swGen>1</swGen>
+    <serviceList>
+      <service>
+        <serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
+      </service>
+      <service>
+        <serviceType>urn:schemas-upnp-org:service:RenderingControl:1</serviceType>
+      </service>
+    </serviceList>
+  </device>
+</root>`,
+			wantName:       "Basement",
+			wantRincon:     "RINCON_000E58A0000101400",
+			wantModelName:  "Sonos Play:5",
+			wantModelNum:   "S5",
+			wantGeneration: GenerationS1,
+			wantIsRenderer: true,
+		},
+		{
+			name: "s1_bridge_without_avtransport",
+			xmlData: `<?xml version="1.0" encoding="utf-8" ?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <device>
+    <deviceType>urn:schemas-upnp-org:device:ZonePlayer:1</deviceType>
+    <roomName>Bridge</roomName>
+    <displayName>Bridge</displayName>
+    <UDN>uuid:RINCON_000E58A0000B01400</UDN>
+    <modelName>Sonos Bridge</modelName>
+    <modelNumber>ZB100</modelNumber>
+    <swGen>1</swGen>
+    <serviceList>
+      <service>
+        <serviceType>urn:schemas-upnp-org:service:DeviceProperties:1</serviceType>
+      </service>
+      <service>
+        <serviceType>urn:schemas-upnp-org:service:ZoneGroupTopology:1</serviceType>
+      </service>
+    </serviceList>
+  </device>
+</root>`,
+			wantName:       "Bridge",
+			wantRincon:     "RINCON_000E58A0000B01400",
+			wantModelName:  "Sonos Bridge",
+			wantModelNum:   "ZB100",
+			wantGeneration: GenerationS1,
+			wantIsRenderer: false,
+		},
+		{
+			name: "legacy_connect_missing_swGen",
+			xmlData: `<?xml version="1.0" encoding="utf-8" ?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <device>
+    <roomName>Den</roomName>
+    <UDN>uuid:RINCON_000E58A0000C01400</UDN>
+    <modelName>Sonos Connect</modelName>
+    <modelNumber>ZP90</modelNumber>
+    <serviceList>
+      <service>
+        <serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
+      </service>
+    </serviceList>
+  </device>
+</root>`,
+			wantName:       "Den",
+			wantRincon:     "RINCON_000E58A0000C01400",
+			wantModelName:  "Sonos Connect",
+			wantModelNum:   "ZP90",
+			wantGeneration: GenerationS1,
+			wantIsRenderer: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			details, err := ParseDeviceDescription([]byte(tt.xmlData))
+			if err != nil {
+				t.Fatalf("ParseDeviceDescription failed: %v", err)
+			}
+			if details.Name != tt.wantName {
+				t.Errorf("Name = %q, want %q", details.Name, tt.wantName)
+			}
+			if details.RinconID != tt.wantRincon {
+				t.Errorf("RinconID = %q, want %q", details.RinconID, tt.wantRincon)
+			}
+			if details.ModelName != tt.wantModelName {
+				t.Errorf("ModelName = %q, want %q", details.ModelName, tt.wantModelName)
+			}
+			if details.ModelNumber != tt.wantModelNum {
+				t.Errorf("ModelNumber = %q, want %q", details.ModelNumber, tt.wantModelNum)
+			}
+			if details.Generation != tt.wantGeneration {
+				t.Errorf("Generation = %q, want %q", details.Generation, tt.wantGeneration)
+			}
+			if details.IsRenderer != tt.wantIsRenderer {
+				t.Errorf("IsRenderer = %v, want %v", details.IsRenderer, tt.wantIsRenderer)
+			}
+		})
+	}
+}
+
+func TestJoinAndLeaveGroupMock(t *testing.T) {
+	var capturedAction string
+	var capturedURI string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		soapAction := r.Header.Get("SOAPAction")
+		bodyBytes, _ := io.ReadAll(r.Body)
+		bodyStr := string(bodyBytes)
+
+		if strings.Contains(soapAction, "SetAVTransportURI") {
+			capturedAction = "SetAVTransportURI"
+			if strings.Contains(bodyStr, "x-rincon:RINCON_123456") {
+				capturedURI = "x-rincon:RINCON_123456"
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:SetAVTransportURIResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"/></s:Body></s:Envelope>`))
+			return
+		}
+
+		if strings.Contains(soapAction, "BecomeCoordinatorOfStandaloneGroup") {
+			capturedAction = "BecomeCoordinatorOfStandaloneGroup"
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:BecomeCoordinatorOfStandaloneGroupResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"/></s:Body></s:Envelope>`))
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	u, _ := url.Parse(server.URL)
+	client := NewClient(u.Host, WithHTTPClient(server.Client()))
+
+	// Test Join
+	if err := client.Join("RINCON_123456"); err != nil {
+		t.Fatalf("client.Join failed: %v", err)
+	}
+	if capturedAction != "SetAVTransportURI" || capturedURI != "x-rincon:RINCON_123456" {
+		t.Errorf("unexpected action/URI for Join: action=%q, URI=%q", capturedAction, capturedURI)
+	}
+
+	// Test LeaveGroup
+	capturedAction = ""
+	if err := client.LeaveGroup(); err != nil {
+		t.Fatalf("client.LeaveGroup failed: %v", err)
+	}
+	if capturedAction != "BecomeCoordinatorOfStandaloneGroup" {
+		t.Errorf("unexpected action for LeaveGroup: %q", capturedAction)
+	}
+}

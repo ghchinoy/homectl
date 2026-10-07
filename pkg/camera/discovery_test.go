@@ -41,7 +41,6 @@ func TestIsPrivateIPv4(t *testing.T) {
 	}
 }
 
-
 func TestScanSubnetRTSP(t *testing.T) {
 	provider := &DiscoveryProvider{}
 	foundIPs := make(map[string]bool)

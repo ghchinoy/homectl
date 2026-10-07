@@ -26,11 +26,11 @@ The MCP server communicates with AI agents over standard I/O using the official 
 
 | Tool | Mode | Schema Wrapper | Description |
 | :--- | :---: | :--- | :--- |
-| **`sonos_list_speakers`** | 🔒 Read-Only | `ListSpeakersResult{Count, Speakers}` | Discovers or lists cached speakers on LAN. |
+| **`sonos_list_speakers`** | 🔒 Read-Only | `ListSpeakersResult{Count, Speakers}` | Discovers or lists cached speakers on LAN with generation (S1/S2) and renderer status. |
 | **`sonos_get_now_playing`** | 🔒 Read-Only | `NowPlayingResult` | Compact playback state, progress, play mode, shuffle, repeat, crossfade, and track metadata. |
 | **`sonos_get_topology`** | 🔒 Read-Only | `TopologyResult{Count, Groups}` | Exposes zone groups and stereo-pair coordinator/follower relationships. |
 | **`sonos_list_favorites`** | 🔒 Read-Only | `ListFavoritesResult{Count, Favorites}` | Lists pinned cloud tracks/playlists from Spotify, Apple Music, and Sonos Radio. |
-| **`sonos_control`** | ⚡ Mutating | `{"status": "ok", "action": ...}` | Sends playback actions: `play`, `pause`, `stop`, `next`, `previous`, `seek_track`, `seek_time`. |
+| **`sonos_control`** | ⚡ Mutating | `{"status": "ok", "action": ...}` | Sends playback and grouping actions: `play`, `pause`, `stop`, `next`, `previous`, `seek_track`, `seek_time`, `join`, `leave`, `unjoin`. |
 | **`sonos_set_volume`** | ⚡ Mutating | `{"status": "ok", "volume": ...}` | Adjusts absolute volume (0–100) or applies relative step deltas (`+5`, `-10`). |
 | **`sonos_play_favorite`** | ⚡ Mutating | `{"status": "ok", "favorite_id": ...}` | Initiates playback of a pinned cloud favorite. |
 | **`sonos_play_stream`** | ⚡ Mutating | `{"status": "ok", "url": ...}` | Streams an arbitrary HTTP/HTTPS audio URL (radio, podcast, or TTS). |
@@ -43,6 +43,7 @@ All output schemas conform to **MCP SEP-2106** and OpenCode validation rules by 
 
 ### 3. Go Engine (`modules/sonos`)
 The core domain logic is isolated in `modules/sonos`:
+* **S1/S2 Hardware Classification & Bridge Detection:** Legacy devices running S1 firmware (`swGen: "1"` or hardware `ZP80-120`, `S5`, `ZB100`, `BR100`, `CR100-200`, `WD100`) are classified into `Generation: "S1"`, while modern devices report `Generation: "S2"`. Bridges and docks without `AVTransport` endpoints are flagged with `IsRenderer: false`. The engine and MCP layer reject playback/volume mutations on non-renderers and validate grouping boundaries to prevent joining S1 and S2 speakers into incompatible mixed households.
 * **Coordinator / Follower Resolution:** In Sonos stereo pairs or groups, secondary speakers report their transport as `PLAYING` with an `x-rincon:<coord>` track URI but empty metadata. `modules/sonos` automatically detects follower nodes, resolves the group coordinator via `GetCoordinatorIP()`, and routes playback commands to the authoritative master speaker.
 * **Container vs. Item Favorite Playback Protocol:** Sonos handles single tracks/radio streams differently from multi-track containers (Spotify/Apple Music playlists, albums, YouTube Music Liked Music). `modules/sonos` detects container favorites via `isContainerFavorite()`:
   1. Clears current queue (`RemoveAllTracksFromQueue`).

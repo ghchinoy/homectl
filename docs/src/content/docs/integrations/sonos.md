@@ -16,11 +16,31 @@ Sonos speakers are discovered via mDNS (`_sonos._tcp`) and SSDP. Discovered spea
 
 Example output:
 ```text
-NAME                 IP              VOLUME     STATUS          NOW PLAYING
----------------------------------------------------------------------------------------------------------
-Living Room          192.168.1.120   30%        PLAYING         Comfortably Numb
-Kitchen              192.168.1.121   20%        PAUSED_PLAYBACK -
-Bedroom              192.168.1.122   15%        STOPPED         -
+NAME                 IP              GEN   TYPE       VOLUME     STATUS          NOW PLAYING
+-------------------------------------------------------------------------------------------------------------------------
+Living Room          192.168.1.120   S2    Speaker    30%        PLAYING         Comfortably Numb
+Kitchen              192.168.1.121   S2    Speaker    20%        PAUSED_PLAYBACK -
+Basement             192.168.1.122   S1    Speaker    15%        STOPPED         -
+Network Bridge       192.168.1.123   S1    Bridge     N/A        -               -
+```
+
+---
+
+## Generations (S1 / S2) & Grouping
+
+Sonos devices belong to either the legacy **S1** or modern **S2** software generation:
+
+- **S1 Devices:** Legacy ZonePlayers (`ZP80`, `ZP90`, `ZP100`, `ZP120`), Play:5 Gen 1 (`S5`), Bridges (`ZB100`, `BR100`), Controllers (`CR100`, `CR200`), and Docks (`WD100`).
+- **S2 Devices:** Modern speakers and soundbars (Sonos One, Beam, Arc, Move, Roam, Era, Five).
+- **Non-Rendering Devices:** Bridges and docks lack media rendering capability and are marked with `TYPE: Bridge` (`is_renderer: false`). Playback and volume commands are rejected on non-renderers.
+- **Cross-Generation Grouping:** S1 and S2 devices operate in separate households and cannot be grouped together.
+
+```bash
+# Join a speaker to another speaker's group (same generation only)
+./homectl sonos join 192.168.1.121 192.168.1.120
+
+# Unjoin a speaker into a standalone group
+./homectl sonos leave 192.168.1.121
 ```
 
 ---
@@ -134,20 +154,22 @@ To view detailed stream details, queue position, and audio formats:
 
 Example output:
 ```text
-Name:     Living Room
-IP:       192.168.1.120
-Model:    Sonos One (S13)
-ID:       RINCON_000E58F...
-Status:   PLAYING
-Volume:   30%
-Queue:    42 tracks
+Name:       Living Room
+IP:         192.168.1.120
+Model:      Sonos One (S13)
+Generation: S2
+Type:       Speaker (Renderer)
+ID:         RINCON_000E58F...
+Status:     PLAYING
+Volume:     30%
+Queue:      42 tracks
 ---------------------------------
-Track:    Comfortably Numb
-Artist:   Pink Floyd
-Album:    The Wall
-Format:   http-get:*:audio/x-flac:*
-Duration: 0:06:24 (0:02:15)
-Next:     Hey You by Pink Floyd
+Track:      Comfortably Numb
+Artist:     Pink Floyd
+Album:      The Wall
+Format:     http-get:*:audio/x-flac:*
+Duration:   0:06:24 (0:02:15)
+Next:       Hey You by Pink Floyd
 ```
 
 ---

@@ -28,7 +28,7 @@ type MockClient struct {
 	// follower whose GetCoordinatorIP() redirects to that address.
 	coordinatorIP string
 	// zoneGroupState is returned verbatim by GetZoneGroupState().
-	zoneGroupState sonos.ZoneGroupState
+	zoneGroupState       sonos.ZoneGroupState
 	lastEnqueuedMetadata string
 	lastSeekTrack        int
 	lastSeekTarget       string
@@ -49,6 +49,10 @@ type MockClient struct {
 	lastSetCrossfade     *bool
 	failPlayMode         bool
 	failCrossfade        bool
+	lastJoinedRincon     string
+	leftGroup            bool
+	failJoin             bool
+	failLeave            bool
 }
 
 func (m *MockClient) GetVolume() (int, error) {
@@ -298,6 +302,22 @@ func (m *MockClient) ListMusicServices() ([]sonos.MusicService, error) {
 	}, nil
 }
 
+func (m *MockClient) Join(coordinatorRincon string) error {
+	if m.failJoin {
+		return errors.New("join failure")
+	}
+	m.lastJoinedRincon = coordinatorRincon
+	return nil
+}
+
+func (m *MockClient) LeaveGroup() error {
+	if m.failLeave {
+		return errors.New("leave failure")
+	}
+	m.leftGroup = true
+	return nil
+}
+
 func setupTestSession(t *testing.T, mockClient *MockClient) (*mcp.ClientSession, func()) {
 	return setupTestSessionWithFactory(t, func(ip string) ClientInterface {
 		return mockClient
@@ -316,7 +336,7 @@ func setupTestSessionWithFactory(t *testing.T, factory ClientFactory) (*mcp.Clie
 		WithClientFactory(factory),
 		WithCacheLoader(func() ([]sonos.Device, error) {
 			return []sonos.Device{
-				{Name: "Office Speaker", IP: "192.168.1.120", RinconID: "RINCON_001", ModelName: "Sonos One"},
+				{Name: "Office Speaker", IP: "192.168.1.120", RinconID: "RINCON_001", ModelName: "Sonos One", Generation: "S2", IsRenderer: true},
 			}, nil
 		}),
 	)
@@ -819,7 +839,6 @@ func TestSonosGetTopologyTool(t *testing.T) {
 		}
 	}
 }
-
 
 func TestSonosListFavoritesTool(t *testing.T) {
 	mock := &MockClient{ip: "192.168.1.120"}
@@ -1348,8 +1367,8 @@ func TestSonosGetTopologyCachedFallback(t *testing.T) {
 		WithClientFactory(factory),
 		WithCacheLoader(func() ([]sonos.Device, error) {
 			return []sonos.Device{
-				{Name: "Roam", IP: sleepingIP, RinconID: "RINCON_ROAM", ModelName: "Sonos Roam"},
-				{Name: "Living Room", IP: activeIP, RinconID: "RINCON_ACTIVE", ModelName: "Sonos One"},
+				{Name: "Roam", IP: sleepingIP, RinconID: "RINCON_ROAM", ModelName: "Sonos Roam", Generation: "S2", IsRenderer: true},
+				{Name: "Living Room", IP: activeIP, RinconID: "RINCON_ACTIVE", ModelName: "Sonos One", Generation: "S2", IsRenderer: true},
 			}, nil
 		}),
 	)
@@ -1404,5 +1423,275 @@ func TestSonosGetTopologyCachedFallback(t *testing.T) {
 
 	if topo.Count != 1 || len(topo.Groups) != 1 || topo.Groups[0].Coordinator != "RINCON_ACTIVE" {
 		t.Errorf("unexpected fallback topology result: %+v", topo)
+	}
+}
+
+func TestSonosControlTool_Join_Success(t *testing.T) {
+	mockSpeaker1 := &MockClient{ip: "192.168.1.10", volume: 30, state: "PLAYING"}
+	mockSpeaker2 := &MockClient{ip: "192.168.1.11", volume: 25, state: "PLAYING"}
+
+	factory := func(ip string) ClientInterface {
+		if ip == "192.168.1.10" {
+			return mockSpeaker1
+		}
+		return mockSpeaker2
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	server := CreateMCPServer(
+		WithClientFactory(factory),
+		WithCacheLoader(func() ([]sonos.Device, error) {
+			return []sonos.Device{
+				{Name: "Living Room", IP: "192.168.1.10", RinconID: "RINCON_LR", Generation: "S2", IsRenderer: true},
+				{Name: "Kitchen", IP: "192.168.1.11", RinconID: "RINCON_KT", Generation: "S2", IsRenderer: true},
+			}, nil
+		}),
+	)
+
+	go func() {
+		_ = server.Run(ctx, serverTransport)
+	}()
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("failed to connect: %v", err)
+	}
+	defer session.Close()
+
+	callCtx, callCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer callCancel()
+
+	// Kitchen joins Living Room
+	res, err := session.CallTool(callCtx, &mcp.CallToolParams{
+		Name: "sonos_control",
+		Arguments: map[string]any{
+			"ip":     "192.168.1.11",
+			"action": "join",
+			"target": "192.168.1.10",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool sonos_control join failed: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("expected success, got tool error: %+v", res)
+	}
+	if mockSpeaker2.lastJoinedRincon != "RINCON_LR" {
+		t.Errorf("expected lastJoinedRincon = RINCON_LR, got %q", mockSpeaker2.lastJoinedRincon)
+	}
+
+	// Kitchen leaves group
+	res, err = session.CallTool(callCtx, &mcp.CallToolParams{
+		Name: "sonos_control",
+		Arguments: map[string]any{
+			"ip":     "192.168.1.11",
+			"action": "leave",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool sonos_control leave failed: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("expected success on leave, got tool error: %+v", res)
+	}
+	if !mockSpeaker2.leftGroup {
+		t.Errorf("expected leftGroup to be true")
+	}
+}
+
+func TestSonosControlTool_Join_CrossGeneration_Rejection(t *testing.T) {
+	mockSpeakerS1 := &MockClient{ip: "192.168.1.10", volume: 30, state: "PLAYING"}
+	mockSpeakerS2 := &MockClient{ip: "192.168.1.20", volume: 25, state: "PLAYING"}
+
+	factory := func(ip string) ClientInterface {
+		if ip == "192.168.1.10" {
+			return mockSpeakerS1
+		}
+		return mockSpeakerS2
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	server := CreateMCPServer(
+		WithClientFactory(factory),
+		WithCacheLoader(func() ([]sonos.Device, error) {
+			return []sonos.Device{
+				{Name: "Play:5 Gen 1", IP: "192.168.1.10", RinconID: "RINCON_S1", Generation: "S1", IsRenderer: true},
+				{Name: "Sonos One", IP: "192.168.1.20", RinconID: "RINCON_S2", Generation: "S2", IsRenderer: true},
+			}, nil
+		}),
+	)
+
+	go func() {
+		_ = server.Run(ctx, serverTransport)
+	}()
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("failed to connect: %v", err)
+	}
+	defer session.Close()
+
+	callCtx, callCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer callCancel()
+
+	// S1 attempts to join S2
+	res, err := session.CallTool(callCtx, &mcp.CallToolParams{
+		Name: "sonos_control",
+		Arguments: map[string]any{
+			"ip":     "192.168.1.10",
+			"action": "join",
+			"target": "192.168.1.20",
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected call error: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected tool error when cross-grouping S1 and S2, got success")
+	}
+	textContent, ok := res.Content[0].(*mcp.TextContent)
+	if !ok || !strings.Contains(textContent.Text, "cannot group S1 speaker") {
+		t.Errorf("expected error message to mention 'cannot group S1 speaker', got %v", res.Content)
+	}
+}
+
+func TestSonosControlTool_NonRenderer_Rejection(t *testing.T) {
+	mockBridge := &MockClient{ip: "192.168.1.50"}
+
+	factory := func(ip string) ClientInterface {
+		return mockBridge
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	server := CreateMCPServer(
+		WithClientFactory(factory),
+		WithCacheLoader(func() ([]sonos.Device, error) {
+			return []sonos.Device{
+				{Name: "Bridge", IP: "192.168.1.50", RinconID: "RINCON_BRIDGE", ModelName: "Sonos Bridge", Generation: "S1", IsRenderer: false},
+			}, nil
+		}),
+	)
+
+	go func() {
+		_ = server.Run(ctx, serverTransport)
+	}()
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("failed to connect: %v", err)
+	}
+	defer session.Close()
+
+	callCtx, callCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer callCancel()
+
+	// Play on bridge should be rejected
+	res, err := session.CallTool(callCtx, &mcp.CallToolParams{
+		Name: "sonos_control",
+		Arguments: map[string]any{
+			"ip":     "192.168.1.50",
+			"action": "play",
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected call error: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected tool error when playing on bridge, got success")
+	}
+	textContent, ok := res.Content[0].(*mcp.TextContent)
+	if !ok || !strings.Contains(textContent.Text, "non-rendering device") {
+		t.Errorf("expected error to mention 'non-rendering device', got %v", res.Content)
+	}
+
+	// Volume on bridge should also be rejected
+	res, err = session.CallTool(callCtx, &mcp.CallToolParams{
+		Name: "sonos_set_volume",
+		Arguments: map[string]any{
+			"ip":     "192.168.1.50",
+			"volume": 30,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected call error: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected tool error when setting volume on bridge, got success")
+	}
+}
+
+func TestSonosListSpeakersTool_IncludesGenerationAndRenderer(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	server := CreateMCPServer(
+		WithCacheLoader(func() ([]sonos.Device, error) {
+			return []sonos.Device{
+				{Name: "Living Room", IP: "192.168.1.10", RinconID: "RINCON_LR", ModelName: "Sonos One", Generation: "S2", IsRenderer: true},
+				{Name: "Bridge", IP: "192.168.1.11", RinconID: "RINCON_BR", ModelName: "Sonos Bridge", Generation: "S1", IsRenderer: false},
+			}, nil
+		}),
+	)
+
+	go func() {
+		_ = server.Run(ctx, serverTransport)
+	}()
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("failed to connect: %v", err)
+	}
+	defer session.Close()
+
+	callCtx, callCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer callCancel()
+
+	res, err := session.CallTool(callCtx, &mcp.CallToolParams{
+		Name:      "sonos_list_speakers",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("CallTool sonos_list_speakers failed: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("expected success, got error: %+v", res)
+	}
+
+	if len(res.Content) < 2 {
+		t.Fatalf("expected at least 2 content items, got %d", len(res.Content))
+	}
+	textContent, ok := res.Content[1].(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("expected TextContent, got %T", res.Content[1])
+	}
+
+	var listRes ListSpeakersResult
+	if err := json.Unmarshal([]byte(textContent.Text), &listRes); err != nil {
+		t.Fatalf("failed to unmarshal JSON: %v", err)
+	}
+
+	if listRes.Count != 2 {
+		t.Fatalf("expected count 2, got %d", listRes.Count)
+	}
+
+	if listRes.Speakers[0].Generation != "S2" || !listRes.Speakers[0].IsRenderer {
+		t.Errorf("expected speaker 0 to have Generation=S2 and IsRenderer=true, got %+v", listRes.Speakers[0])
+	}
+	if listRes.Speakers[1].Generation != "S1" || listRes.Speakers[1].IsRenderer {
+		t.Errorf("expected speaker 1 to have Generation=S1 and IsRenderer=false, got %+v", listRes.Speakers[1])
 	}
 }
