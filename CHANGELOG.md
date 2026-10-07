@@ -8,7 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-06
+
+_Feature release introducing unified build versioning, Sonos S1/S2 hardware classification, queue management suite, configurable API host binding, and expanded test coverage._
+
 ### Added
+- **Unified Build Versioning:** Added `pkg/version` package, `homectl version` CLI command (`--json` support), root `--version` flag, and dynamic `-ldflags` version/commit/timestamp injection across `homectl`, `mcp-sonos`, and `sync-skills` ([control-yyx]).
 - **Sonos S1/S2 Generation Classification & Guardrails:** Added hardware generation detection (`S1` vs `S2`) via `<swGen>` UPnP descriptor inspection and legacy model heuristic fallbacks, non-renderer bridge filtering (`BR100`, `ZB100`, `CR100/200`, `WD100`), and automatic rejection of invalid cross-generation grouping or playback on audio-incapable devices ([control-f1l]).
 - **Sonos Group Join & Leave Operations:** Added CLI commands `homectl sonos join <source> <target>` and `homectl sonos leave <speaker>`, exposed via `sonos_control` with action validation and cross-generation protection.
 - **Configurable API Server Host & Tailscale Guidance:** Added `-H / --host` flag and `api_host` config setting to `homectl serve` with automated Tailscale interface detection, loopback confinement, and 0.0.0.0 security advisories ([control-nxx]).
@@ -22,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **LEAP Client Initialization:** Eliminated side-effecting file operations from `pkg/leap` `init()`, replacing with lazy `sync.Once` logger initialization and dynamic logger injection (`SetLogger`) ([control-4cv]).
 - **IPv6 Link-Local Rejection:** Enforced IoT guideline link-local IPv6 rejection (`ip.IsLinkLocalUnicast()`) across LEAP mDNS discovery ([control-4cv]).
 - **Isolated HTTP Server Architecture:** Replaced global `http.DefaultServeMux` bindings in `homectl serve` with isolated `http.NewServeMux()`, explicit read/write timeouts, and graceful shutdown via context cancellation ([control-4h2]).
+- **MCP Server Implementation Version:** Aligned `mcp-sonos` server registration version with unified project release version `0.3.0` ([control-yyx]).
 
 ## [0.2.0] - 2026-09-05
 
@@ -93,7 +99,8 @@ _Major architectural release introducing disaggregated Go modules, standalone Ag
 - Master "All Lights" control in CLI and TUI ([control-45p]).
 - Lutron pairing scripts and certificate helpers ([control-unc]).
 
-[Unreleased]: https://github.com/ghchinoy/homectl/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ghchinoy/homectl/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/ghchinoy/homectl/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ghchinoy/homectl/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ghchinoy/homectl/compare/v0.0.1...v0.1.0
 [0.0.1]: https://github.com/ghchinoy/homectl/compare/v0.0.0...v0.0.1

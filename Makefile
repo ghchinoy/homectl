@@ -2,6 +2,13 @@
 
 BIN_DIR := ./bin
 
+VERSION ?= 0.3.0
+GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_DATE ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+LDFLAGS := -X github.com/ghchinoy/homectl/pkg/version.Version=$(VERSION) \
+           -X github.com/ghchinoy/homectl/pkg/version.GitCommit=$(GIT_COMMIT) \
+           -X github.com/ghchinoy/homectl/pkg/version.BuildDate=$(BUILD_DATE)
+
 all: build
 
 # Build all binaries into ./bin (gitignored)
@@ -13,15 +20,15 @@ diagrams:
 
 bin-homectl:
 	@mkdir -p $(BIN_DIR)
-	go build -o $(BIN_DIR)/homectl .
+	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/homectl .
 
 bin-mcp-sonos:
 	@mkdir -p $(BIN_DIR)
-	go build -o $(BIN_DIR)/mcp-sonos ./cmd/mcp-sonos
+	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/mcp-sonos ./cmd/mcp-sonos
 
 bin-sync-skills:
 	@mkdir -p $(BIN_DIR)
-	go build -o $(BIN_DIR)/sync-skills ./cmd/sync-skills
+	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/sync-skills ./cmd/sync-skills
 
 # Synchronize canonical skills/ into self-contained plugins/*/skills/
 sync-skills:

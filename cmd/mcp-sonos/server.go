@@ -10,6 +10,7 @@ import (
 
 	"github.com/ghchinoy/homectl/modules/sonos"
 	"github.com/ghchinoy/homectl/pkg/config"
+	"github.com/ghchinoy/homectl/pkg/version"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -320,7 +321,7 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "homectl-sonos",
-		Version: "1.0.0",
+		Version: version.Version,
 	}, nil)
 
 	// Tool 1: sonos_list_speakers (Read-Only)

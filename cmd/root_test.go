@@ -11,6 +11,7 @@ import (
 	"github.com/ghchinoy/homectl/modules/core"
 	"github.com/ghchinoy/homectl/modules/sonos"
 	"github.com/ghchinoy/homectl/pkg/config"
+	"github.com/ghchinoy/homectl/pkg/version"
 )
 
 func TestCommandRegistration(t *testing.T) {
@@ -52,6 +53,7 @@ func TestCommandRegistration(t *testing.T) {
 		{[]string{"sonos", "leave"}},
 		{[]string{"qolsys"}},
 		{[]string{"qolsys", "monitor"}},
+		{[]string{"version"}},
 	}
 
 	for _, tc := range expectedSubcommands {
@@ -226,21 +228,23 @@ func TestTailscaleAndLoopbackDetection(t *testing.T) {
 	}
 }
 
+func captureStdout(f func() error) (string, error) {
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := f()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	return buf.String(), err
+}
+
 func TestDryRunCommands(t *testing.T) {
-	captureOutput := func(f func() error) (string, error) {
-		oldStdout := os.Stdout
-		r, w, _ := os.Pipe()
-		os.Stdout = w
-
-		err := f()
-
-		w.Close()
-		os.Stdout = oldStdout
-
-		var buf bytes.Buffer
-		_, _ = io.Copy(&buf, r)
-		return buf.String(), err
-	}
+	captureOutput := captureStdout
 
 	t.Run("lutron set level dry-run json", func(t *testing.T) {
 		cmd, _, _ := rootCmd.Find([]string{"lutron", "set", "level"})
@@ -704,6 +708,45 @@ func TestSonosGenerationAndRendererValidation(t *testing.T) {
 		err := cmd.RunE(cmd, []string{"192.168.1.10", "192.168.1.20"})
 		if err == nil || !strings.Contains(err.Error(), "cannot group S1 speaker") {
 			t.Errorf("expected cross-generation error, got %v", err)
+		}
+	})
+}
+
+func TestVersionCommand(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"version"})
+	if err != nil || cmd == nil {
+		t.Fatalf("rootCmd.Find(version) = %v, want nil", err)
+	}
+
+	t.Run("default text output", func(t *testing.T) {
+		out, err := captureStdout(func() error {
+			return cmd.RunE(cmd, []string{})
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(out, "homectl v"+version.Version) {
+			t.Errorf("expected output to contain %q, got %q", "homectl v"+version.Version, out)
+		}
+	})
+
+	t.Run("json output", func(t *testing.T) {
+		_ = cmd.Flags().Set("json", "true")
+		defer cmd.Flags().Set("json", "false")
+
+		out, err := captureStdout(func() error {
+			return cmd.RunE(cmd, []string{})
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		var info version.Info
+		if err := json.Unmarshal([]byte(out), &info); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v, raw: %q", err, out)
+		}
+		if info.Version != version.Version {
+			t.Errorf("info.Version = %q, want %q", info.Version, version.Version)
 		}
 	})
 }

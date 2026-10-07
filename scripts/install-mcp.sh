@@ -13,13 +13,13 @@ TARGET_BIN="${BIN_DEST}/${TARGET_NAME}"
 OPENCODE_CONFIG="${HOME}/.config/opencode/opencode.jsonc"
 
 echo "==> Building mcp-sonos..."
-mkdir -p "${SCRIPT_DIR}/bin"
-go build -o "${SCRIPT_DIR}/bin/mcp-sonos" "${SCRIPT_DIR}/cmd/mcp-sonos"
+make -C "${SCRIPT_DIR}" bin-mcp-sonos
 
 echo "==> Installing binary to ${TARGET_BIN}..."
 mkdir -p "${BIN_DEST}"
-cp "${SCRIPT_DIR}/bin/mcp-sonos" "${TARGET_BIN}"
-chmod +x "${TARGET_BIN}"
+cp "${SCRIPT_DIR}/bin/mcp-sonos" "${TARGET_BIN}.tmp"
+chmod +x "${TARGET_BIN}.tmp"
+mv -f "${TARGET_BIN}.tmp" "${TARGET_BIN}"
 
 if [ -f "${OPENCODE_CONFIG}" ]; then
     echo "==> Registering in OpenCode config: ${OPENCODE_CONFIG}..."
