@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Sonos S1/S2 Generation Classification & Guardrails:** Added hardware generation detection (`S1` vs `S2`) via `<swGen>` UPnP descriptor inspection and legacy model heuristic fallbacks, non-renderer bridge filtering (`BR100`, `ZB100`, `CR100/200`, `WD100`), and automatic rejection of invalid cross-generation grouping or playback on audio-incapable devices ([control-f1l]).
+- **Sonos Group Join & Leave Operations:** Added CLI commands `homectl sonos join <source> <target>` and `homectl sonos leave <speaker>`, exposed via `sonos_control` with action validation and cross-generation protection.
+- **Configurable API Server Host & Tailscale Guidance:** Added `-H / --host` flag and `api_host` config setting to `homectl serve` with automated Tailscale interface detection, loopback confinement, and 0.0.0.0 security advisories ([control-nxx]).
 - **Sonos Queue Management Suite:** Added `sonos_queue_edit` MCP tool and CLI subcommands `homectl sonos queue-remove`, `queue-clear`, and `queue-reorder` (with `--as-next` convenience and `--dry-run`), providing local queue editing via UPnP `RemoveTrackRangeFromQueue`, `RemoveAllTracksFromQueue`, and `ReorderTracksInQueue` ([control-znc], [control-6ht], [control-s5y]).
 - **Sonos Queue Playback Modes:** Added playback mode controls (shuffle, repeat mode, and crossfade) to `sonos_queue_edit` MCP tool and CLI `homectl sonos queue-mode` with state preservation across coordinator transitions ([control-abh]).
 - **Multi-Module Test Runner:** Updated `Makefile` test target to run test suites across the root workspace and submodules (`modules/core`, `modules/sonos`) in one command ([control-g7s]).
