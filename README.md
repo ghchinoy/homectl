@@ -258,6 +258,12 @@ Issue tracking in this repository is managed with [Beads (`bd`)](https://github.
 
 ---
 
+## Prior Art & Acknowledgments
+
+* [frankensonos](https://github.com/dickelstoneworth/frankensonos) by [@dickelstoneworth](https://github.com/dickelstoneworth) for Sonos S1/S2 hardware generation classification and non-renderer bridge detection heuristics.
+
+---
+
 ## License
 
 This project is licensed under the [Apache License, Version 2.0](LICENSE).

@@ -76,3 +76,9 @@ The Sonos module also powers conversational smart home audio on the **Jibo Socia
 * **Queue Seeking by Song/Artist:** Allows owners to jump to any track up to 100 positions ahead in the queue by speaking song titles or artist names (*"Play Such Great Heights in the office"*).
 * **Embodied Performance:** Jibo smiles, sways rhythmically (`cat="dance" filter="music, slowdance"`), and renders circular album cover art on its face while announcing tracks.
 
+---
+
+## Prior Art & Acknowledgments
+
+* **S1/S2 Detection Heuristics:** The model identification rules, `<swGen>` UPnP descriptor inspection, and non-renderer bridge filtering build upon prior art and research from [`frankensonos`](https://github.com/dickelstoneworth/frankensonos) by [@dickelstoneworth](https://github.com/dickelstoneworth).
+

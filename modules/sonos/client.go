@@ -79,6 +79,9 @@ type DeviceDetails struct {
 	IsRenderer  bool
 }
 
+// S1/S2 hardware classification and non-renderer bridge detection heuristics are
+// inspired by prior art from frankensonos (https://github.com/dickelstoneworth/frankensonos).
+
 // IsS1OnlyModel reports whether the model number can only ever run S1 firmware.
 func IsS1OnlyModel(modelNumber string) bool {
 	switch strings.ToUpper(strings.TrimSpace(modelNumber)) {
