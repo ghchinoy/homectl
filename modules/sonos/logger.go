@@ -19,9 +19,15 @@ func SetDefaultLogger(l core.Logger) {
 	defaultLogger = l
 }
 
-// GetDefaultLogger returns the package-level logger.
-func GetDefaultLogger() core.Logger {
+// DefaultLogger returns the package-level logger.
+func DefaultLogger() core.Logger {
 	return defaultLogger
+}
+
+// GetDefaultLogger returns the package-level logger.
+// Deprecated: use DefaultLogger instead.
+func GetDefaultLogger() core.Logger {
+	return DefaultLogger()
 }
 
 // SetDefaultStorage sets the package-level storage provider for caching.
@@ -33,9 +39,15 @@ func SetDefaultStorage(s core.Storage) {
 	defaultStorage = s
 }
 
-// GetDefaultStorage returns the package-level storage provider.
-func GetDefaultStorage() core.Storage {
+// DefaultStorage returns the package-level storage provider.
+func DefaultStorage() core.Storage {
 	return defaultStorage
+}
+
+// GetDefaultStorage returns the package-level storage provider.
+// Deprecated: use DefaultStorage instead.
+func GetDefaultStorage() core.Storage {
+	return DefaultStorage()
 }
 
 // SetDefaultSettings sets the package-level settings provider.
@@ -47,7 +59,13 @@ func SetDefaultSettings(s core.Settings) {
 	defaultSettings = s
 }
 
-// GetDefaultSettings returns the package-level settings provider.
-func GetDefaultSettings() core.Settings {
+// DefaultSettings returns the package-level settings provider.
+func DefaultSettings() core.Settings {
 	return defaultSettings
+}
+
+// GetDefaultSettings returns the package-level settings provider.
+// Deprecated: use DefaultSettings instead.
+func GetDefaultSettings() core.Settings {
+	return DefaultSettings()
 }

@@ -20,8 +20,8 @@ type Client struct {
 	conn  *websocket.Conn
 	mu    sync.Mutex
 
-	// OnEvent is called when a message is received from the panel
-	OnEvent func(msg map[string]interface{})
+	// OnEvent is called when a message is received from the panel.
+	OnEvent func(msg map[string]any)
 }
 
 // NewClient creates a new Qolsys client
@@ -58,10 +58,10 @@ func (c *Client) Connect(ctx context.Context) error {
 	return nil
 }
 
-// ReadLoop starts a loop to read messages from the panel
+// ReadLoop starts a loop to read messages from the panel.
 func (c *Client) ReadLoop(ctx context.Context) error {
 	for {
-		var msg map[string]interface{}
+		var msg map[string]any
 		err := wsjson.Read(ctx, c.conn, &msg)
 		if err != nil {
 			return err
@@ -73,8 +73,8 @@ func (c *Client) ReadLoop(ctx context.Context) error {
 	}
 }
 
-// Send sends a command to the panel
-func (c *Client) Send(ctx context.Context, action string, params map[string]interface{}) error {
+// Send sends a command to the panel.
+func (c *Client) Send(ctx context.Context, action string, params map[string]any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -82,7 +82,7 @@ func (c *Client) Send(ctx context.Context, action string, params map[string]inte
 		return fmt.Errorf("not connected")
 	}
 
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"action":   action,
 		"user_pin": c.token, // Some versions use token as pin
 		"version":  1,

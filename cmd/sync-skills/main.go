@@ -270,7 +270,7 @@ func validateScriptReferences(skillMDPath, skillDir string) error {
 	for _, m := range matches {
 		expectedPath := filepath.Join(skillDir, m)
 		if _, err := os.Stat(expectedPath); os.IsNotExist(err) {
-			return fmt.Errorf("SKILL.md references %q, but %s does not exist inside the bundle", m, expectedPath)
+			return fmt.Errorf("skill.md references %q, but %s does not exist inside the bundle", m, expectedPath)
 		}
 	}
 	return nil

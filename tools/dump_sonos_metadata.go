@@ -33,7 +33,7 @@ func main() {
 		"/MediaRenderer/AVTransport/Control",
 		"urn:schemas-upnp-org:service:AVTransport:1",
 		"GetPositionInfo",
-		map[string]interface{}{
+		map[string]any{
 			"InstanceID": 0,
 		})
 	if err != nil {
@@ -49,7 +49,7 @@ func main() {
 		"/MediaRenderer/AVTransport/Control",
 		"urn:schemas-upnp-org:service:AVTransport:1",
 		"GetMediaInfo",
-		map[string]interface{}{
+		map[string]any{
 			"InstanceID": 0,
 		})
 	if err != nil {

@@ -63,20 +63,20 @@ func TestSubcommandArgValidation(t *testing.T) {
 	t.Run("sonos play requires 1 arg", func(t *testing.T) {
 		cmd, _, err := rootCmd.Find([]string{"sonos", "play"})
 		if err != nil || cmd == nil {
-			t.Fatalf("could not find sonos play: %v", err)
+			t.Fatalf("rootCmd.Find(sonos, play) error = %v, want nil", err)
 		}
 		if err := cmd.Args(cmd, []string{}); err == nil {
-			t.Error("expected error when sonos play called with 0 args, got nil")
+			t.Error("cmd.Args(cmd, []) = nil, want error")
 		}
 	})
 
 	t.Run("lutron set level requires 2 args", func(t *testing.T) {
 		cmd, _, err := rootCmd.Find([]string{"lutron", "set", "level"})
 		if err != nil || cmd == nil {
-			t.Fatalf("could not find lutron set level: %v", err)
+			t.Fatalf("rootCmd.Find(lutron, set, level) error = %v, want nil", err)
 		}
 		if err := cmd.Args(cmd, []string{"/zone/1"}); err == nil {
-			t.Error("expected error when lutron set level called with 1 arg, got nil")
+			t.Error("cmd.Args(cmd, [/zone/1]) = nil, want error")
 		}
 	})
 }
@@ -85,20 +85,20 @@ func TestResolveLutronBridgePrecedence(t *testing.T) {
 	// 1. Explicit flag takes precedence
 	addr, err := ResolveLutronBridge("10.0.0.99")
 	if err != nil || addr != "10.0.0.99" {
-		t.Errorf("expected explicit flag '10.0.0.99', got %q, err: %v", addr, err)
+		t.Errorf("ResolveLutronBridge(%q) = %q, want %q (err: %v)", "10.0.0.99", addr, "10.0.0.99", err)
 	}
 
 	// 2. Environment variable
 	t.Setenv("HOMECTL_LUTRON_BRIDGE", "10.0.0.50")
 	addr, err = ResolveLutronBridge("")
 	if err != nil || addr != "10.0.0.50" {
-		t.Errorf("expected env var '10.0.0.50', got %q, err: %v", addr, err)
+		t.Errorf("ResolveLutronBridge(%q) with env = %q, want %q (err: %v)", "", addr, "10.0.0.50", err)
 	}
 
 	// Explicit flag still beats env var
 	addr, err = ResolveLutronBridge("10.0.0.99")
 	if err != nil || addr != "10.0.0.99" {
-		t.Errorf("expected flag '10.0.0.99' to override env, got %q", addr)
+		t.Errorf("ResolveLutronBridge(%q) with override = %q, want %q (err: %v)", "10.0.0.99", addr, "10.0.0.99", err)
 	}
 }
 
@@ -423,31 +423,31 @@ func TestValidationRanges(t *testing.T) {
 	t.Run("set level invalid range", func(t *testing.T) {
 		cmd, _, _ := rootCmd.Find([]string{"lutron", "set", "level"})
 		if err := cmd.RunE(cmd, []string{"/zone/1", "150"}); err == nil {
-			t.Error("expected error for level 150, got nil")
+			t.Error("cmd.RunE(/zone/1, 150) = nil, want error")
 		}
 		if err := cmd.RunE(cmd, []string{"/zone/1", "-10"}); err == nil {
-			t.Error("expected error for level -10, got nil")
+			t.Error("cmd.RunE(/zone/1, -10) = nil, want error")
 		}
 	})
 
 	t.Run("set all invalid range", func(t *testing.T) {
 		cmd, _, _ := rootCmd.Find([]string{"lutron", "set", "all"})
 		if err := cmd.RunE(cmd, []string{"105"}); err == nil {
-			t.Error("expected error for level 105, got nil")
+			t.Error("cmd.RunE(105) = nil, want error")
 		}
 	})
 
 	t.Run("sonos volume invalid range", func(t *testing.T) {
 		cmd, _, _ := rootCmd.Find([]string{"sonos", "volume"})
 		if err := cmd.RunE(cmd, []string{"192.168.1.1", "101"}); err == nil {
-			t.Error("expected error for volume 101, got nil")
+			t.Error("cmd.RunE(192.168.1.1, 101) = nil, want error")
 		}
 	})
 
 	t.Run("sonos play-stream invalid scheme", func(t *testing.T) {
 		cmd, _, _ := rootCmd.Find([]string{"sonos", "play-stream"})
 		if err := cmd.RunE(cmd, []string{"192.168.1.1", "ftp://example.com/audio.mp3"}); err == nil {
-			t.Error("expected error for ftp scheme, got nil")
+			t.Error("cmd.RunE(ftp://...) = nil, want error")
 		}
 	})
 
@@ -455,13 +455,13 @@ func TestValidationRanges(t *testing.T) {
 		cmd, _, _ := rootCmd.Find([]string{"sonos", "seek"})
 		// Neither flag
 		if err := cmd.RunE(cmd, []string{"192.168.1.1"}); err == nil {
-			t.Error("expected error when neither --track nor --time is specified, got nil")
+			t.Error("cmd.RunE without --track or --time = nil, want error")
 		}
 		// Both flags
 		_ = cmd.Flags().Set("track", "2")
 		_ = cmd.Flags().Set("time", "1:00")
 		if err := cmd.RunE(cmd, []string{"192.168.1.1"}); err == nil {
-			t.Error("expected error when both --track and --time are specified, got nil")
+			t.Error("cmd.RunE with both --track and --time = nil, want error")
 		}
 		_ = cmd.Flags().Set("track", "0")
 		_ = cmd.Flags().Set("time", "")
@@ -472,7 +472,7 @@ func TestValidationRanges(t *testing.T) {
 		// Missing track
 		_ = cmd.Flags().Set("track", "0")
 		if err := cmd.RunE(cmd, []string{"192.168.1.1"}); err == nil {
-			t.Error("expected error when --track is 0, got nil")
+			t.Error("cmd.RunE with --track 0 = nil, want error")
 		}
 	})
 
@@ -482,20 +482,20 @@ func TestValidationRanges(t *testing.T) {
 		_ = cmd.Flags().Set("track", "0")
 		_ = cmd.Flags().Set("insert-before", "2")
 		if err := cmd.RunE(cmd, []string{"192.168.1.1"}); err == nil {
-			t.Error("expected error when --track is 0, got nil")
+			t.Error("cmd.RunE with --track 0 = nil, want error")
 		}
 		// Neither insert-before nor as-next
 		_ = cmd.Flags().Set("track", "3")
 		_ = cmd.Flags().Set("insert-before", "0")
 		_ = cmd.Flags().Set("as-next", "false")
 		if err := cmd.RunE(cmd, []string{"192.168.1.1"}); err == nil {
-			t.Error("expected error when neither --insert-before nor --as-next is specified, got nil")
+			t.Error("cmd.RunE without --insert-before or --as-next = nil, want error")
 		}
 		// Both insert-before and as-next
 		_ = cmd.Flags().Set("insert-before", "2")
 		_ = cmd.Flags().Set("as-next", "true")
 		if err := cmd.RunE(cmd, []string{"192.168.1.1"}); err == nil {
-			t.Error("expected error when both --insert-before and --as-next are specified, got nil")
+			t.Error("cmd.RunE with both --insert-before and --as-next = nil, want error")
 		}
 		_ = cmd.Flags().Set("track", "0")
 		_ = cmd.Flags().Set("insert-before", "0")
@@ -506,26 +506,26 @@ func TestValidationRanges(t *testing.T) {
 		cmd, _, _ := rootCmd.Find([]string{"sonos", "queue-mode"})
 		// Neither flag specified
 		if err := cmd.RunE(cmd, []string{"192.168.1.1"}); err == nil {
-			t.Error("expected error when no flags are specified, got nil")
+			t.Error("cmd.RunE without mode flags = nil, want error")
 		}
 		// Invalid shuffle flag
 		_ = cmd.Flags().Set("shuffle", "invalid")
 		if err := cmd.RunE(cmd, []string{"192.168.1.1"}); err == nil {
-			t.Error("expected error for invalid --shuffle value, got nil")
+			t.Error("cmd.RunE with invalid --shuffle = nil, want error")
 		}
 		_ = cmd.Flags().Set("shuffle", "")
 
 		// Invalid repeat flag
 		_ = cmd.Flags().Set("repeat", "invalid")
 		if err := cmd.RunE(cmd, []string{"192.168.1.1"}); err == nil {
-			t.Error("expected error for invalid --repeat value, got nil")
+			t.Error("cmd.RunE with invalid --repeat = nil, want error")
 		}
 		_ = cmd.Flags().Set("repeat", "")
 
 		// Invalid crossfade flag
 		_ = cmd.Flags().Set("crossfade", "invalid")
 		if err := cmd.RunE(cmd, []string{"192.168.1.1"}); err == nil {
-			t.Error("expected error for invalid --crossfade value, got nil")
+			t.Error("cmd.RunE with invalid --crossfade = nil, want error")
 		}
 		_ = cmd.Flags().Set("crossfade", "")
 	})

@@ -1,26 +1,23 @@
 package config
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestGetPath(t *testing.T) {
-	p := GetPath("test.json")
-	if filepath.Base(p) != "test.json" {
-		t.Errorf("expected base name test.json, got %s", filepath.Base(p))
+	p := Path("test.json")
+	if got := filepath.Base(p); got != "test.json" {
+		t.Errorf("Path(%q) base = %q, want %q", "test.json", got, "test.json")
 	}
 }
 
 func TestNicknamesSaveAndLoad(t *testing.T) {
 	tempDir := t.TempDir()
-	origConfigHome := os.Getenv("XDG_CONFIG_HOME")
-	os.Setenv("XDG_CONFIG_HOME", tempDir)
-	defer os.Setenv("XDG_CONFIG_HOME", origConfigHome)
+	t.Setenv("XDG_CONFIG_HOME", tempDir)
 
 	if err := EnsureDir(); err != nil {
-		t.Fatalf("EnsureDir failed: %v", err)
+		t.Fatalf("EnsureDir() = %v, want nil", err)
 	}
 
 	testNicknames := map[string]string{
@@ -29,18 +26,18 @@ func TestNicknamesSaveAndLoad(t *testing.T) {
 	}
 
 	if err := SaveNicknames(testNicknames); err != nil {
-		t.Fatalf("SaveNicknames failed: %v", err)
+		t.Fatalf("SaveNicknames(%v) = %v, want nil", testNicknames, err)
 	}
 
 	loaded := LoadNicknames()
 	if len(loaded) != 2 {
-		t.Fatalf("expected 2 nicknames, got %d", len(loaded))
+		t.Fatalf("len(LoadNicknames()) = %d, want 2", len(loaded))
 	}
 
-	if loaded["192.168.1.100"] != "Living Room Sonos" {
-		t.Errorf("expected 'Living Room Sonos', got '%s'", loaded["192.168.1.100"])
+	if got := loaded["192.168.1.100"]; got != "Living Room Sonos" {
+		t.Errorf("LoadNicknames()[192.168.1.100] = %q, want %q", got, "Living Room Sonos")
 	}
-	if loaded["/zone/1"] != "Kitchen Pendant" {
-		t.Errorf("expected 'Kitchen Pendant', got '%s'", loaded["/zone/1"])
+	if got := loaded["/zone/1"]; got != "Kitchen Pendant" {
+		t.Errorf("LoadNicknames()[/zone/1] = %q, want %q", got, "Kitchen Pendant")
 	}
 }

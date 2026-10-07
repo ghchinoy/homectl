@@ -136,7 +136,9 @@ func (p *DiscoveryProvider) discoverMDNS(ctx context.Context, timeout time.Durat
 			}
 		}()
 
-		_ = resolver.Browse(browseCtx, svc, "local.", entries)
+		if err := resolver.Browse(browseCtx, svc, "local.", entries); err != nil {
+			close(entries)
+		}
 	}
 
 	<-browseCtx.Done()

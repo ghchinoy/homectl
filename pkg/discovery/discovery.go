@@ -20,21 +20,24 @@ type Manager struct {
 	providers []Provider
 }
 
-// NewManager creates a new discovery manager
+// NewManager creates a new discovery manager.
 func NewManager() *Manager {
-	return &Manager{
-		providers: make([]Provider, 0),
-	}
+	return &Manager{}
 }
 
-// AddProvider registers a new discovery provider
+// AddProvider registers a new discovery provider.
 func (m *Manager) AddProvider(p Provider) {
 	m.providers = append(m.providers, p)
 }
 
-// DiscoverAll runs discovery on all registered providers concurrently
+// DiscoverAll runs discovery on all registered providers concurrently.
 func (m *Manager) DiscoverAll(timeout time.Duration) []Device {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	return m.DiscoverAllContext(context.Background(), timeout)
+}
+
+// DiscoverAllContext runs discovery on all registered providers honoring the provided context.
+func (m *Manager) DiscoverAllContext(ctx context.Context, timeout time.Duration) []Device {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	var wg sync.WaitGroup

@@ -270,8 +270,13 @@ func NewClient(addr, certFile, keyFile, caFile string) (*Client, error) {
 	}, nil
 }
 
-// Connect opens the TLS connection to the bridge
+// Connect opens the TLS connection to the bridge.
 func (c *Client) Connect() error {
+	return c.ConnectContext(context.Background())
+}
+
+// ConnectContext opens the TLS connection to the bridge using the provided context.
+func (c *Client) ConnectContext(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -279,12 +284,22 @@ func (c *Client) Connect() error {
 		c.conn.Close()
 	}
 
-	conn, err := tls.Dial("tcp", c.addr, c.tlsConfig)
+	dialer := &tls.Dialer{
+		NetDialer: &net.Dialer{Timeout: 5 * time.Second},
+		Config:    c.tlsConfig,
+	}
+
+	conn, err := dialer.DialContext(ctx, "tcp", c.addr)
 	if err != nil {
 		return fmt.Errorf("failed to dial: %w", err)
 	}
-	c.conn = conn
-	c.reader = bufio.NewReader(conn)
+	tlsConn, ok := conn.(*tls.Conn)
+	if !ok {
+		conn.Close()
+		return fmt.Errorf("failed to establish TLS connection")
+	}
+	c.conn = tlsConn
+	c.reader = bufio.NewReader(tlsConn)
 	return nil
 }
 

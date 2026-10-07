@@ -16,8 +16,8 @@ type Status struct {
 	StatusText  string  `json:"status_text"`
 }
 
-// GetStatus connects to a Cast device and retrieves its current status
-func GetStatus(ip string) (Status, error) {
+// FetchStatus connects to a Cast device and retrieves its current status.
+func FetchStatus(ip string) (Status, error) {
 	// Use NewApplication to ensure internal fields (like Storage) are initialized
 	app := application.NewApplication(application.WithCacheDisabled(true))
 	if err := app.Start(ip, 8009); err != nil {
@@ -44,6 +44,12 @@ func GetStatus(ip string) (Status, error) {
 	}
 
 	return res, nil
+}
+
+// GetStatus connects to a Cast device and retrieves its current status.
+// Deprecated: use FetchStatus instead.
+func GetStatus(ip string) (Status, error) {
+	return FetchStatus(ip)
 }
 
 // Control sends a command to a Cast device

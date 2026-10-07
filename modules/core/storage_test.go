@@ -18,7 +18,7 @@ func TestMemoryStorage(t *testing.T) {
 	// Read non-existent file
 	_, err := s.ReadFile("nonexistent.json")
 	if !errors.Is(err, fs.ErrNotExist) {
-		t.Fatalf("expected ErrNotExist, got %v", err)
+		t.Fatalf("ReadFile(%q) error = %v, want %v", "nonexistent.json", err, fs.ErrNotExist)
 	}
 
 	// Write and read file
@@ -29,15 +29,15 @@ func TestMemoryStorage(t *testing.T) {
 
 	read, err := s.ReadFile("test.json")
 	if err != nil {
-		t.Fatalf("failed to read written file: %v", err)
+		t.Fatalf("ReadFile(%q) error = %v, want nil", "test.json", err)
 	}
 	if string(read) != string(content) {
-		t.Fatalf("expected %s, got %s", content, read)
+		t.Fatalf("ReadFile(%q) = %q, want %q", "test.json", string(read), string(content))
 	}
 
 	// Path test
 	if path := s.Path("test.json"); path != "/mem/test.json" {
-		t.Fatalf("unexpected path: %s", path)
+		t.Fatalf("Path(%q) = %q, want %q", "test.json", path, "/mem/test.json")
 	}
 }
 
@@ -46,25 +46,25 @@ func TestDirStorage(t *testing.T) {
 	s := NewDirStorage(tempDir)
 
 	if err := s.EnsureDir(); err != nil {
-		t.Fatalf("failed to ensure dir: %v", err)
+		t.Fatalf("EnsureDir() error = %v, want nil", err)
 	}
 
 	data := []byte("hello disk")
 	if err := s.WriteFile("test.txt", data, 0644); err != nil {
-		t.Fatalf("failed to write file: %v", err)
+		t.Fatalf("WriteFile(%q) error = %v, want nil", "test.txt", err)
 	}
 
 	read, err := s.ReadFile("test.txt")
 	if err != nil {
-		t.Fatalf("failed to read file: %v", err)
+		t.Fatalf("ReadFile(%q) error = %v, want nil", "test.txt", err)
 	}
 	if string(read) != string(data) {
-		t.Fatalf("expected %s, got %s", data, read)
+		t.Fatalf("ReadFile(%q) = %q, want %q", "test.txt", string(read), string(data))
 	}
 
 	expectedPath := filepath.Join(tempDir, "test.txt")
-	if s.Path("test.txt") != expectedPath {
-		t.Fatalf("expected path %s, got %s", expectedPath, s.Path("test.txt"))
+	if got := s.Path("test.txt"); got != expectedPath {
+		t.Fatalf("Path(%q) = %q, want %q", "test.txt", got, expectedPath)
 	}
 }
 

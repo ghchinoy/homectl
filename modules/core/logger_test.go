@@ -24,9 +24,9 @@ func TestStdLogger(t *testing.T) {
 
 	out := buf.String()
 	if !strings.Contains(out, "PREFIX: item 42") {
-		t.Fatalf("expected formatted output in buffer, got %q", out)
+		t.Fatalf("buf.String() = %q, want to contain %q", out, "PREFIX: item 42")
 	}
 	if !strings.Contains(out, "done") {
-		t.Fatalf("expected done in buffer, got %q", out)
+		t.Fatalf("buf.String() = %q, want to contain %q", out, "done")
 	}
 }

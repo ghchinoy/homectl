@@ -434,7 +434,10 @@ func (c *Client) SOAPAction(controlURL, serviceType, action string, args map[str
 	}
 
 	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading SOAP response: %w", err)
+	}
 	c.log().Printf("SOAP RESP (%d):\n%s\n", resp.StatusCode, string(b))
 
 	if resp.StatusCode != http.StatusOK {
@@ -516,11 +519,16 @@ func (c *Client) GetVolume() (int, error) {
 	}
 	defer body.Close()
 
-	data, _ := io.ReadAll(body)
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return 0, fmt.Errorf("reading volume response: %w", err)
+	}
 	var resp struct {
 		CurrentVolume int `xml:"Body>GetVolumeResponse>CurrentVolume"`
 	}
-	xml.Unmarshal(data, &resp)
+	if err := xml.Unmarshal(data, &resp); err != nil {
+		return 0, fmt.Errorf("unmarshaling volume response: %w", err)
+	}
 	return resp.CurrentVolume, nil
 }
 
@@ -541,11 +549,16 @@ func (c *Client) GetQueueCount() (int, error) {
 		return 0, err
 	}
 	defer body.Close()
-	data, _ := io.ReadAll(body)
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return 0, fmt.Errorf("reading queue count response: %w", err)
+	}
 	var resp struct {
 		TotalMatches int `xml:"Body>BrowseResponse>TotalMatches"`
 	}
-	xml.Unmarshal(data, &resp)
+	if err := xml.Unmarshal(data, &resp); err != nil {
+		return 0, fmt.Errorf("unmarshaling queue count response: %w", err)
+	}
 	return resp.TotalMatches, nil
 }
 
@@ -854,13 +867,18 @@ func (c *Client) GetTransportInfo() (TransportInfo, error) {
 	}
 	defer body.Close()
 
-	data, _ := io.ReadAll(body)
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return TransportInfo{}, fmt.Errorf("reading transport info response: %w", err)
+	}
 	var resp struct {
 		CurrentTransportState  string `xml:"Body>GetTransportInfoResponse>CurrentTransportState"`
 		CurrentTransportStatus string `xml:"Body>GetTransportInfoResponse>CurrentTransportStatus"`
 		CurrentSpeed           string `xml:"Body>GetTransportInfoResponse>CurrentSpeed"`
 	}
-	xml.Unmarshal(data, &resp)
+	if err := xml.Unmarshal(data, &resp); err != nil {
+		return TransportInfo{}, fmt.Errorf("unmarshaling transport info response: %w", err)
+	}
 	return TransportInfo{
 		CurrentTransportState:  resp.CurrentTransportState,
 		CurrentTransportStatus: resp.CurrentTransportStatus,
@@ -904,13 +922,18 @@ func (c *Client) GetMediaInfo() (MediaInfo, error) {
 	}
 	defer body.Close()
 
-	data, _ := io.ReadAll(body)
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return MediaInfo{}, fmt.Errorf("reading media info response: %w", err)
+	}
 	var resp struct {
 		NrTracks        int    `xml:"Body>GetMediaInfoResponse>NrTracks"`
 		CurrentURI      string `xml:"Body>GetMediaInfoResponse>CurrentURI"`
 		NextURIMetaData string `xml:"Body>GetMediaInfoResponse>NextURIMetaData"`
 	}
-	xml.Unmarshal(data, &resp)
+	if err := xml.Unmarshal(data, &resp); err != nil {
+		return MediaInfo{}, fmt.Errorf("unmarshaling media info response: %w", err)
+	}
 	return MediaInfo{
 		NrTracks:        resp.NrTracks,
 		CurrentURI:      resp.CurrentURI,
@@ -931,7 +954,10 @@ func (c *Client) GetPositionInfo() (PositionInfo, error) {
 	}
 	defer body.Close()
 
-	data, _ := io.ReadAll(body)
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return PositionInfo{}, fmt.Errorf("reading position info response: %w", err)
+	}
 	var resp struct {
 		Track         int    `xml:"Body>GetPositionInfoResponse>Track"`
 		TrackDuration string `xml:"Body>GetPositionInfoResponse>TrackDuration"`
@@ -939,7 +965,9 @@ func (c *Client) GetPositionInfo() (PositionInfo, error) {
 		TrackURI      string `xml:"Body>GetPositionInfoResponse>TrackURI"`
 		RelTime       string `xml:"Body>GetPositionInfoResponse>RelTime"`
 	}
-	xml.Unmarshal(data, &resp)
+	if err := xml.Unmarshal(data, &resp); err != nil {
+		return PositionInfo{}, fmt.Errorf("unmarshaling position info response: %w", err)
+	}
 	return PositionInfo{
 		Track:         resp.Track,
 		TrackDuration: resp.TrackDuration,
@@ -1039,7 +1067,10 @@ func (c *Client) GetPlayMode() (PlayModeSettings, error) {
 	}
 	defer body.Close()
 
-	data, _ := io.ReadAll(body)
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return PlayModeSettings{}, fmt.Errorf("reading transport settings: %w", err)
+	}
 	var resp struct {
 		PlayMode string `xml:"Body>GetTransportSettingsResponse>PlayMode"`
 	}
@@ -1118,7 +1149,10 @@ func (c *Client) GetCrossfadeMode() (bool, error) {
 	}
 	defer body.Close()
 
-	data, _ := io.ReadAll(body)
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return false, fmt.Errorf("reading crossfade mode: %w", err)
+	}
 	var resp struct {
 		CrossfadeMode string `xml:"Body>GetCrossfadeModeResponse>CrossfadeMode"`
 	}
@@ -1168,11 +1202,16 @@ func (c *Client) GetZoneGroupAttributes() (string, error) {
 	}
 	defer body.Close()
 
-	data, _ := io.ReadAll(body)
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return "", fmt.Errorf("reading zone group attributes: %w", err)
+	}
 	var resp struct {
 		CurrentZoneGroupName string `xml:"Body>GetZoneGroupAttributesResponse>CurrentZoneGroupName"`
 	}
-	xml.Unmarshal(data, &resp)
+	if err := xml.Unmarshal(data, &resp); err != nil {
+		return "", fmt.Errorf("unmarshaling zone group attributes: %w", err)
+	}
 	return resp.CurrentZoneGroupName, nil
 }
 
@@ -1187,13 +1226,20 @@ func (c *Client) GetZoneGroupState() (ZoneGroupState, error) {
 	}
 	defer body.Close()
 
-	data, _ := io.ReadAll(body)
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return ZoneGroupState{}, fmt.Errorf("reading zone group state: %w", err)
+	}
 	var resp struct {
 		XML string `xml:"Body>GetZoneGroupStateResponse>ZoneGroupState"`
 	}
-	xml.Unmarshal(data, &resp)
+	if err := xml.Unmarshal(data, &resp); err != nil {
+		return ZoneGroupState{}, fmt.Errorf("unmarshaling zone group state wrapper: %w", err)
+	}
 	var state ZoneGroupState
-	xml.Unmarshal([]byte(resp.XML), &state)
+	if err := xml.Unmarshal([]byte(resp.XML), &state); err != nil {
+		return ZoneGroupState{}, fmt.Errorf("unmarshaling zone group state XML: %w", err)
+	}
 	return state, nil
 }
 
@@ -1215,7 +1261,8 @@ type ZoneGroupState struct {
 	Groups []ZoneGroup `xml:"ZoneGroups>ZoneGroup"`
 }
 
-func (c *Client) ParseTrackMetadata(xmlStr string) (TrackMetadata, error) {
+// ParseTrackMetadata extracts track details from DIDL-Lite or Sonos XML metadata.
+func ParseTrackMetadata(xmlStr string) (TrackMetadata, error) {
 	if xmlStr == "" || xmlStr == "NOT_IMPLEMENTED" {
 		return TrackMetadata{}, nil
 	}
@@ -1256,6 +1303,10 @@ func (c *Client) ParseTrackMetadata(xmlStr string) (TrackMetadata, error) {
 	return meta, nil
 }
 
+// ParseTrackMetadata delegates to the package-level ParseTrackMetadata function.
+func (c *Client) ParseTrackMetadata(xmlStr string) (TrackMetadata, error) {
+	return ParseTrackMetadata(xmlStr)
+}
 
 // Favorite represents a pinned Sonos favorite item (playlist, album, radio station, etc.).
 type Favorite struct {

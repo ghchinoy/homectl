@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -15,11 +16,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ghchinoy/homectl/modules/sonos"
 	"github.com/ghchinoy/homectl/pkg/camera"
 	"github.com/ghchinoy/homectl/pkg/cast"
 	"github.com/ghchinoy/homectl/pkg/config"
 	"github.com/ghchinoy/homectl/pkg/discovery"
-	"github.com/ghchinoy/homectl/modules/sonos"
 	"github.com/spf13/cobra"
 )
 
@@ -36,7 +37,9 @@ var serveCmd = &cobra.Command{
 		}
 		defer client.Close()
 
-		http.HandleFunc("/api/lutron/devices", func(w http.ResponseWriter, r *http.Request) {
+		mux := http.NewServeMux()
+
+		mux.HandleFunc("/api/lutron/devices", func(w http.ResponseWriter, r *http.Request) {
 			devices, err := client.GetDevices()
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -56,7 +59,7 @@ var serveCmd = &cobra.Command{
 			json.NewEncoder(w).Encode(devices)
 		})
 
-		http.HandleFunc("/api/lutron/status", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/api/lutron/status", func(w http.ResponseWriter, r *http.Request) {
 			statuses, err := client.GetAllZoneStatuses()
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -66,7 +69,7 @@ var serveCmd = &cobra.Command{
 			json.NewEncoder(w).Encode(statuses)
 		})
 
-		http.HandleFunc("/api/debug/lutron", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/api/debug/lutron", func(w http.ResponseWriter, r *http.Request) {
 			statuses, err := client.GetAllZoneStatuses()
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -76,7 +79,7 @@ var serveCmd = &cobra.Command{
 			json.NewEncoder(w).Encode(statuses)
 		})
 
-		http.HandleFunc("/api/lutron/set", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/api/lutron/set", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -96,7 +99,7 @@ var serveCmd = &cobra.Command{
 			w.WriteHeader(http.StatusOK)
 		})
 
-		http.HandleFunc("/api/lutron/all", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/api/lutron/all", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -115,7 +118,7 @@ var serveCmd = &cobra.Command{
 			w.WriteHeader(http.StatusOK)
 		})
 
-		http.HandleFunc("/api/sonos/devices", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/api/sonos/devices", func(w http.ResponseWriter, r *http.Request) {
 			devices, err := sonos.LoadCache()
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -144,9 +147,9 @@ var serveCmd = &cobra.Command{
 			json.NewEncoder(w).Encode(results)
 		})
 
-		http.HandleFunc("/api/sonos/status", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/api/sonos/status", func(w http.ResponseWriter, r *http.Request) {
 			devices, _ := sonos.LoadCache()
-			results := make(map[string]interface{})
+			results := make(map[string]any)
 			for _, d := range devices {
 				client := sonos.NewClient(d.IP)
 				transport, _ := client.GetTransportInfo()
@@ -154,7 +157,7 @@ var serveCmd = &cobra.Command{
 				meta, _ := client.ParseTrackMetadata(pos.TrackMetaData)
 				vol, _ := client.GetVolume()
 
-				results[d.IP] = map[string]interface{}{
+				results[d.IP] = map[string]any{
 					"status":    transport.CurrentTransportState,
 					"volume":    vol,
 					"title":     meta.Title,
@@ -167,7 +170,7 @@ var serveCmd = &cobra.Command{
 			json.NewEncoder(w).Encode(results)
 		})
 
-		http.HandleFunc("/api/sonos/control", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/api/sonos/control", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -213,7 +216,7 @@ var serveCmd = &cobra.Command{
 			w.WriteHeader(http.StatusOK)
 		})
 
-		http.HandleFunc("/api/sonos/favorites", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/api/sonos/favorites", func(w http.ResponseWriter, r *http.Request) {
 			ip := r.URL.Query().Get("ip")
 			if ip == "" {
 				devices, _ := sonos.LoadCache()
@@ -240,7 +243,7 @@ var serveCmd = &cobra.Command{
 			})
 		})
 
-		http.HandleFunc("/api/sonos/play-favorite", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/api/sonos/play-favorite", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -273,7 +276,7 @@ var serveCmd = &cobra.Command{
 			})
 		})
 
-		http.HandleFunc("/api/sonos/services", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/api/sonos/services", func(w http.ResponseWriter, r *http.Request) {
 			ip := r.URL.Query().Get("ip")
 			if ip == "" {
 				devices, _ := sonos.LoadCache()
@@ -308,7 +311,7 @@ var serveCmd = &cobra.Command{
 			})
 		})
 
-		http.HandleFunc("/api/sonos/play-stream", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/api/sonos/play-stream", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -349,7 +352,7 @@ var serveCmd = &cobra.Command{
 			})
 		})
 
-		http.HandleFunc("/api/sonos/queue-add", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/api/sonos/queue-add", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -387,7 +390,7 @@ var serveCmd = &cobra.Command{
 			})
 		})
 
-		http.HandleFunc("/api/sonos/queue", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/api/sonos/queue", func(w http.ResponseWriter, r *http.Request) {
 			ip := r.URL.Query().Get("ip")
 			if ip == "" {
 				devices, _ := sonos.LoadCache()
@@ -424,7 +427,7 @@ var serveCmd = &cobra.Command{
 			json.NewEncoder(w).Encode(qRes)
 		})
 
-		http.HandleFunc("/api/security/cameras", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/api/security/cameras", func(w http.ResponseWriter, r *http.Request) {
 			manager := discovery.NewManager()
 			manager.AddProvider(&camera.DiscoveryProvider{})
 			devices := manager.DiscoverAll(2 * time.Second)
@@ -445,7 +448,7 @@ var serveCmd = &cobra.Command{
 			json.NewEncoder(w).Encode(results)
 		})
 
-		http.HandleFunc("/api/security/stream", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/api/security/stream", func(w http.ResponseWriter, r *http.Request) {
 			ip := r.URL.Query().Get("ip")
 			if ip == "" {
 				http.Error(w, "ip is required", http.StatusBadRequest)
@@ -492,7 +495,7 @@ var serveCmd = &cobra.Command{
 			cmd.Wait()
 		})
 
-		http.HandleFunc("/api/sonos/art", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/api/sonos/art", func(w http.ResponseWriter, r *http.Request) {
 			ip := r.URL.Query().Get("ip")
 			path := html.UnescapeString(r.URL.Query().Get("path"))
 			if ip == "" || path == "" {
@@ -556,7 +559,7 @@ var serveCmd = &cobra.Command{
 			io.Copy(w, resp.Body)
 		})
 
-		http.HandleFunc("/api/cast/devices", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/api/cast/devices", func(w http.ResponseWriter, r *http.Request) {
 			manager := discovery.NewManager()
 			manager.AddProvider(&cast.DiscoveryProvider{})
 			devices := manager.DiscoverAll(2 * time.Second)
@@ -564,7 +567,7 @@ var serveCmd = &cobra.Command{
 			json.NewEncoder(w).Encode(devices)
 		})
 
-		http.HandleFunc("/api/cast/status", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/api/cast/status", func(w http.ResponseWriter, r *http.Request) {
 			ip := r.URL.Query().Get("ip")
 			if ip == "" {
 				http.Error(w, "ip is required", http.StatusBadRequest)
@@ -579,7 +582,7 @@ var serveCmd = &cobra.Command{
 			json.NewEncoder(w).Encode(status)
 		})
 
-		http.HandleFunc("/api/cast/control", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/api/cast/control", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -603,10 +606,34 @@ var serveCmd = &cobra.Command{
 		})
 
 		uiDir, _ := cmd.Flags().GetString("ui")
-		http.Handle("/", http.FileServer(http.Dir(uiDir)))
+		mux.Handle("/", http.FileServer(http.Dir(uiDir)))
 
-		fmt.Printf("Starting homectl API server on :%d (serving UI from %s)\n", port, uiDir)
-		return http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
+		server := &http.Server{
+			Addr:              fmt.Sprintf(":%d", port),
+			Handler:           mux,
+			ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout:       30 * time.Second,
+			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       60 * time.Second,
+		}
+
+		errCh := make(chan error, 1)
+		go func() {
+			fmt.Printf("Starting homectl API server on :%d (serving UI from %s)\n", port, uiDir)
+			if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				errCh <- err
+			}
+			close(errCh)
+		}()
+
+		select {
+		case <-cmd.Context().Done():
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			return server.Shutdown(shutdownCtx)
+		case err := <-errCh:
+			return err
+		}
 	},
 }
 

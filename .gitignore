@@ -26,6 +26,7 @@ go_test/
 *.db
 .beads-credential-key
 .beads/proxieddb/
+.beads/.*
 *.gate.lock*
 
 # Documentation Site

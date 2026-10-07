@@ -542,7 +542,7 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 			return nil, nil, fmt.Errorf("failed to execute %s on %s: %w", action, args.IP, err)
 		}
 
-		msg := fmt.Sprintf("Successfully executed '%s' on Sonos speaker at %s", action, args.IP)
+		msg := fmt.Sprintf("Successfully executed %q on Sonos speaker at %s", action, args.IP)
 		outPayload := map[string]any{"status": "ok", "action": action, "ip": args.IP}
 		if action == "seek_track" {
 			msg = fmt.Sprintf("Successfully jumped to track %d on Sonos speaker at %s", args.Track, args.IP)

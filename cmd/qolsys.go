@@ -29,7 +29,7 @@ var qolsysMonitorCmd = &cobra.Command{
 		}
 
 		client := qolsys.NewClient(addr, token)
-		client.OnEvent = func(msg map[string]interface{}) {
+		client.OnEvent = func(msg map[string]any) {
 			fmt.Printf("EVENT: %v\n", msg)
 		}
 

@@ -78,10 +78,11 @@ func (l *GENAListener) Start() (string, error) {
 
 	go http.Serve(listener, mux)
 
-	return l.GetLocalIP(), nil
+	return l.CallbackURL(), nil
 }
 
-func (l *GENAListener) GetLocalIP() string {
+// CallbackURL returns the HTTP callback URL for GENA event notifications.
+func (l *GENAListener) CallbackURL() string {
 	settings := l.getSettings()
 	logger := l.getLogger()
 	if cb := settings.CallbackIP(); cb != "" {
@@ -110,14 +111,27 @@ func (l *GENAListener) GetLocalIP() string {
 	return ""
 }
 
+// GetLocalIP returns the callback URL.
+// Deprecated: use CallbackURL instead.
+func (l *GENAListener) GetLocalIP() string {
+	return l.CallbackURL()
+}
+
 func (l *GENAListener) handleNotify(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "NOTIFY" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 
-	body, _ := io.ReadAll(r.Body)
-	ip := strings.Split(r.RemoteAddr, ":")[0]
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "failed to read body", http.StatusBadRequest)
+		return
+	}
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		ip = r.RemoteAddr
+	}
 
 	l.getLogger().Printf("NOTIFY from %s\n", ip)
 
@@ -143,15 +157,13 @@ func (l *GENAListener) handleNotify(w http.ResponseWriter, r *http.Request) {
 			msg.Status = lc.TransportState[0].Val
 		}
 		if len(lc.CurrentTrackMetaData) > 0 && lc.CurrentTrackMetaData[0].Val != "" {
-			c := &Client{}
-			meta, err := c.ParseTrackMetadata(lc.CurrentTrackMetaData[0].Val)
+			meta, err := ParseTrackMetadata(lc.CurrentTrackMetaData[0].Val)
 			if err == nil {
 				msg.Metadata = meta
 			}
 		}
 		if len(lc.NextTrackMetaData) > 0 && lc.NextTrackMetaData[0].Val != "" {
-			c := &Client{}
-			meta, err := c.ParseTrackMetadata(lc.NextTrackMetaData[0].Val)
+			meta, err := ParseTrackMetadata(lc.NextTrackMetaData[0].Val)
 			if err == nil {
 				msg.NextMetadata = meta
 			}

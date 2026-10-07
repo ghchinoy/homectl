@@ -57,27 +57,26 @@ func TestParseTrackMetadata(t *testing.T) {
 		},
 	}
 
-	c := &Client{}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			meta, err := c.ParseTrackMetadata(tc.input)
+			meta, err := ParseTrackMetadata(tc.input)
 			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+				t.Fatalf("ParseTrackMetadata() unexpected error: %v", err)
 			}
 			if meta.Title != tc.expected.Title {
-				t.Errorf("Title: expected %q, got %q", tc.expected.Title, meta.Title)
+				t.Errorf("Title = %q, want %q", meta.Title, tc.expected.Title)
 			}
 			if meta.Artist != tc.expected.Artist {
-				t.Errorf("Artist: expected %q, got %q", tc.expected.Artist, meta.Artist)
+				t.Errorf("Artist = %q, want %q", meta.Artist, tc.expected.Artist)
 			}
 			if meta.Album != tc.expected.Album {
-				t.Errorf("Album: expected %q, got %q", tc.expected.Album, meta.Album)
+				t.Errorf("Album = %q, want %q", meta.Album, tc.expected.Album)
 			}
 			if meta.StreamContent != tc.expected.StreamContent {
-				t.Errorf("StreamContent: expected %q, got %q", tc.expected.StreamContent, meta.StreamContent)
+				t.Errorf("StreamContent = %q, want %q", meta.StreamContent, tc.expected.StreamContent)
 			}
 			if meta.AudioFormat != tc.expected.AudioFormat {
-				t.Errorf("AudioFormat: expected %q, got %q", tc.expected.AudioFormat, meta.AudioFormat)
+				t.Errorf("AudioFormat = %q, want %q", meta.AudioFormat, tc.expected.AudioFormat)
 			}
 		})
 	}
@@ -239,7 +238,6 @@ func TestCachePersistenceWithMemoryStorage(t *testing.T) {
 	}
 }
 
-
 func TestParseSSDPLocation(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -317,7 +315,6 @@ func TestSelectBestIP(t *testing.T) {
 		})
 	}
 }
-
 
 func TestParseFavorites(t *testing.T) {
 	xmlStr := `<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">
@@ -434,7 +431,6 @@ func TestResolveDefaultService(t *testing.T) {
 		t.Error("expected false for empty services list, got true")
 	}
 }
-
 
 func TestIsContainerFavorite(t *testing.T) {
 	tests := []struct {
@@ -1206,4 +1202,3 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
 }
-

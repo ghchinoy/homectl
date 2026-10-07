@@ -15,8 +15,8 @@ type AppConfig struct {
 	SonosDefaultService string `json:"sonos_default_service"` // Default music service (e.g. Spotify, Apple Music)
 }
 
-// GetConfigDir returns the path to the configuration directory (~/.config/homectl)
-func GetConfigDir() string {
+// ConfigDir returns the path to the configuration directory (~/.config/homectl).
+func ConfigDir() string {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		homeDir, _ := os.UserHomeDir()
@@ -25,38 +25,52 @@ func GetConfigDir() string {
 	return filepath.Join(configDir, "homectl")
 }
 
-// LoadConfig loads the application configuration from config.json
+// GetConfigDir returns the path to the configuration directory (~/.config/homectl).
+// Deprecated: use ConfigDir instead.
+func GetConfigDir() string {
+	return ConfigDir()
+}
+
+// LoadConfig loads the application configuration from config.json.
 func LoadConfig() AppConfig {
 	var cfg AppConfig
-	data, err := os.ReadFile(filepath.Join(GetConfigDir(), "config.json"))
+	data, err := os.ReadFile(filepath.Join(ConfigDir(), "config.json"))
 	if err == nil {
-		json.Unmarshal(data, &cfg)
+		_ = json.Unmarshal(data, &cfg)
 	}
 	return cfg
 }
 
-// GetPath returns a path relative to the configuration directory
+// Path returns a path relative to the configuration directory.
+func Path(filename string) string {
+	return filepath.Join(ConfigDir(), filename)
+}
+
+// GetPath returns a path relative to the configuration directory.
+// Deprecated: use Path instead.
 func GetPath(filename string) string {
-	return filepath.Join(GetConfigDir(), filename)
+	return Path(filename)
 }
 
-// EnsureDir ensures the configuration directory exists
+// EnsureDir ensures the configuration directory exists.
 func EnsureDir() error {
-	return os.MkdirAll(GetConfigDir(), 0700)
+	return os.MkdirAll(ConfigDir(), 0700)
 }
 
-// LoadNicknames loads the device nicknames from nicknames.json
+// LoadNicknames loads the device nicknames from nicknames.json.
 func LoadNicknames() map[string]string {
 	data, err := os.ReadFile(GetPath("nicknames.json"))
 	if err != nil {
 		return make(map[string]string)
 	}
 	var nicknames map[string]string
-	json.Unmarshal(data, &nicknames)
+	if err := json.Unmarshal(data, &nicknames); err != nil || nicknames == nil {
+		return make(map[string]string)
+	}
 	return nicknames
 }
 
-// SaveNicknames saves the device nicknames to nicknames.json
+// SaveNicknames saves the device nicknames to nicknames.json.
 func SaveNicknames(nicknames map[string]string) error {
 	data, err := json.MarshalIndent(nicknames, "", "  ")
 	if err != nil {

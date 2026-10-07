@@ -46,11 +46,17 @@ type Device struct {
 	Timestamp uint32
 }
 
+// handshakePacket is the 32-byte Mi Home protocol hello/handshake packet.
+var handshakePacket = []byte{
+	0x21, 0x31, 0x00, 0x20,
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	0xff, 0xff, 0xff, 0xff,
+}
+
 // Discover sends a handshake packet to the broadcast address to find devices
 func Discover(timeout time.Duration) ([]Device, error) {
-	// 32 bytes of 0xff is the miio hello/handshake packet
-	handshake, _ := hex.DecodeString("21310020ffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
-
 	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
 	if err != nil {
 		return nil, err
@@ -66,7 +72,7 @@ func Discover(timeout time.Duration) ([]Device, error) {
 	for _, addr := range broadcasts {
 		dest, err := net.ResolveUDPAddr("udp4", addr+":54321")
 		if err == nil {
-			conn.WriteToUDP(handshake, dest)
+			_, _ = conn.WriteToUDP(handshakePacket, dest)
 		}
 	}
 

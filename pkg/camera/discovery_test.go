@@ -41,7 +41,6 @@ func TestIsPrivateIPv4(t *testing.T) {
 	}
 }
 
-
 func TestScanSubnetRTSP(t *testing.T) {
 	provider := &DiscoveryProvider{}
 	foundIPs := make(map[string]bool)
@@ -58,27 +57,27 @@ func TestScanSubnetRTSP(t *testing.T) {
 		return nil, errors.New("connection refused")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 
 	provider.scanSubnetRTSP(ctx, "192.168.1.", mockDialer, foundIPs, &devices, &mu)
 
 	if len(devices) != 1 {
-		t.Fatalf("expected 1 device, got %d", len(devices))
+		t.Fatalf("scanSubnetRTSP() found %d devices, want 1", len(devices))
 	}
 	if devices[0].IP != "192.168.1.42" {
-		t.Errorf("expected IP 192.168.1.42, got %s", devices[0].IP)
+		t.Errorf("devices[0].IP = %s, want %s", devices[0].IP, "192.168.1.42")
 	}
 	if devices[0].Provider != "camera" || devices[0].Type != "Camera" {
-		t.Errorf("unexpected device metadata: %+v", devices[0])
+		t.Errorf("devices[0] metadata = %+v, want Camera provider and type", devices[0])
 	}
 	if !foundIPs["192.168.1.42"] {
-		t.Errorf("expected 192.168.1.42 to be recorded in foundIPs")
+		t.Errorf("foundIPs[%q] = false, want true", "192.168.1.42")
 	}
 
 	// Test deduplication
 	provider.scanSubnetRTSP(ctx, "192.168.1.", mockDialer, foundIPs, &devices, &mu)
 	if len(devices) != 1 {
-		t.Errorf("expected still 1 device after deduplication, got %d", len(devices))
+		t.Errorf("scanSubnetRTSP() after rerun found %d devices, want 1", len(devices))
 	}
 }

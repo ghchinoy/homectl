@@ -43,11 +43,12 @@ func (p *DiscoveryProvider) Discover(ctx context.Context) ([]discovery.Device, e
 	}
 
 	entries := make(chan *zeroconf.ServiceEntry)
-	browseCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	browseCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	err = resolver.Browse(browseCtx, "_googlecast._tcp", "local.", entries)
 	if err != nil {
+		close(entries)
 		return nil, err
 	}
 

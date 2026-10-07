@@ -28,7 +28,7 @@ type MockClient struct {
 	// follower whose GetCoordinatorIP() redirects to that address.
 	coordinatorIP string
 	// zoneGroupState is returned verbatim by GetZoneGroupState().
-	zoneGroupState sonos.ZoneGroupState
+	zoneGroupState       sonos.ZoneGroupState
 	lastEnqueuedMetadata string
 	lastSeekTrack        int
 	lastSeekTarget       string
@@ -308,7 +308,7 @@ func setupTestSession(t *testing.T, mockClient *MockClient) (*mcp.ClientSession,
 // simulate multi-speaker topologies (e.g. stereo-pair follower -> coordinator).
 func setupTestSessionWithFactory(t *testing.T, factory ClientFactory) (*mcp.ClientSession, func()) {
 	t.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 
@@ -346,7 +346,7 @@ func TestListTools(t *testing.T) {
 	session, cleanup := setupTestSession(t, mock)
 	defer cleanup()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 
 	toolsResult, err := session.ListTools(ctx, nil)
@@ -386,7 +386,7 @@ func TestSonosListSpeakersTool(t *testing.T) {
 	session, cleanup := setupTestSession(t, mock)
 	defer cleanup()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
@@ -398,12 +398,12 @@ func TestSonosListSpeakersTool(t *testing.T) {
 	}
 
 	if len(res.Content) < 2 {
-		t.Fatalf("expected at least 2 content items, got %d", len(res.Content))
+		t.Fatalf("len(res.Content) = %d, want at least 2", len(res.Content))
 	}
 
 	textContent, ok := res.Content[1].(*mcp.TextContent)
 	if !ok {
-		t.Fatalf("expected TextContent, got %T", res.Content[1])
+		t.Fatalf("res.Content[1] type = %T, want *mcp.TextContent", res.Content[1])
 	}
 
 	var listResult ListSpeakersResult
@@ -412,14 +412,13 @@ func TestSonosListSpeakersTool(t *testing.T) {
 	}
 
 	if listResult.Count != 1 || len(listResult.Speakers) != 1 || listResult.Speakers[0].Name != "Office Speaker" {
-		t.Errorf("unexpected speakers returned: %+v", listResult)
+		t.Errorf("listResult = %+v, want 1 speaker named %q", listResult, "Office Speaker")
 	}
 
 	// Verify that structuredContent is an object/record (not a bare array) per SEP-2106
 	if res.StructuredContent != nil {
 		if _, ok := res.StructuredContent.(map[string]any); !ok {
-			t.Errorf("expected StructuredContent to be map[string]any (record/object), got %T: %+v",
-				res.StructuredContent, res.StructuredContent)
+			t.Errorf("StructuredContent type = %T, want map[string]any (record/object)", res.StructuredContent)
 		}
 	}
 }
@@ -443,7 +442,7 @@ func TestSonosGetNowPlayingTool(t *testing.T) {
 	session, cleanup := setupTestSession(t, mock)
 	defer cleanup()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
@@ -458,7 +457,7 @@ func TestSonosGetNowPlayingTool(t *testing.T) {
 
 	textContent, ok := res.Content[1].(*mcp.TextContent)
 	if !ok {
-		t.Fatalf("expected TextContent, got %T", res.Content[1])
+		t.Fatalf("res.Content[1] type = %T, want *mcp.TextContent", res.Content[1])
 	}
 
 	var nowPlaying NowPlayingResult
@@ -467,25 +466,25 @@ func TestSonosGetNowPlayingTool(t *testing.T) {
 	}
 
 	if nowPlaying.Title != "Take Five" || nowPlaying.Artist != "Dave Brubeck" || nowPlaying.Volume != 30 {
-		t.Errorf("unexpected now-playing result: %+v", nowPlaying)
+		t.Errorf("nowPlaying = %+v, want Take Five by Dave Brubeck at volume 30", nowPlaying)
 	}
-	if nowPlaying.QueueLength != 15 {
-		t.Errorf("expected QueueLength 15, got %d", nowPlaying.QueueLength)
+	if got := nowPlaying.QueueLength; got != 15 {
+		t.Errorf("nowPlaying.QueueLength = %d, want 15", got)
 	}
-	if nowPlaying.MediaURI != "x-rincon-queue:RINCON_123456#0" {
-		t.Errorf("expected MediaURI 'x-rincon-queue:RINCON_123456#0', got %s", nowPlaying.MediaURI)
+	if got := nowPlaying.MediaURI; got != "x-rincon-queue:RINCON_123456#0" {
+		t.Errorf("nowPlaying.MediaURI = %q, want %q", got, "x-rincon-queue:RINCON_123456#0")
 	}
-	if nowPlaying.PlayMode != "SHUFFLE" {
-		t.Errorf("expected PlayMode 'SHUFFLE', got %s", nowPlaying.PlayMode)
+	if got := nowPlaying.PlayMode; got != "SHUFFLE" {
+		t.Errorf("nowPlaying.PlayMode = %q, want %q", got, "SHUFFLE")
 	}
 	if !nowPlaying.Shuffle {
-		t.Errorf("expected Shuffle true, got false")
+		t.Errorf("nowPlaying.Shuffle = false, want true")
 	}
-	if nowPlaying.Repeat != "all" {
-		t.Errorf("expected Repeat 'all', got %s", nowPlaying.Repeat)
+	if got := nowPlaying.Repeat; got != "all" {
+		t.Errorf("nowPlaying.Repeat = %q, want %q", got, "all")
 	}
 	if !nowPlaying.Crossfade {
-		t.Errorf("expected Crossfade true, got false")
+		t.Errorf("nowPlaying.Crossfade = false, want true")
 	}
 }
 
@@ -494,7 +493,7 @@ func TestSonosControlTool(t *testing.T) {
 	session, cleanup := setupTestSession(t, mock)
 	defer cleanup()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 
 	// 1. Play
@@ -508,8 +507,8 @@ func TestSonosControlTool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CallTool play failed: %v", err)
 	}
-	if mock.state != "PLAYING" {
-		t.Errorf("expected state PLAYING, got %s", mock.state)
+	if got := mock.state; got != "PLAYING" {
+		t.Errorf("mock.state = %q, want %q", got, "PLAYING")
 	}
 
 	// 2. Pause
@@ -523,8 +522,8 @@ func TestSonosControlTool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CallTool pause failed: %v", err)
 	}
-	if mock.state != "PAUSED_PLAYBACK" {
-		t.Errorf("expected state PAUSED_PLAYBACK, got %s", mock.state)
+	if got := mock.state; got != "PAUSED_PLAYBACK" {
+		t.Errorf("mock.state = %q, want %q", got, "PAUSED_PLAYBACK")
 	}
 
 	// 3. Seek track
@@ -539,8 +538,8 @@ func TestSonosControlTool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CallTool seek_track failed: %v", err)
 	}
-	if mock.lastSeekTrack != 4 {
-		t.Errorf("expected lastSeekTrack 4, got %d", mock.lastSeekTrack)
+	if got := mock.lastSeekTrack; got != 4 {
+		t.Errorf("mock.lastSeekTrack = %d, want 4", got)
 	}
 
 	// 4. Seek track invalid (track < 1)
@@ -553,7 +552,7 @@ func TestSonosControlTool(t *testing.T) {
 		},
 	})
 	if err == nil && (res == nil || !res.IsError) {
-		t.Error("expected error or IsError=true for seek_track with track 0, got success")
+		t.Error("CallTool seek_track with track 0 returned success, want error")
 	}
 
 	// 5. Seek time
@@ -568,8 +567,8 @@ func TestSonosControlTool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CallTool seek_time failed: %v", err)
 	}
-	if mock.lastSeekTarget != "0:02:15" {
-		t.Errorf("expected lastSeekTarget '0:02:15', got %s", mock.lastSeekTarget)
+	if got := mock.lastSeekTarget; got != "0:02:15" {
+		t.Errorf("mock.lastSeekTarget = %q, want %q", got, "0:02:15")
 	}
 
 	// 6. Seek time invalid (empty target)
@@ -582,7 +581,7 @@ func TestSonosControlTool(t *testing.T) {
 		},
 	})
 	if err == nil && (res == nil || !res.IsError) {
-		t.Error("expected error or IsError=true for seek_time with empty target, got success")
+		t.Error("CallTool seek_time with empty target returned success, want error")
 	}
 
 	// 7. Invalid action
@@ -594,7 +593,7 @@ func TestSonosControlTool(t *testing.T) {
 		},
 	})
 	if err == nil && (res == nil || !res.IsError) {
-		t.Fatal("expected error or IsError=true for invalid action, got success")
+		t.Fatal("CallTool with invalid action returned success, want error")
 	}
 }
 
@@ -603,7 +602,7 @@ func TestSonosSetVolumeTool(t *testing.T) {
 	session, cleanup := setupTestSession(t, mock)
 	defer cleanup()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 
 	// 1. Absolute volume
@@ -617,8 +616,8 @@ func TestSonosSetVolumeTool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CallTool absolute volume failed: %v", err)
 	}
-	if mock.volume != 45 {
-		t.Errorf("expected volume 45, got %d", mock.volume)
+	if got := mock.volume; got != 45 {
+		t.Errorf("mock.volume = %d, want 45", got)
 	}
 
 	// 2. Relative delta (+10)
@@ -632,8 +631,8 @@ func TestSonosSetVolumeTool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CallTool delta +10 failed: %v", err)
 	}
-	if mock.volume != 55 {
-		t.Errorf("expected volume 55, got %d", mock.volume)
+	if got := mock.volume; got != 55 {
+		t.Errorf("mock.volume = %d, want 55", got)
 	}
 
 	// 3. Clamping to 100
@@ -647,8 +646,8 @@ func TestSonosSetVolumeTool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CallTool clamp to 100 failed: %v", err)
 	}
-	if mock.volume != 100 {
-		t.Errorf("expected volume 100, got %d", mock.volume)
+	if got := mock.volume; got != 100 {
+		t.Errorf("mock.volume = %d, want 100", got)
 	}
 }
 
@@ -686,7 +685,7 @@ func TestSonosGetNowPlayingFollowerRedirect(t *testing.T) {
 	session, cleanup := setupTestSessionWithFactory(t, factory)
 	defer cleanup()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
@@ -701,7 +700,7 @@ func TestSonosGetNowPlayingFollowerRedirect(t *testing.T) {
 
 	textContent, ok := res.Content[1].(*mcp.TextContent)
 	if !ok {
-		t.Fatalf("expected TextContent, got %T", res.Content[1])
+		t.Fatalf("res.Content[1] type = %T, want *mcp.TextContent", res.Content[1])
 	}
 
 	var np NowPlayingResult
@@ -710,22 +709,22 @@ func TestSonosGetNowPlayingFollowerRedirect(t *testing.T) {
 	}
 
 	if !np.IsFollower {
-		t.Errorf("expected IsFollower=true for follower query, got false: %+v", np)
+		t.Errorf("np.IsFollower = false, want true: %+v", np)
 	}
-	if np.CoordinatorIP != coordinatorIP {
-		t.Errorf("expected CoordinatorIP=%s, got %q", coordinatorIP, np.CoordinatorIP)
+	if got := np.CoordinatorIP; got != coordinatorIP {
+		t.Errorf("np.CoordinatorIP = %q, want %q", got, coordinatorIP)
 	}
-	if np.IP != coordinatorIP {
-		t.Errorf("expected reported IP to redirect to coordinator %s, got %q", coordinatorIP, np.IP)
+	if got := np.IP; got != coordinatorIP {
+		t.Errorf("np.IP = %q, want coordinator %q", got, coordinatorIP)
 	}
-	if np.State != "STOPPED" {
-		t.Errorf("expected authoritative State=STOPPED from coordinator, got %q", np.State)
+	if got := np.State; got != "STOPPED" {
+		t.Errorf("np.State = %q, want %q", got, "STOPPED")
 	}
 	if np.Title != "Poison" || np.Artist != "Alice Cooper" {
-		t.Errorf("expected coordinator track 'Poison' by 'Alice Cooper', got %q by %q", np.Title, np.Artist)
+		t.Errorf("np track = %q by %q, want %q by %q", np.Title, np.Artist, "Poison", "Alice Cooper")
 	}
-	if np.QueueLength != 8 {
-		t.Errorf("expected coordinator QueueLength 8, got %d", np.QueueLength)
+	if got := np.QueueLength; got != 8 {
+		t.Errorf("np.QueueLength = %d, want 8", got)
 	}
 }
 
@@ -758,7 +757,7 @@ func TestSonosGetTopologyTool(t *testing.T) {
 	session, cleanup := setupTestSession(t, mock)
 	defer cleanup()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
@@ -773,7 +772,7 @@ func TestSonosGetTopologyTool(t *testing.T) {
 
 	textContent, ok := res.Content[1].(*mcp.TextContent)
 	if !ok {
-		t.Fatalf("expected TextContent, got %T", res.Content[1])
+		t.Fatalf("res.Content[1] type = %T, want *mcp.TextContent", res.Content[1])
 	}
 
 	var topo TopologyResult
@@ -782,24 +781,24 @@ func TestSonosGetTopologyTool(t *testing.T) {
 	}
 
 	if topo.Count != 2 || len(topo.Groups) != 2 {
-		t.Fatalf("expected 2 groups, got %+v", topo)
+		t.Fatalf("topo.Count = %d (len = %d), want 2 groups: %+v", topo.Count, len(topo.Groups), topo)
 	}
 
 	pair := topo.Groups[0]
 	if !pair.IsPair {
-		t.Errorf("expected first group to be a stereo pair, got IsPair=false")
+		t.Errorf("pair.IsPair = false, want true")
 	}
-	if len(pair.Members) != 2 {
-		t.Fatalf("expected 2 members in pair, got %d", len(pair.Members))
+	if got := len(pair.Members); got != 2 {
+		t.Fatalf("len(pair.Members) = %d, want 2", got)
 	}
 	var coordFound bool
 	for _, m := range pair.Members {
 		if m.UUID == pair.Coordinator {
 			if !m.IsCoordinator {
-				t.Errorf("coordinator member %s not flagged IsCoordinator", m.UUID)
+				t.Errorf("coordinator member %s IsCoordinator = false, want true", m.UUID)
 			}
-			if m.IP != "192.168.1.99" {
-				t.Errorf("expected coordinator IP 192.168.1.99, got %q", m.IP)
+			if got := m.IP; got != "192.168.1.99" {
+				t.Errorf("coordinator member IP = %q, want %q", got, "192.168.1.99")
 			}
 			coordFound = true
 		}
@@ -809,24 +808,23 @@ func TestSonosGetTopologyTool(t *testing.T) {
 	}
 
 	if topo.Groups[1].IsPair {
-		t.Error("expected standalone Kitchen group to not be a pair")
+		t.Error("Kitchen group IsPair = true, want false")
 	}
 
 	// StructuredContent must be an object/record per SEP-2106.
 	if res.StructuredContent != nil {
 		if _, ok := res.StructuredContent.(map[string]any); !ok {
-			t.Errorf("expected StructuredContent to be a record, got %T", res.StructuredContent)
+			t.Errorf("StructuredContent type = %T, want map[string]any", res.StructuredContent)
 		}
 	}
 }
-
 
 func TestSonosListFavoritesTool(t *testing.T) {
 	mock := &MockClient{ip: "192.168.1.120"}
 	session, cleanup := setupTestSession(t, mock)
 	defer cleanup()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
@@ -838,11 +836,11 @@ func TestSonosListFavoritesTool(t *testing.T) {
 	}
 
 	if len(res.Content) < 2 {
-		t.Fatalf("expected at least 2 content items, got %d", len(res.Content))
+		t.Fatalf("len(res.Content) = %d, want at least 2", len(res.Content))
 	}
 	textContent, ok := res.Content[1].(*mcp.TextContent)
 	if !ok {
-		t.Fatalf("expected TextContent, got %T", res.Content[1])
+		t.Fatalf("res.Content[1] type = %T, want *mcp.TextContent", res.Content[1])
 	}
 
 	var favResult ListFavoritesResult
@@ -851,16 +849,16 @@ func TestSonosListFavoritesTool(t *testing.T) {
 	}
 
 	if favResult.Count != 2 || len(favResult.Favorites) != 2 {
-		t.Fatalf("expected 2 favorites, got %+v", favResult)
+		t.Fatalf("favResult.Count = %d, want 2: %+v", favResult.Count, favResult)
 	}
-	if favResult.Favorites[0].Title != "Chill Vibes" {
-		t.Errorf("expected first favorite 'Chill Vibes', got %s", favResult.Favorites[0].Title)
+	if got := favResult.Favorites[0].Title; got != "Chill Vibes" {
+		t.Errorf("Favorites[0].Title = %q, want %q", got, "Chill Vibes")
 	}
 
 	// Verify structuredContent is a record/object (SEP-2106)
 	if res.StructuredContent != nil {
 		if _, ok := res.StructuredContent.(map[string]any); !ok {
-			t.Errorf("expected StructuredContent to be a record, got %T", res.StructuredContent)
+			t.Errorf("StructuredContent type = %T, want map[string]any", res.StructuredContent)
 		}
 	}
 }
@@ -870,7 +868,7 @@ func TestSonosPlayFavoriteTool(t *testing.T) {
 	session, cleanup := setupTestSession(t, mock)
 	defer cleanup()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
@@ -884,10 +882,10 @@ func TestSonosPlayFavoriteTool(t *testing.T) {
 		t.Fatalf("CallTool sonos_play_favorite failed: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("expected success, got error: %+v", res)
+		t.Fatalf("CallTool sonos_play_favorite returned error: %+v", res)
 	}
-	if mock.state != "PLAYING" {
-		t.Errorf("expected mock state PLAYING, got %s", mock.state)
+	if got := mock.state; got != "PLAYING" {
+		t.Errorf("mock.state = %q, want %q", got, "PLAYING")
 	}
 }
 
@@ -896,7 +894,7 @@ func TestSonosPlayStreamTool(t *testing.T) {
 	session, cleanup := setupTestSession(t, mock)
 	defer cleanup()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 
 	// 1. Valid stream
@@ -912,10 +910,10 @@ func TestSonosPlayStreamTool(t *testing.T) {
 		t.Fatalf("CallTool sonos_play_stream failed: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("expected success, got error: %+v", res)
+		t.Fatalf("CallTool sonos_play_stream returned error: %+v", res)
 	}
 	if mock.state != "PLAYING" || mock.title != "Live Radio" {
-		t.Errorf("unexpected state: state=%s, title=%s", mock.state, mock.title)
+		t.Errorf("playback state = (%q, %q), want (%q, %q)", mock.state, mock.title, "PLAYING", "Live Radio")
 	}
 
 	// 2. Invalid scheme (ftp)
@@ -927,7 +925,7 @@ func TestSonosPlayStreamTool(t *testing.T) {
 		},
 	})
 	if err == nil && (badRes == nil || !badRes.IsError) {
-		t.Error("expected error for invalid ftp scheme, got success")
+		t.Error("CallTool sonos_play_stream with invalid ftp scheme returned success, want error")
 	}
 }
 
@@ -936,7 +934,7 @@ func TestSonosAddToQueueTool(t *testing.T) {
 	session, cleanup := setupTestSession(t, mock)
 	defer cleanup()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 
 	const testMetadata = "<DIDL-Lite><item><dc:title>Test Track</dc:title></item></DIDL-Lite>"
@@ -953,10 +951,10 @@ func TestSonosAddToQueueTool(t *testing.T) {
 		t.Fatalf("CallTool sonos_add_to_queue failed: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("expected success, got error: %+v", res)
+		t.Fatalf("CallTool sonos_add_to_queue returned error: %+v", res)
 	}
-	if mock.lastEnqueuedMetadata != testMetadata {
-		t.Errorf("expected metadata %q, got %q", testMetadata, mock.lastEnqueuedMetadata)
+	if got := mock.lastEnqueuedMetadata; got != testMetadata {
+		t.Errorf("mock.lastEnqueuedMetadata = %q, want %q", got, testMetadata)
 	}
 }
 
@@ -965,7 +963,7 @@ func TestSonosListServicesTool(t *testing.T) {
 	session, cleanup := setupTestSession(t, mock)
 	defer cleanup()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
@@ -977,11 +975,11 @@ func TestSonosListServicesTool(t *testing.T) {
 	}
 
 	if len(res.Content) < 2 {
-		t.Fatalf("expected at least 2 content items, got %d", len(res.Content))
+		t.Fatalf("len(res.Content) = %d, want at least 2", len(res.Content))
 	}
 	textContent, ok := res.Content[1].(*mcp.TextContent)
 	if !ok {
-		t.Fatalf("expected TextContent, got %T", res.Content[1])
+		t.Fatalf("res.Content[1] type = %T, want *mcp.TextContent", res.Content[1])
 	}
 
 	var svcResult ListServicesResult
@@ -990,13 +988,13 @@ func TestSonosListServicesTool(t *testing.T) {
 	}
 
 	if svcResult.Count != 2 || len(svcResult.Services) != 2 {
-		t.Fatalf("expected 2 services, got %+v", svcResult)
+		t.Fatalf("svcResult.Count = %d, want 2: %+v", svcResult.Count, svcResult)
 	}
 
 	// Verify structuredContent is a record/object (SEP-2106)
 	if res.StructuredContent != nil {
 		if _, ok := res.StructuredContent.(map[string]any); !ok {
-			t.Errorf("expected StructuredContent to be a record, got %T", res.StructuredContent)
+			t.Errorf("StructuredContent type = %T, want map[string]any", res.StructuredContent)
 		}
 	}
 }
@@ -1006,7 +1004,7 @@ func TestSonosGetQueueTool(t *testing.T) {
 	session, cleanup := setupTestSession(t, mock)
 	defer cleanup()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
@@ -1021,15 +1019,15 @@ func TestSonosGetQueueTool(t *testing.T) {
 		t.Fatalf("CallTool sonos_get_queue failed: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("expected success, got error: %+v", res)
+		t.Fatalf("CallTool sonos_get_queue returned error: %+v", res)
 	}
 
 	if len(res.Content) < 2 {
-		t.Fatalf("expected at least 2 content items, got %d", len(res.Content))
+		t.Fatalf("len(res.Content) = %d, want at least 2", len(res.Content))
 	}
 	textContent, ok := res.Content[1].(*mcp.TextContent)
 	if !ok {
-		t.Fatalf("expected TextContent, got %T", res.Content[1])
+		t.Fatalf("res.Content[1] type = %T, want *mcp.TextContent", res.Content[1])
 	}
 
 	var queueResult sonos.QueueResult
@@ -1038,22 +1036,22 @@ func TestSonosGetQueueTool(t *testing.T) {
 	}
 
 	if queueResult.Returned != 2 || queueResult.TotalMatches != 25 {
-		t.Errorf("expected returned 2 and total_matches 25, got %+v", queueResult)
+		t.Errorf("queueResult returned/matches = (%d, %d), want (2, 25)", queueResult.Returned, queueResult.TotalMatches)
 	}
-	if len(queueResult.Items) != 2 {
-		t.Fatalf("expected 2 items, got %d", len(queueResult.Items))
+	if got := len(queueResult.Items); got != 2 {
+		t.Fatalf("len(queueResult.Items) = %d, want 2", got)
 	}
-	if queueResult.Items[0].Title != "Track One" {
-		t.Errorf("expected title 'Track One', got %s", queueResult.Items[0].Title)
+	if got := queueResult.Items[0].Title; got != "Track One" {
+		t.Errorf("Items[0].Title = %q, want %q", got, "Track One")
 	}
-	if queueResult.Items[0].Position != 1 {
-		t.Errorf("expected position 1, got %d", queueResult.Items[0].Position)
+	if got := queueResult.Items[0].Position; got != 1 {
+		t.Errorf("Items[0].Position = %d, want 1", got)
 	}
 
 	// Verify structuredContent is a record/object (SEP-2106)
 	if res.StructuredContent != nil {
 		if _, ok := res.StructuredContent.(map[string]any); !ok {
-			t.Errorf("expected StructuredContent to be a record, got %T", res.StructuredContent)
+			t.Errorf("StructuredContent type = %T, want map[string]any", res.StructuredContent)
 		}
 	}
 }
@@ -1063,7 +1061,7 @@ func TestSonosQueueEditTool(t *testing.T) {
 	session, cleanup := setupTestSession(t, mock)
 	defer cleanup()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 
 	// 1. Remove action
@@ -1080,10 +1078,10 @@ func TestSonosQueueEditTool(t *testing.T) {
 		t.Fatalf("CallTool remove failed: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("expected remove success, got error: %+v", res)
+		t.Fatalf("CallTool remove returned error: %+v", res)
 	}
 	if mock.lastRemoveStart != 3 || mock.lastRemoveCount != 2 {
-		t.Errorf("expected remove start 3 count 2, got start %d count %d", mock.lastRemoveStart, mock.lastRemoveCount)
+		t.Errorf("lastRemoveStart/Count = (%d, %d), want (3, 2)", mock.lastRemoveStart, mock.lastRemoveCount)
 	}
 
 	// 2. Remove missing track parameter
@@ -1096,7 +1094,7 @@ func TestSonosQueueEditTool(t *testing.T) {
 		},
 	})
 	if err == nil && (res == nil || !res.IsError) {
-		t.Error("expected error for remove action with track 0, got success")
+		t.Error("CallTool remove with track 0 returned success, want error")
 	}
 
 	// 3. Clear action
@@ -1111,10 +1109,10 @@ func TestSonosQueueEditTool(t *testing.T) {
 		t.Fatalf("CallTool clear failed: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("expected clear success, got error: %+v", res)
+		t.Fatalf("CallTool clear returned error: %+v", res)
 	}
 	if !mock.clearQueueCalled {
-		t.Error("expected clearQueueCalled to be true")
+		t.Error("mock.clearQueueCalled = false, want true")
 	}
 
 	// 4. Reorder action with insert_before
@@ -1132,10 +1130,10 @@ func TestSonosQueueEditTool(t *testing.T) {
 		t.Fatalf("CallTool reorder failed: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("expected reorder success, got error: %+v", res)
+		t.Fatalf("CallTool reorder returned error: %+v", res)
 	}
 	if mock.lastReorderStart != 5 || mock.lastReorderCount != 1 || mock.lastReorderInsert != 2 {
-		t.Errorf("expected reorder 5, 1, 2, got %d, %d, %d", mock.lastReorderStart, mock.lastReorderCount, mock.lastReorderInsert)
+		t.Errorf("reorder params = (%d, %d, %d), want (5, 1, 2)", mock.lastReorderStart, mock.lastReorderCount, mock.lastReorderInsert)
 	}
 
 	// 5. Reorder action with as_next: true
@@ -1152,11 +1150,11 @@ func TestSonosQueueEditTool(t *testing.T) {
 		t.Fatalf("CallTool reorder as_next failed: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("expected reorder as_next success, got error: %+v", res)
+		t.Fatalf("CallTool reorder as_next returned error: %+v", res)
 	}
 	// MockClient GetPositionInfo returns default Track 0, so 0 + 1 = 1
 	if mock.lastReorderStart != 8 || mock.lastReorderInsert != 1 {
-		t.Errorf("expected reorder as_next start 8 insert 1, got start %d insert %d", mock.lastReorderStart, mock.lastReorderInsert)
+		t.Errorf("reorder as_next start/insert = (%d, %d), want (8, 1)", mock.lastReorderStart, mock.lastReorderInsert)
 	}
 
 	// 6. Shuffle action (enable)
@@ -1172,13 +1170,13 @@ func TestSonosQueueEditTool(t *testing.T) {
 		t.Fatalf("CallTool shuffle failed: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("expected shuffle success, got error: %+v", res)
+		t.Fatalf("CallTool shuffle returned error: %+v", res)
 	}
 	if mock.lastSetShuffle == nil || !*mock.lastSetShuffle {
-		t.Errorf("expected lastSetShuffle true, got %+v", mock.lastSetShuffle)
+		t.Errorf("lastSetShuffle = %+v, want true", mock.lastSetShuffle)
 	}
-	if mock.lastSetPlayMode != sonos.PlayModeShuffleNoRepeat {
-		t.Errorf("expected lastSetPlayMode SHUFFLE_NOREPEAT, got %s", mock.lastSetPlayMode)
+	if got := mock.lastSetPlayMode; got != sonos.PlayModeShuffleNoRepeat {
+		t.Errorf("lastSetPlayMode = %q, want %q", got, sonos.PlayModeShuffleNoRepeat)
 	}
 
 	// 7. Shuffle missing enabled parameter
@@ -1190,7 +1188,7 @@ func TestSonosQueueEditTool(t *testing.T) {
 		},
 	})
 	if err == nil && (res == nil || !res.IsError) {
-		t.Error("expected error for shuffle without enabled parameter, got success")
+		t.Error("CallTool shuffle without enabled parameter returned success, want error")
 	}
 
 	// 8. Repeat action with repeat_mode: "all"
@@ -1206,14 +1204,14 @@ func TestSonosQueueEditTool(t *testing.T) {
 		t.Fatalf("CallTool repeat failed: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("expected repeat success, got error: %+v", res)
+		t.Fatalf("CallTool repeat returned error: %+v", res)
 	}
-	if mock.lastSetRepeat != "all" {
-		t.Errorf("expected lastSetRepeat 'all', got %s", mock.lastSetRepeat)
+	if got := mock.lastSetRepeat; got != "all" {
+		t.Errorf("lastSetRepeat = %q, want %q", got, "all")
 	}
 	// Since shuffle was enabled previously, repeat: all -> SHUFFLE
-	if mock.lastSetPlayMode != sonos.PlayModeShuffle {
-		t.Errorf("expected lastSetPlayMode SHUFFLE, got %s", mock.lastSetPlayMode)
+	if got := mock.lastSetPlayMode; got != sonos.PlayModeShuffle {
+		t.Errorf("lastSetPlayMode = %q, want %q", got, sonos.PlayModeShuffle)
 	}
 
 	// 9. Repeat action with enabled: false (should map to repeat "off")
@@ -1229,10 +1227,10 @@ func TestSonosQueueEditTool(t *testing.T) {
 		t.Fatalf("CallTool repeat with enabled: false failed: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("expected repeat success, got error: %+v", res)
+		t.Fatalf("CallTool repeat with enabled: false returned error: %+v", res)
 	}
-	if mock.lastSetRepeat != "off" {
-		t.Errorf("expected lastSetRepeat 'off', got %s", mock.lastSetRepeat)
+	if got := mock.lastSetRepeat; got != "off" {
+		t.Errorf("lastSetRepeat = %q, want %q", got, "off")
 	}
 
 	// 10. Repeat action with invalid repeat_mode
@@ -1245,7 +1243,7 @@ func TestSonosQueueEditTool(t *testing.T) {
 		},
 	})
 	if err == nil && (res == nil || !res.IsError) {
-		t.Error("expected error for invalid repeat_mode, got success")
+		t.Error("CallTool repeat with invalid repeat_mode returned success, want error")
 	}
 
 	// 11. Crossfade action (enable)
@@ -1261,10 +1259,10 @@ func TestSonosQueueEditTool(t *testing.T) {
 		t.Fatalf("CallTool crossfade failed: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("expected crossfade success, got error: %+v", res)
+		t.Fatalf("CallTool crossfade returned error: %+v", res)
 	}
 	if mock.lastSetCrossfade == nil || !*mock.lastSetCrossfade {
-		t.Errorf("expected lastSetCrossfade true, got %+v", mock.lastSetCrossfade)
+		t.Errorf("lastSetCrossfade = %+v, want true", mock.lastSetCrossfade)
 	}
 
 	// 12. Crossfade missing enabled parameter
@@ -1276,7 +1274,7 @@ func TestSonosQueueEditTool(t *testing.T) {
 		},
 	})
 	if err == nil && (res == nil || !res.IsError) {
-		t.Error("expected error for crossfade without enabled parameter, got success")
+		t.Error("CallTool crossfade without enabled parameter returned success, want error")
 	}
 
 	// 13. Invalid action
@@ -1288,13 +1286,13 @@ func TestSonosQueueEditTool(t *testing.T) {
 		},
 	})
 	if err == nil && (res == nil || !res.IsError) {
-		t.Error("expected error for unknown action, got success")
+		t.Error("CallTool queue edit with unknown action returned success, want error")
 	}
 
-	// 7. Verify structured content is a record
+	// 14. Verify structured content is a record
 	if res != nil && res.StructuredContent != nil {
 		if _, ok := res.StructuredContent.(map[string]any); !ok {
-			t.Errorf("expected StructuredContent to be a record, got %T", res.StructuredContent)
+			t.Errorf("StructuredContent type = %T, want map[string]any", res.StructuredContent)
 		}
 	}
 }
@@ -1340,7 +1338,7 @@ func TestSonosGetTopologyCachedFallback(t *testing.T) {
 	}
 
 	// Create test session with cache loader providing both devices
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
@@ -1366,7 +1364,7 @@ func TestSonosGetTopologyCachedFallback(t *testing.T) {
 	}
 	defer session.Close()
 
-	callCtx, callCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	callCtx, callCancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer callCancel()
 
 	// Call topology querying the sleeping IP
@@ -1380,21 +1378,21 @@ func TestSonosGetTopologyCachedFallback(t *testing.T) {
 		t.Fatalf("CallTool sonos_get_topology failed: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("expected fallback success, got error: %+v", res)
+		t.Fatalf("CallTool sonos_get_topology fallback returned error: %+v", res)
 	}
 
 	if len(res.Content) < 2 {
-		t.Fatalf("expected at least 2 content items, got %d", len(res.Content))
+		t.Fatalf("len(res.Content) = %d, want at least 2", len(res.Content))
 	}
 
 	summaryContent, ok := res.Content[0].(*mcp.TextContent)
 	if !ok || !strings.Contains(summaryContent.Text, "resolved via cached fallback") {
-		t.Errorf("expected summary to mention cached fallback, got %q", summaryContent.Text)
+		t.Errorf("summaryContent.Text = %q, want to contain %q", summaryContent.Text, "resolved via cached fallback")
 	}
 
 	textContent, ok := res.Content[1].(*mcp.TextContent)
 	if !ok {
-		t.Fatalf("expected TextContent, got %T", res.Content[1])
+		t.Fatalf("res.Content[1] type = %T, want *mcp.TextContent", res.Content[1])
 	}
 
 	var topo TopologyResult

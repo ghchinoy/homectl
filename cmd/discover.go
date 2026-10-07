@@ -6,13 +6,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/ghchinoy/homectl/modules/sonos"
 	"github.com/ghchinoy/homectl/pkg/camera"
 	"github.com/ghchinoy/homectl/pkg/cast"
 	"github.com/ghchinoy/homectl/pkg/discovery"
 	"github.com/ghchinoy/homectl/pkg/leap"
 	"github.com/ghchinoy/homectl/pkg/miio"
 	"github.com/ghchinoy/homectl/pkg/onvif"
-	"github.com/ghchinoy/homectl/modules/sonos"
 	"github.com/spf13/cobra"
 )
 
@@ -35,7 +35,7 @@ var discoverCmd = &cobra.Command{
 		manager.AddProvider(&onvif.DiscoveryProvider{})
 		manager.AddProvider(&camera.DiscoveryProvider{})
 
-		devices := manager.DiscoverAll(5 * time.Second)
+		devices := manager.DiscoverAllContext(cmd.Context(), 5*time.Second)
 
 		if jsonOut {
 			return json.NewEncoder(os.Stdout).Encode(devices)
