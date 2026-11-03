@@ -9,11 +9,13 @@ import (
 
 // AppConfig represents the application configuration
 type AppConfig struct {
-	CallbackIP          string `json:"callback_ip"`           // Manual override for GENA listener
-	CameraAuth          string `json:"camera_auth"`           // global user:pass for cameras
-	LutronBridge        string `json:"lutron_bridge"`         // Lutron Caseta / RA2 Select bridge IP address
-	SonosDefaultService string `json:"sonos_default_service"` // Default music service (e.g. Spotify, Apple Music)
-	APIHost             string `json:"api_host,omitempty"`    // Host/IP address for API server to bind to (e.g. 127.0.0.1, 0.0.0.0, or Tailscale IP)
+	CallbackIP          string `json:"callback_ip"`            // Manual override for GENA listener
+	CameraAuth          string `json:"camera_auth"`            // global user:pass for cameras
+	LutronBridge        string `json:"lutron_bridge"`          // Lutron Caseta / RA2 Select bridge IP address
+	SonosDefaultService string `json:"sonos_default_service"`  // Default music service (e.g. Spotify, Apple Music)
+	APIHost             string `json:"api_host,omitempty"`     // Host/IP address for API server to bind to (e.g. 127.0.0.1, 0.0.0.0, or Tailscale IP)
+	QolsysHost          string `json:"qolsys_host,omitempty"`  // Qolsys IQ Panel IP address
+	QolsysToken         string `json:"qolsys_token,omitempty"` // Qolsys IQ Panel 6-digit access token
 }
 
 // ConfigDir returns the path to the configuration directory (~/.config/homectl).
@@ -44,7 +46,17 @@ func LoadConfig() AppConfig {
 
 // Path returns a path relative to the configuration directory.
 func Path(filename string) string {
-	return filepath.Join(ConfigDir(), filename)
+	baseDir := ConfigDir()
+	cleanName := filepath.Base(filepath.Clean(filename))
+	candidate := filepath.Join(baseDir, cleanName)
+	if resolved, err := filepath.EvalSymlinks(candidate); err == nil {
+		if resolvedBase, baseErr := filepath.EvalSymlinks(baseDir); baseErr == nil {
+			if rel, relErr := filepath.Rel(resolvedBase, resolved); relErr == nil && len(rel) >= 2 && rel[:2] == ".." {
+				return filepath.Join(baseDir, filepath.Base(cleanName))
+			}
+		}
+	}
+	return candidate
 }
 
 // GetPath returns a path relative to the configuration directory.
@@ -77,5 +89,5 @@ func SaveNicknames(nicknames map[string]string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(GetPath("nicknames.json"), data, 0644)
+	return os.WriteFile(GetPath("nicknames.json"), data, 0600)
 }

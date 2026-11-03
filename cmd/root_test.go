@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -85,7 +87,7 @@ func TestSubcommandArgValidation(t *testing.T) {
 			t.Fatalf("could not find sonos join: %v", err)
 		}
 		if err := cmd.Args(cmd, []string{"192.168.1.10"}); err == nil {
-			t.Error("expected error when sonos join called with 1 arg, got nil")
+			t.Error("joinSonosCmd.Args([192.168.1.10]) = nil, want error")
 		}
 	})
 
@@ -95,7 +97,7 @@ func TestSubcommandArgValidation(t *testing.T) {
 			t.Fatalf("could not find sonos leave: %v", err)
 		}
 		if err := cmd.Args(cmd, []string{}); err == nil {
-			t.Error("expected error when sonos leave called with 0 args, got nil")
+			t.Error("leaveSonosCmd.Args([]) = nil, want error")
 		}
 	})
 
@@ -138,14 +140,14 @@ func TestServeCommandFlags(t *testing.T) {
 	}
 	hostFlag := cmd.Flags().Lookup("host")
 	if hostFlag == nil {
-		t.Fatal("expected --host flag on serve command")
+		t.Fatal("serveCmd.Flags().Lookup(host) = nil, want non-nil")
 	}
 	if hostFlag.Shorthand != "H" {
-		t.Errorf("expected shorthand 'H', got %q", hostFlag.Shorthand)
+		t.Errorf("serveCmd.Flags().Lookup(host).Shorthand = %q, want %q", hostFlag.Shorthand, "H")
 	}
 	portFlag := cmd.Flags().Lookup("port")
 	if portFlag == nil || portFlag.Shorthand != "p" {
-		t.Error("expected --port flag with shorthand 'p'")
+		t.Error("serveCmd.Flags().Lookup(port).Shorthand != p")
 	}
 }
 
@@ -158,7 +160,7 @@ func TestResolveAPIHostPrecedence(t *testing.T) {
 	// 1. Explicit CLI flag takes precedence over everything
 	t.Setenv("HOMECTL_API_HOST", "192.168.1.50")
 	if host := ResolveAPIHost("127.0.0.1"); host != "127.0.0.1" {
-		t.Errorf("expected flag '127.0.0.1', got %q", host)
+		t.Errorf("ResolveAPIHost(127.0.0.1) = %q, want %q", host, "127.0.0.1")
 	}
 
 	// 2. HOMECTL_API_HOST environment variable takes precedence over config.json
@@ -168,19 +170,19 @@ func TestResolveAPIHostPrecedence(t *testing.T) {
 
 	t.Setenv("HOMECTL_API_HOST", "192.168.1.50")
 	if host := ResolveAPIHost(""); host != "192.168.1.50" {
-		t.Errorf("expected env '192.168.1.50', got %q", host)
+		t.Errorf("ResolveAPIHost(\"\") with env = %q, want %q", host, "192.168.1.50")
 	}
 
 	// 3. config.json api_host takes precedence over default
 	t.Setenv("HOMECTL_API_HOST", "")
 	if host := ResolveAPIHost(""); host != "100.85.12.34" {
-		t.Errorf("expected config.json '100.85.12.34', got %q", host)
+		t.Errorf("ResolveAPIHost(\"\") with config = %q, want %q", host, "100.85.12.34")
 	}
 
 	// 4. Default fallback returns "0.0.0.0"
 	_ = os.Remove(config.GetPath("config.json"))
 	if host := ResolveAPIHost(""); host != "0.0.0.0" {
-		t.Errorf("expected default '0.0.0.0', got %q", host)
+		t.Errorf("ResolveAPIHost(\"\") default = %q, want %q", host, "0.0.0.0")
 	}
 }
 
@@ -675,7 +677,7 @@ func TestSonosGenerationAndRendererValidation(t *testing.T) {
 		cmd, _, _ := rootCmd.Find([]string{"sonos", "play"})
 		err := cmd.RunE(cmd, []string{"192.168.1.50"})
 		if err == nil || !strings.Contains(err.Error(), "non-rendering device") {
-			t.Errorf("expected non-rendering device error, got %v", err)
+			t.Errorf("playSonosCmd.RunE(bridge) = %v, want non-rendering device error", err)
 		}
 	})
 
@@ -683,7 +685,7 @@ func TestSonosGenerationAndRendererValidation(t *testing.T) {
 		cmd, _, _ := rootCmd.Find([]string{"sonos", "volume"})
 		err := cmd.RunE(cmd, []string{"192.168.1.50", "25"})
 		if err == nil || !strings.Contains(err.Error(), "non-rendering device") {
-			t.Errorf("expected non-rendering device error, got %v", err)
+			t.Errorf("setSonosVolumeCmd.RunE(bridge) = %v, want non-rendering device error", err)
 		}
 	})
 
@@ -691,7 +693,7 @@ func TestSonosGenerationAndRendererValidation(t *testing.T) {
 		cmd, _, _ := rootCmd.Find([]string{"sonos", "join"})
 		err := cmd.RunE(cmd, []string{"192.168.1.50", "192.168.1.10"})
 		if err == nil || !strings.Contains(err.Error(), "non-rendering device") {
-			t.Errorf("expected non-rendering device error, got %v", err)
+			t.Errorf("joinSonosCmd.RunE(bridge, speaker) = %v, want non-rendering device error", err)
 		}
 	})
 
@@ -699,7 +701,7 @@ func TestSonosGenerationAndRendererValidation(t *testing.T) {
 		cmd, _, _ := rootCmd.Find([]string{"sonos", "join"})
 		err := cmd.RunE(cmd, []string{"192.168.1.10", "192.168.1.50"})
 		if err == nil || !strings.Contains(err.Error(), "non-rendering device") {
-			t.Errorf("expected non-rendering device error, got %v", err)
+			t.Errorf("joinSonosCmd.RunE(speaker, bridge) = %v, want non-rendering device error", err)
 		}
 	})
 
@@ -707,7 +709,7 @@ func TestSonosGenerationAndRendererValidation(t *testing.T) {
 		cmd, _, _ := rootCmd.Find([]string{"sonos", "join"})
 		err := cmd.RunE(cmd, []string{"192.168.1.10", "192.168.1.20"})
 		if err == nil || !strings.Contains(err.Error(), "cannot group S1 speaker") {
-			t.Errorf("expected cross-generation error, got %v", err)
+			t.Errorf("joinSonosCmd.RunE(S1, S2) = %v, want cross-generation error", err)
 		}
 	})
 }
@@ -726,7 +728,7 @@ func TestVersionCommand(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if !strings.Contains(out, "homectl v"+version.Version) {
-			t.Errorf("expected output to contain %q, got %q", "homectl v"+version.Version, out)
+			t.Errorf("versionCmd.RunE(text) = %q, want substring %q", out, "homectl v"+version.Version)
 		}
 	})
 
@@ -749,4 +751,89 @@ func TestVersionCommand(t *testing.T) {
 			t.Errorf("info.Version = %q, want %q", info.Version, version.Version)
 		}
 	})
+}
+
+func TestResolveArtTargetURL_SSRFGuard(t *testing.T) {
+	tests := []struct {
+		name       string
+		ip         string
+		rawPath    string
+		wantURL    string
+		wantStatus int
+		wantErr    bool
+	}{
+		{
+			name:       "relative_path",
+			ip:         "192.168.1.50",
+			rawPath:    "/getaa?s=1&amp;u=x-sonos-http",
+			wantURL:    "http://192.168.1.50:1400/getaa?s=1&u=x-sonos-http",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "matching_speaker_ip_url",
+			ip:         "192.168.1.50",
+			rawPath:    "http://192.168.1.50:1400/getaa?s=1",
+			wantURL:    "http://192.168.1.50:1400/getaa?s=1",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "domain_name_ssrf_blocked",
+			ip:         "192.168.1.50",
+			rawPath:    "http://attacker.example.com/ssrf.png",
+			wantStatus: http.StatusForbidden,
+			wantErr:    true,
+		},
+		{
+			name:       "loopback_blocked",
+			ip:         "192.168.1.50",
+			rawPath:    "http://127.0.0.1:8080/admin",
+			wantStatus: http.StatusForbidden,
+			wantErr:    true,
+		},
+		{
+			name:       "metadata_link_local_blocked",
+			ip:         "192.168.1.50",
+			rawPath:    "http://169.254.169.254/latest/meta-data",
+			wantStatus: http.StatusForbidden,
+			wantErr:    true,
+		},
+		{
+			name:       "mismatched_lan_ip_blocked",
+			ip:         "192.168.1.50",
+			rawPath:    "http://192.168.1.99:1400/getaa",
+			wantStatus: http.StatusForbidden,
+			wantErr:    true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gotURL, gotStatus, err := resolveArtTargetURL(tc.ip, tc.rawPath)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("resolveArtTargetURL(%q, %q) err = %v, wantErr %v", tc.ip, tc.rawPath, err, tc.wantErr)
+			}
+			if gotStatus != tc.wantStatus {
+				t.Errorf("resolveArtTargetURL(%q, %q) status = %d, want %d", tc.ip, tc.rawPath, gotStatus, tc.wantStatus)
+			}
+			if !tc.wantErr && gotURL != tc.wantURL {
+				t.Errorf("resolveArtTargetURL(%q, %q) = %q, want %q", tc.ip, tc.rawPath, gotURL, tc.wantURL)
+			}
+		})
+	}
+}
+
+func TestIsAllowedLocalOrigin(t *testing.T) {
+	reqSame := httptest.NewRequest(http.MethodPost, "http://192.168.1.10:8080/api/lutron/set", nil)
+	reqSame.Host = "192.168.1.10:8080"
+	reqSame.Header.Set("Origin", "http://192.168.1.10:8080")
+	if !isAllowedLocalOrigin(reqSame) {
+		t.Errorf("isAllowedLocalOrigin(%q) = false, want true", reqSame.Header.Get("Origin"))
+	}
+
+	reqEvil := httptest.NewRequest(http.MethodPost, "http://192.168.1.10:8080/api/lutron/all", nil)
+	reqEvil.Host = "192.168.1.10:8080"
+	reqEvil.Header.Set("Origin", "https://evil.example.com")
+	if isAllowedLocalOrigin(reqEvil) {
+		t.Errorf("isAllowedLocalOrigin(%q) = true, want false", reqEvil.Header.Get("Origin"))
+	}
 }

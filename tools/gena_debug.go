@@ -71,7 +71,8 @@ func main() {
 	if err != nil {
 		fmt.Printf("!! SUBSCRIPTION FAILED: %v\n", err)
 		fmt.Println("This usually means the Sonos speaker cannot reach your Callback URL.")
-	} else {
+	}
+	if err == nil {
 		fmt.Printf("✓ SUBSCRIPTION SUCCESSFUL! SID: %s\n", sid)
 		fmt.Println("Now try playing/pausing music in the Sonos app. Events should appear below.")
 	}

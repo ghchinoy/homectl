@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -24,10 +25,86 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// isAllowedLocalOrigin verifies that browser-initiated requests originate from
+// the same host or a trusted localhost/LAN origin (W3C User Agents § 3.1 P4).
+func isAllowedLocalOrigin(r *http.Request) bool {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		secSite := strings.TrimSpace(r.Header.Get("Sec-Fetch-Site"))
+		return secSite == "" || secSite == "same-origin" || secSite == "same-site" || secSite == "none"
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	if strings.EqualFold(u.Host, r.Host) {
+		return true
+	}
+	hostOnly := u.Hostname()
+	return hostOnly == "localhost" || hostOnly == "127.0.0.1" || hostOnly == "::1"
+}
+
+func requireLocalOrigin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !isAllowedLocalOrigin(r) {
+			http.Error(w, "cross-origin request blocked", http.StatusForbidden)
+			return
+		}
+		next(w, r)
+	}
+}
+
+// resolveArtTargetURL validates speaker IP and album art path/URL, preventing
+// SSRF against internal loopback/link-local addresses or arbitrary external domains.
+func resolveArtTargetURL(ip, rawPath string) (string, int, error) {
+	path := html.UnescapeString(rawPath)
+	if ip == "" || path == "" {
+		return "", http.StatusBadRequest, fmt.Errorf("ip and path are required")
+	}
+
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil || parsedIP.To4() == nil {
+		return "", http.StatusBadRequest, fmt.Errorf("invalid ip address")
+	}
+
+	if !strings.HasPrefix(path, "http://") && !strings.HasPrefix(path, "https://") {
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+		return fmt.Sprintf("http://%s:1400%s", parsedIP.String(), path), http.StatusOK, nil
+	}
+
+	parsed, err := url.Parse(path)
+	if err != nil {
+		return "", http.StatusBadRequest, fmt.Errorf("invalid art url")
+	}
+	hostOnly := parsed.Hostname()
+	if hostOnly == "localhost" || hostOnly == "127.0.0.1" || strings.HasPrefix(hostOnly, "169.254.") {
+		return "", http.StatusForbidden, fmt.Errorf("access to internal host is blocked")
+	}
+	targetIP := net.ParseIP(hostOnly)
+	if targetIP == nil {
+		return "", http.StatusForbidden, fmt.Errorf("art url host must be the speaker ip")
+	}
+	if targetIP.IsLoopback() || targetIP.IsLinkLocalUnicast() || targetIP.IsUnspecified() {
+		return "", http.StatusForbidden, fmt.Errorf("access to internal host is blocked")
+	}
+	if !targetIP.Equal(parsedIP) {
+		return "", http.StatusForbidden, fmt.Errorf("art url host does not match speaker")
+	}
+	return path, http.StatusOK, nil
+}
+
 var serveCmd = &cobra.Command{
-	Use:   "serve",
-	Short: "Start the homectl API server",
-	Long:  `Starts an HTTP server that provides an API for controlling Lutron and Sonos devices.`,
+	Use:     "serve",
+	GroupID: "services",
+	Short:   "Start the homectl API server",
+	Long:    `Starts an HTTP server that provides an API for controlling Lutron and Sonos devices.`,
+	Example: `  # Start the server bound to localhost
+  homectl serve -H 127.0.0.1
+
+  # Start the server on a custom port with a custom UI directory
+  homectl serve --port 9090 --ui /usr/local/share/homectl/ui`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		port, _ := cmd.Flags().GetInt("port")
 
@@ -454,11 +531,16 @@ var serveCmd = &cobra.Command{
 				http.Error(w, "ip is required", http.StatusBadRequest)
 				return
 			}
+			parsedIP := net.ParseIP(ip)
+			if parsedIP == nil || parsedIP.To4() == nil {
+				http.Error(w, "invalid ip address", http.StatusBadRequest)
+				return
+			}
 
 			cfg := config.LoadConfig()
-			rtspURL := fmt.Sprintf("rtsp://%s:554", ip)
+			rtspURL := fmt.Sprintf("rtsp://%s:554", parsedIP.String())
 			if cfg.CameraAuth != "" {
-				rtspURL = fmt.Sprintf("rtsp://%s@%s:554", cfg.CameraAuth, ip)
+				rtspURL = fmt.Sprintf("rtsp://%s@%s:554", cfg.CameraAuth, parsedIP.String())
 			}
 
 			// Use context to kill ffmpeg when the browser disconnects
@@ -497,48 +579,21 @@ var serveCmd = &cobra.Command{
 
 		mux.HandleFunc("/api/sonos/art", func(w http.ResponseWriter, r *http.Request) {
 			ip := r.URL.Query().Get("ip")
-			path := html.UnescapeString(r.URL.Query().Get("path"))
-			if ip == "" || path == "" {
-				http.Error(w, "ip and path are required", http.StatusBadRequest)
+			rawPath := r.URL.Query().Get("path")
+			targetURL, status, err := resolveArtTargetURL(ip, rawPath)
+			if err != nil {
+				http.Error(w, err.Error(), status)
 				return
-			}
-
-			parsedIP := net.ParseIP(ip)
-			if parsedIP == nil || parsedIP.To4() == nil {
-				http.Error(w, "invalid ip address", http.StatusBadRequest)
-				return
-			}
-
-			targetURL := path
-			if !strings.HasPrefix(path, "http://") && !strings.HasPrefix(path, "https://") {
-				if !strings.HasPrefix(path, "/") {
-					path = "/" + path
-				}
-				targetURL = fmt.Sprintf("http://%s:1400%s", ip, path)
-			} else {
-				parsed, err := url.Parse(path)
-				if err != nil {
-					http.Error(w, "invalid art url", http.StatusBadRequest)
-					return
-				}
-				hostOnly := parsed.Hostname()
-				if hostOnly == "localhost" || hostOnly == "127.0.0.1" || strings.HasPrefix(hostOnly, "169.254.") {
-					http.Error(w, "access to internal host is blocked", http.StatusForbidden)
-					return
-				}
-				targetIP := net.ParseIP(hostOnly)
-				if targetIP != nil && (targetIP.IsLoopback() || targetIP.IsLinkLocalUnicast()) {
-					http.Error(w, "access to internal host is blocked", http.StatusForbidden)
-					return
-				}
-				if targetIP != nil && targetIP.String() != parsedIP.String() {
-					http.Error(w, "art url host does not match speaker", http.StatusForbidden)
-					return
-				}
 			}
 
 			artClient := &http.Client{Timeout: 5 * time.Second}
-			resp, err := artClient.Get(targetURL)
+			artReq, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
+			if err != nil {
+				http.Error(w, "invalid art url", http.StatusBadRequest)
+				return
+			}
+			artReq.Header.Set("User-Agent", "homectl/1.0")
+			resp, err := artClient.Do(artReq)
 			if err != nil {
 				fmt.Printf("Art Proxy Error: %v\n", err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -582,7 +637,7 @@ var serveCmd = &cobra.Command{
 			json.NewEncoder(w).Encode(status)
 		})
 
-		mux.HandleFunc("/api/cast/control", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/api/cast/control", requireLocalOrigin(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -603,10 +658,14 @@ var serveCmd = &cobra.Command{
 				return
 			}
 			w.WriteHeader(http.StatusOK)
-		})
+		}))
 
 		uiDir, _ := cmd.Flags().GetString("ui")
-		mux.Handle("/", http.FileServer(http.Dir(uiDir)))
+		resolvedUIDir := filepath.Clean(uiDir)
+		if evalDir, err := filepath.EvalSymlinks(resolvedUIDir); err == nil {
+			resolvedUIDir = evalDir
+		}
+		mux.Handle("/", http.FileServer(http.Dir(resolvedUIDir)))
 
 		flagHost, _ := cmd.Flags().GetString("host")
 		host := ResolveAPIHost(flagHost)
@@ -623,7 +682,7 @@ var serveCmd = &cobra.Command{
 
 		errCh := make(chan error, 1)
 		go func() {
-			fmt.Printf("Starting homectl API server on %s (serving UI from %s)\n", addr, uiDir)
+			fmt.Printf("Starting homectl API server on %s (serving UI from %s)\n", addr, resolvedUIDir)
 			if host == "0.0.0.0" || host == "" {
 				fmt.Println("[SECURITY ADVISORY] API server bound to 0.0.0.0 (all network interfaces) without authentication.")
 				fmt.Println("                   To restrict access, bind to loopback (-H 127.0.0.1) or your Tailscale IP (-H 100.x.y.z),")
@@ -642,7 +701,7 @@ var serveCmd = &cobra.Command{
 
 		select {
 		case <-cmd.Context().Done():
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(cmd.Context()), 5*time.Second)
 			defer cancel()
 			return server.Shutdown(shutdownCtx)
 		case err := <-errCh:

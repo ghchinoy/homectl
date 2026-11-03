@@ -17,15 +17,22 @@ import (
 )
 
 var discoverCmd = &cobra.Command{
-	Use:   "discover",
-	Short: "Discover all smart home devices on the network",
+	Use:     "discover",
+	GroupID: "devices",
+	Short:   "Discover all smart home devices on the local network",
+	Long:    `Scans the local network concurrently via mDNS, UPnP SSDP, and RTSP port probing to discover Lutron bridges, Sonos speakers, Google Cast devices, ONVIF/RTSP cameras, and MiIO appliances.`,
+	Example: `  # Discover all devices on the LAN
+  homectl discover
+
+  # Output discovered devices as JSON (capped at 5 results)
+  homectl discover --json --limit 5`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		jsonOut := isJSON(cmd)
-		if !jsonOut {
-			fmt.Println("Starting network-wide discovery...")
-		} else {
-			fmt.Fprintln(os.Stderr, "Starting network-wide discovery...")
+		statusWriter := os.Stdout
+		if jsonOut {
+			statusWriter = os.Stderr
 		}
+		fmt.Fprintln(statusWriter, "Starting network-wide discovery...")
 
 		manager := discovery.NewManager()
 		manager.AddProvider(&leap.DiscoveryProvider{})
@@ -35,9 +42,12 @@ var discoverCmd = &cobra.Command{
 		manager.AddProvider(&onvif.DiscoveryProvider{})
 		manager.AddProvider(&camera.DiscoveryProvider{})
 
-		devices := manager.DiscoverAllContext(cmd.Context(), 5*time.Second)
+		devices := applyLimit(cmd, manager.DiscoverAllContext(cmd.Context(), 5*time.Second))
 
 		if jsonOut {
+			if devices == nil {
+				devices = []discovery.Device{}
+			}
 			return json.NewEncoder(os.Stdout).Encode(devices)
 		}
 

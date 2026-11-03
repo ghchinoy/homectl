@@ -137,15 +137,20 @@ func selectBestIP(ipv4 []net.IP, ipv6 []net.IP) string {
 	return ""
 }
 
-// Discover performs mDNS discovery to find Sonos devices
+// Discover performs mDNS discovery to find Sonos devices.
 func Discover(timeout time.Duration) ([]Device, error) {
+	return DiscoverContext(context.TODO(), timeout)
+}
+
+// DiscoverContext performs mDNS discovery to find Sonos devices using the provided parent context.
+func DiscoverContext(parent context.Context, timeout time.Duration) ([]Device, error) {
 	resolver, err := zeroconf.NewResolver(nil)
 	if err != nil {
 		return nil, err
 	}
 
 	entries := make(chan *zeroconf.ServiceEntry)
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
 	err = resolver.Browse(ctx, "_sonos._tcp", "local.", entries)
@@ -385,16 +390,15 @@ func ParseDeviceDescription(data []byte) (DeviceDetails, error) {
 		name = desc.DisplayName
 	}
 
-	isRenderer := false
+	isRenderer := !IsNonRendererModel(desc.ModelNumber)
 	if len(desc.Services) > 0 {
+		isRenderer = false
 		for _, s := range desc.Services {
 			if strings.Contains(s.ServiceType, "AVTransport") {
 				isRenderer = true
 				break
 			}
 		}
-	} else {
-		isRenderer = !IsNonRendererModel(desc.ModelNumber)
 	}
 
 	if IsNonRendererModel(desc.ModelNumber) {
@@ -413,11 +417,18 @@ func ParseDeviceDescription(data []byte) (DeviceDetails, error) {
 	}, nil
 }
 
+const defaultUserAgent = "homectl/1.0"
+
 // FetchDeviceDetails fetches device metadata, Rincon ID, generation (S1/S2), and renderer status from the Sonos XML description.
 func FetchDeviceDetails(ip string) (DeviceDetails, error) {
 	url := fmt.Sprintf("http://%s/xml/device_description.xml", hostPort(ip, 1400))
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return DeviceDetails{}, fmt.Errorf("creating device description request for %s: %w", ip, err)
+	}
+	req.Header.Set("User-Agent", defaultUserAgent)
+	resp, err := client.Do(req)
 	if err != nil {
 		return DeviceDetails{}, fmt.Errorf("fetching device description from %s: %w", ip, err)
 	}
@@ -541,6 +552,7 @@ func (c *Client) SOAPAction(controlURL, serviceType, action string, args map[str
 	}
 
 	req.Header.Set("Content-Type", "text/xml; charset=utf-8")
+	req.Header.Set("User-Agent", defaultUserAgent)
 	// The SOAPAction header must be quoted according to UPnP spec
 	req.Header.Set("SOAPAction", fmt.Sprintf("\"%s#%s\"", serviceType, action))
 
@@ -704,16 +716,12 @@ func (c *Client) Play() error {
 		_, rincon, _, _, nameErr := GetDeviceName(client.ip)
 		if nameErr == nil {
 			count, _ := client.GetQueueCount()
+			fallbackURI := "x-sonosapi-radio:sonos:158288?sid=303&flags=0&sn=1"
 			if count > 0 {
-				queueURI := fmt.Sprintf("x-rincon-queue:%s#0", rincon)
-				client.SetAVTransportURI(queueURI, "")
-				time.Sleep(500 * time.Millisecond)
-			} else {
-				// Final fallback: Sonos Radio
-				radioURI := "x-sonosapi-radio:sonos:158288?sid=303&flags=0&sn=1"
-				client.SetAVTransportURI(radioURI, "")
-				time.Sleep(500 * time.Millisecond)
+				fallbackURI = fmt.Sprintf("x-rincon-queue:%s#0", rincon)
 			}
+			client.SetAVTransportURI(fallbackURI, "")
+			time.Sleep(500 * time.Millisecond)
 			// Retry Play
 			body, err = client.SOAPAction(
 				"/MediaRenderer/AVTransport/Control",
@@ -1418,10 +1426,8 @@ func ParseTrackMetadata(xmlStr string) (TrackMetadata, error) {
 			if start == -1 {
 				return ""
 			}
-			start += len(tag) + 2
-		} else {
-			start += len(tag) + 2
 		}
+		start += len(tag) + 2
 		end := strings.Index(s[start:], "</")
 		if end == -1 {
 			return ""
@@ -1451,6 +1457,7 @@ func ParseTrackMetadata(xmlStr string) (TrackMetadata, error) {
 func (c *Client) ParseTrackMetadata(xmlStr string) (TrackMetadata, error) {
 	return ParseTrackMetadata(xmlStr)
 }
+
 // Favorite represents a pinned Sonos favorite item (playlist, album, radio station, etc.).
 type Favorite struct {
 	ID          string `json:"id"`
@@ -2118,15 +2125,15 @@ func ParseMusicServices(xmlStr string) ([]MusicService, error) {
 			break
 		}
 		end := strings.Index(remaining[start:], "/>")
+		closeLen := len("/>")
 		if end == -1 {
 			end = strings.Index(remaining[start:], "</Service>")
 			if end == -1 {
 				break
 			}
-			end += len("</Service>")
-		} else {
-			end += len("/>")
+			closeLen = len("</Service>")
 		}
+		end += closeLen
 
 		svcXML := remaining[start : start+end]
 		remaining = remaining[start+end:]

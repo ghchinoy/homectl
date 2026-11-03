@@ -11,13 +11,20 @@ import (
 
 var setCmd = &cobra.Command{
 	Use:   "set",
-	Short: "Set levels for devices",
+	Short: "Set dimming levels for Lutron zones",
+	Long:  `Adjusts the brightness level (0-100) for an individual Lutron zone or all controllable zones on the bridge.`,
 }
 
 var setLevelCmd = &cobra.Command{
 	Use:   "level [zone_href] [0-100]",
-	Short: "Set the dimming level of a zone",
-	Args:  cobra.ExactArgs(2),
+	Short: "Set the dimming level of a specific Lutron zone",
+	Long:  `Sets the dimming level (0-100) for a single Lutron zone identified by its LEAP HREF (e.g. /zone/1). Supports --dry-run and --json.`,
+	Example: `  # Set zone /zone/1 to 50% brightness
+  homectl lutron set level /zone/1 50
+
+  # Preview setting /zone/1 to 0% as JSON without mutating state
+  homectl lutron set level /zone/1 0 --dry-run --json`,
+	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		zoneHref := args[0]
 		level, err := strconv.ParseFloat(args[1], 64)
@@ -47,9 +54,19 @@ var setLevelCmd = &cobra.Command{
 		}
 		defer client.Close()
 
-		fmt.Printf("Setting %s to %.0f%%...\n", zoneHref, level)
+		if !isJSON(cmd) {
+			fmt.Printf("Setting %s to %.0f%%...\n", zoneHref, level)
+		}
 		if err := client.SetLevel(zoneHref, level); err != nil {
 			return fmt.Errorf("set level: %w", err)
+		}
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"status":    "ok",
+				"action":    "set_level",
+				"zone_href": zoneHref,
+				"level":     level,
+			})
 		}
 		fmt.Println("Success!")
 		return nil
@@ -58,8 +75,14 @@ var setLevelCmd = &cobra.Command{
 
 var setAllCmd = &cobra.Command{
 	Use:   "all [0-100]",
-	Short: "Set the level for all lights",
-	Args:  cobra.ExactArgs(1),
+	Short: "Set the dimming level for all Lutron lights",
+	Long:  `Sets the dimming level (0-100) across all controllable Lutron lighting zones on the bridge. Supports --dry-run and --json.`,
+	Example: `  # Turn off all Lutron lights
+  homectl lutron set all 0
+
+  # Simulate setting all lights to 75% in JSON mode
+  homectl lutron set all 75 --dry-run --json`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		level, err := strconv.ParseFloat(args[0], 64)
 		if err != nil {
@@ -88,9 +111,18 @@ var setAllCmd = &cobra.Command{
 		}
 		defer client.Close()
 
-		fmt.Printf("Setting all lights to %.0f%%...\n", level)
+		if !isJSON(cmd) {
+			fmt.Printf("Setting all lights to %.0f%%...\n", level)
+		}
 		if err := client.SetAllLevels(level); err != nil {
 			return fmt.Errorf("set all levels: %w", err)
+		}
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"status": "ok",
+				"action": "set_all",
+				"level":  level,
+			})
 		}
 		fmt.Println("Success!")
 		return nil

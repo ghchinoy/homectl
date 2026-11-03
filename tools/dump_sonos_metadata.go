@@ -12,12 +12,11 @@ import (
 )
 
 func main() {
-	ip := ""
+	ip := os.Getenv("HOMECTL_SONOS_IP")
 	if len(os.Args) > 1 {
 		ip = os.Args[1]
-	} else if env := os.Getenv("HOMECTL_SONOS_IP"); env != "" {
-		ip = env
-	} else {
+	}
+	if ip == "" {
 		cached, _ := sonos.LoadCache()
 		if len(cached) > 0 {
 			ip = cached[0].IP
@@ -33,8 +32,8 @@ func main() {
 		"/MediaRenderer/AVTransport/Control",
 		"urn:schemas-upnp-org:service:AVTransport:1",
 		"GetPositionInfo",
-		map[string]any{
-			"InstanceID": 0,
+		map[string]string{
+			"InstanceID": "0",
 		})
 	if err != nil {
 		log.Fatalf("Failed to get position info: %v", err)
@@ -49,8 +48,8 @@ func main() {
 		"/MediaRenderer/AVTransport/Control",
 		"urn:schemas-upnp-org:service:AVTransport:1",
 		"GetMediaInfo",
-		map[string]any{
-			"InstanceID": 0,
+		map[string]string{
+			"InstanceID": "0",
 		})
 	if err != nil {
 		log.Fatalf("Failed to get media info: %v", err)

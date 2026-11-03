@@ -23,11 +23,18 @@ type DeviceSummary struct {
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List resources from the Lutron bridge",
+	Long:  `Lists areas, zones, or devices and their real-time dimming status from the Lutron bridge.`,
 }
 
 var listAreasCmd = &cobra.Command{
 	Use:   "areas",
-	Short: "List all areas",
+	Short: "List all areas configured on the Lutron bridge",
+	Long:  `Retrieves all rooms and areas configured on the Lutron bridge along with their LEAP HREFs.`,
+	Example: `  # List all Lutron areas
+  homectl lutron list areas
+
+  # List Lutron areas as JSON
+  homectl lutron list areas --json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := getClient(cmd)
 		if err != nil {
@@ -39,15 +46,16 @@ var listAreasCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("get areas: %w", err)
 		}
+		areas = applyLimit(cmd, areas)
 
 		if isJSON(cmd) {
 			return json.NewEncoder(os.Stdout).Encode(areas)
 		}
 
-		fmt.Printf("% -20s % -20s\n", "NAME", "HREF")
+		fmt.Printf("%-20s %-20s\n", "NAME", "HREF")
 		fmt.Println("------------------------------------------")
 		for _, a := range areas {
-			fmt.Printf("% -20s % -20s\n", a.Name, a.Href)
+			fmt.Printf("%-20s %-20s\n", a.Name, a.Href)
 		}
 		return nil
 	},
@@ -55,7 +63,13 @@ var listAreasCmd = &cobra.Command{
 
 var listZonesCmd = &cobra.Command{
 	Use:   "zones",
-	Short: "List all zones",
+	Short: "List all controllable lighting zones on the Lutron bridge",
+	Long:  `Retrieves all lighting zones, control types, and LEAP HREFs from the Lutron bridge.`,
+	Example: `  # List all Lutron zones
+  homectl lutron list zones
+
+  # List up to 10 Lutron zones as JSON
+  homectl lutron list zones --json --limit 10`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := getClient(cmd)
 		if err != nil {
@@ -67,15 +81,16 @@ var listZonesCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("get zones: %w", err)
 		}
+		zones = applyLimit(cmd, zones)
 
 		if isJSON(cmd) {
 			return json.NewEncoder(os.Stdout).Encode(zones)
 		}
 
-		fmt.Printf("% -30s % -15s % -10s\n", "NAME", "TYPE", "HREF")
+		fmt.Printf("%-30s %-15s %-10s\n", "NAME", "TYPE", "HREF")
 		fmt.Println("-----------------------------------------------------------")
 		for _, z := range zones {
-			fmt.Printf("% -30s % -15s % -10s\n", z.Name, z.ControlType, z.Href)
+			fmt.Printf("%-30s %-15s %-10s\n", z.Name, z.ControlType, z.Href)
 		}
 		return nil
 	},
@@ -83,7 +98,13 @@ var listZonesCmd = &cobra.Command{
 
 var listDevicesCmd = &cobra.Command{
 	Use:   "devices",
-	Short: "List all devices with status",
+	Short: "List all Lutron devices with real-time zone status",
+	Long:  `Retrieves all physical Lutron switches/dimmers and batch-queries their current zone dimming percentages.`,
+	Example: `  # List all Lutron devices and dimming levels
+  homectl lutron list devices
+
+  # Output Lutron device statuses as JSON
+  homectl lutron list devices --json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := getClient(cmd)
 		if err != nil {
@@ -95,6 +116,7 @@ var listDevicesCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("get devices: %w", err)
 		}
+		devices = applyLimit(cmd, devices)
 
 		zones, _ := client.GetZones()
 		zoneNames := make(map[string]string)
@@ -126,10 +148,9 @@ var listDevicesCmd = &cobra.Command{
 					summary.ZoneName = zoneNames[zHref]
 					if lvl, ok := zoneStatusMap[zHref]; ok {
 						summary.Level = lvl
+						summary.Status = "OFF"
 						if lvl > 0 {
 							summary.Status = fmt.Sprintf("%.0f%%", lvl)
-						} else {
-							summary.Status = "OFF"
 						}
 					}
 				}
@@ -138,7 +159,7 @@ var listDevicesCmd = &cobra.Command{
 			return json.NewEncoder(os.Stdout).Encode(summaries)
 		}
 
-		fmt.Printf("% -30s % -20s % -10s % -20s % -10s\n", "NAME", "TYPE", "STATUS", "ZONE NAME", "HREF")
+		fmt.Printf("%-30s %-20s %-10s %-20s %-10s\n", "NAME", "TYPE", "STATUS", "ZONE NAME", "HREF")
 		fmt.Println("-------------------------------------------------------------------------------------------------------------")
 
 		for _, d := range devices {
@@ -148,14 +169,13 @@ var listDevicesCmd = &cobra.Command{
 				zHref := d.LocalZones[0].Href
 				zn = zoneNames[zHref]
 				if lvl, ok := zoneStatusMap[zHref]; ok {
+					statusStr = "OFF"
 					if lvl > 0 {
 						statusStr = fmt.Sprintf("%.0f%%", lvl)
-					} else {
-						statusStr = "OFF"
 					}
 				}
 			}
-			fmt.Printf("% -30s % -20s % -10s % -20s % -10s\n", d.Name, d.DeviceType, statusStr, zn, d.Href)
+			fmt.Printf("%-30s %-20s %-10s %-20s %-10s\n", d.Name, d.DeviceType, statusStr, zn, d.Href)
 		}
 		return nil
 	},

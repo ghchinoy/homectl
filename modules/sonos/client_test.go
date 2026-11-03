@@ -62,7 +62,7 @@ func TestParseTrackMetadata(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			meta, err := ParseTrackMetadata(tc.input)
 			if err != nil {
-				t.Fatalf("ParseTrackMetadata() unexpected error: %v", err)
+				t.Fatalf("ParseTrackMetadata(%q) unexpected error: %v", tc.name, err)
 			}
 			if meta.Title != tc.expected.Title {
 				t.Errorf("Title = %q, want %q", meta.Title, tc.expected.Title)
@@ -96,7 +96,7 @@ func TestMockSOAPActions(t *testing.T) {
 
 		case strings.Contains(soapAction, "SetVolume"):
 			if !strings.Contains(bodyStr, "<DesiredVolume>42</DesiredVolume>") {
-				t.Errorf("expected DesiredVolume 42, got %s", bodyStr)
+				t.Errorf("SetVolume(42) SOAP body = %s, want <DesiredVolume>42</DesiredVolume>", bodyStr)
 			}
 			w.WriteHeader(http.StatusOK)
 			fmt.Fprintln(w, `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:SetVolumeResponse xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1"/></s:Body></s:Envelope>`)
@@ -148,7 +148,7 @@ func TestMockSOAPActions(t *testing.T) {
 		t.Fatalf("GetVolume failed: %v", err)
 	}
 	if vol != 35 {
-		t.Errorf("expected volume 35, got %d", vol)
+		t.Errorf("client.GetVolume() = %d, want 35", vol)
 	}
 
 	// 2. Test SetVolume
@@ -162,7 +162,7 @@ func TestMockSOAPActions(t *testing.T) {
 		t.Fatalf("GetTransportInfo failed: %v", err)
 	}
 	if info.CurrentTransportState != "PLAYING" {
-		t.Errorf("expected PLAYING, got %s", info.CurrentTransportState)
+		t.Errorf("client.GetTransportInfo().CurrentTransportState = %q, want %q", info.CurrentTransportState, "PLAYING")
 	}
 
 	// 4. Test GetPositionInfo
@@ -171,10 +171,10 @@ func TestMockSOAPActions(t *testing.T) {
 		t.Fatalf("GetPositionInfo failed: %v", err)
 	}
 	if pos.TrackDuration != "0:03:45" {
-		t.Errorf("expected 0:03:45, got %s", pos.TrackDuration)
+		t.Errorf("client.GetPositionInfo().TrackDuration = %q, want %q", pos.TrackDuration, "0:03:45")
 	}
 	if pos.RelTime != "0:01:12" {
-		t.Errorf("expected 0:01:12, got %s", pos.RelTime)
+		t.Errorf("client.GetPositionInfo().RelTime = %q, want %q", pos.RelTime, "0:01:12")
 	}
 
 	// 5. Test control verbs
@@ -204,10 +204,10 @@ func TestSOAPErrorHandling(t *testing.T) {
 
 	_, err := client.GetVolume()
 	if err == nil {
-		t.Fatal("expected error from failed SOAP request, got nil")
+		t.Fatal("client.GetVolume() = nil, want SOAP error")
 	}
 	if !strings.Contains(err.Error(), "SOAP error (500)") {
-		t.Errorf("expected 'SOAP error (500)' in error message, got %v", err)
+		t.Errorf("client.GetVolume() error = %v, want substring %q", err, "SOAP error (500)")
 	}
 }
 
@@ -229,13 +229,13 @@ func TestCachePersistenceWithMemoryStorage(t *testing.T) {
 		t.Fatalf("LoadCache failed: %v", err)
 	}
 	if len(loaded) != 2 {
-		t.Fatalf("expected 2 devices loaded, got %d", len(loaded))
+		t.Fatalf("sonos.LoadCache() len = %d, want 2", len(loaded))
 	}
 	if loaded[0].Name != "Kitchen" { // Sorted alphabetically by Name
-		t.Errorf("expected first device 'Kitchen', got %s", loaded[0].Name)
+		t.Errorf("sonos.LoadCache()[0].Name = %q, want %q", loaded[0].Name, "Kitchen")
 	}
 	if loaded[1].Name != "Living Room" {
-		t.Errorf("expected second device 'Living Room', got %s", loaded[1].Name)
+		t.Errorf("sonos.LoadCache()[1].Name = %q, want %q", loaded[1].Name, "Living Room")
 	}
 }
 
@@ -280,7 +280,7 @@ func TestParseSSDPLocation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := parseSSDPLocation(tt.response)
 			if got != tt.expected {
-				t.Errorf("parseSSDPLocation() = %q, want %q", got, tt.expected)
+				t.Errorf("parseSSDPLocation(%q) = %q, want %q", tt.response, got, tt.expected)
 			}
 		})
 	}
@@ -311,7 +311,7 @@ func TestSelectBestIP(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := selectBestIP(tt.ipv4, tt.ipv6)
 			if got != tt.expected {
-				t.Errorf("selectBestIP() = %q, want %q", got, tt.expected)
+				t.Errorf("selectBestIP(%v, %v) = %q, want %q", tt.ipv4, tt.ipv6, got, tt.expected)
 			}
 		})
 	}
@@ -340,17 +340,17 @@ func TestParseFavorites(t *testing.T) {
 		t.Fatalf("ParseFavorites failed: %v", err)
 	}
 	if len(favs) != 2 {
-		t.Fatalf("expected 2 favorites, got %d", len(favs))
+		t.Fatalf("ParseFavorites(xmlStr) len = %d, want 2", len(favs))
 	}
 
 	if favs[0].ID != "FV:2/1" || favs[0].Title != "Morning Jazz" || favs[0].Description != "Sonos Radio" {
 		t.Errorf("unexpected favorite[0]: %+v", favs[0])
 	}
 	if !strings.Contains(favs[0].ResourceURI, "x-sonosapi-stream:s12345") {
-		t.Errorf("expected ResourceURI to contain stream, got %s", favs[0].ResourceURI)
+		t.Errorf("ParseFavorites(xmlStr)[0].ResourceURI = %q, want stream URI", favs[0].ResourceURI)
 	}
 	if !strings.Contains(favs[0].Metadata, "Morning Jazz Station") {
-		t.Errorf("expected Metadata to be unescaped XML, got %s", favs[0].Metadata)
+		t.Errorf("ParseFavorites(xmlStr)[0].Metadata = %q, want unescaped XML", favs[0].Metadata)
 	}
 
 	if favs[1].ID != "FV:2/2" || favs[1].Title != "Chill Vibes" || favs[1].Description != "Spotify" {
@@ -364,13 +364,13 @@ func TestPlayStreamValidation(t *testing.T) {
 	// Invalid URL scheme (ftp)
 	err := client.PlayStream("ftp://example.com/audio.mp3", "FTP Stream")
 	if err == nil {
-		t.Error("expected error for ftp scheme, got nil")
+		t.Error("PlayStream(\"ftp://example.com/audio.mp3\") = nil, want error")
 	}
 
 	// Invalid URL (empty/garbage)
 	err = client.PlayStream("not-a-url", "")
 	if err == nil {
-		t.Error("expected error for non-URL, got nil")
+		t.Error("PlayStream(\"not-a-url\") = nil, want error")
 	}
 }
 
@@ -385,7 +385,7 @@ func TestParseMusicServices(t *testing.T) {
 		t.Fatalf("ParseMusicServices failed: %v", err)
 	}
 	if len(services) != 2 {
-		t.Fatalf("expected 2 services, got %d", len(services))
+		t.Fatalf("ParseMusicServices(xmlStr) len = %d, want 2", len(services))
 	}
 	if services[0].ID != "9" || services[0].Name != "Spotify" {
 		t.Errorf("unexpected service[0]: %+v", services[0])
@@ -405,31 +405,31 @@ func TestResolveDefaultService(t *testing.T) {
 	// 1. Configured default matches Spotify
 	s, ok := ResolveDefaultService(services, "Spotify")
 	if !ok || s.Name != "Spotify" || !s.IsDefault {
-		t.Errorf("expected Spotify as default, got %+v (ok=%v)", s, ok)
+		t.Errorf("ResolveDefaultService(services, \"Spotify\") = (%+v, %v), want Spotify", s, ok)
 	}
 
 	// 2. Case-insensitive match on Apple Music
 	s, ok = ResolveDefaultService(services, "apple music")
 	if !ok || s.Name != "Apple Music" || !s.IsDefault {
-		t.Errorf("expected Apple Music as default, got %+v (ok=%v)", s, ok)
+		t.Errorf("ResolveDefaultService(services, \"apple music\") = (%+v, %v), want Apple Music", s, ok)
 	}
 
 	// 3. Match on service ID "160"
 	s, ok = ResolveDefaultService(services, "160")
 	if !ok || s.Name != "Amazon Music" || !s.IsDefault {
-		t.Errorf("expected Amazon Music matching ID 160, got %+v (ok=%v)", s, ok)
+		t.Errorf("ResolveDefaultService(services, \"160\") = (%+v, %v), want Amazon Music", s, ok)
 	}
 
 	// 4. Configured default is empty -> fallback to first service
 	s, ok = ResolveDefaultService(services, "")
 	if !ok || s.Name != "Spotify" || !s.IsDefault {
-		t.Errorf("expected first service Spotify as fallback, got %+v (ok=%v)", s, ok)
+		t.Errorf("ResolveDefaultService(services, \"\") = (%+v, %v), want Spotify fallback", s, ok)
 	}
 
 	// 5. Empty services list returns false
 	_, ok = ResolveDefaultService(nil, "Spotify")
 	if ok {
-		t.Error("expected false for empty services list, got true")
+		t.Error("ResolveDefaultService(nil, \"Spotify\") ok = true, want false")
 	}
 }
 
@@ -490,7 +490,7 @@ func TestIsContainerFavorite(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := isContainerFavorite(tt.fav)
 			if got != tt.expected {
-				t.Errorf("isContainerFavorite() = %v, want %v", got, tt.expected)
+				t.Errorf("isContainerFavorite(%+v) = %v, want %v", tt.fav, got, tt.expected)
 			}
 		})
 	}
@@ -521,7 +521,7 @@ func TestRemoveAllTracksFromQueueMock(t *testing.T) {
 		t.Fatalf("RemoveAllTracksFromQueue failed: %v", err)
 	}
 	if !called {
-		t.Error("expected RemoveAllTracksFromQueue SOAP action to be called")
+		t.Error("client.RemoveAllTracksFromQueue() SOAP action called = false, want true")
 	}
 }
 
@@ -545,53 +545,53 @@ func TestParseQueueItems(t *testing.T) {
 	// Test startIndex 0
 	items := ParseQueueItems(didl, 0)
 	if len(items) != 2 {
-		t.Fatalf("expected 2 items, got %d", len(items))
+		t.Fatalf("ParseQueueItems(didl, 0) len = %d, want 2", len(items))
 	}
 	if items[0].Position != 1 {
-		t.Errorf("expected position 1, got %d", items[0].Position)
+		t.Errorf("ParseQueueItems(didl, 0)[0].Position = %d, want 1", items[0].Position)
 	}
 	if items[0].TrackID != "Q:0/1" {
-		t.Errorf("expected track id Q:0/1, got %s", items[0].TrackID)
+		t.Errorf("ParseQueueItems(didl, 0)[0].TrackID = %q, want %q", items[0].TrackID, "Q:0/1")
 	}
 	if items[0].Title != "Track One" {
-		t.Errorf("expected title 'Track One', got %s", items[0].Title)
+		t.Errorf("ParseQueueItems(didl, 0)[0].Title = %q, want %q", items[0].Title, "Track One")
 	}
 	if items[0].Artist != "Artist One" {
-		t.Errorf("expected artist 'Artist One', got %s", items[0].Artist)
+		t.Errorf("ParseQueueItems(didl, 0)[0].Artist = %q, want %q", items[0].Artist, "Artist One")
 	}
 	if items[0].Album != "Album One" {
-		t.Errorf("expected album 'Album One', got %s", items[0].Album)
+		t.Errorf("ParseQueueItems(didl, 0)[0].Album = %q, want %q", items[0].Album, "Album One")
 	}
 	if items[0].Duration != "0:03:45" {
-		t.Errorf("expected duration '0:03:45', got %s", items[0].Duration)
+		t.Errorf("ParseQueueItems(didl, 0)[0].Duration = %q, want %q", items[0].Duration, "0:03:45")
 	}
 	if items[0].URI != "x-sonos-http:track1.mp3" {
-		t.Errorf("expected URI 'x-sonos-http:track1.mp3', got %s", items[0].URI)
+		t.Errorf("ParseQueueItems(didl, 0)[0].URI = %q, want %q", items[0].URI, "x-sonos-http:track1.mp3")
 	}
 
 	if items[1].Position != 2 {
-		t.Errorf("expected position 2, got %d", items[1].Position)
+		t.Errorf("ParseQueueItems(didl, 0)[1].Position = %d, want 2", items[1].Position)
 	}
 	if items[1].Title != "Track Two" {
-		t.Errorf("expected title 'Track Two', got %s", items[1].Title)
+		t.Errorf("ParseQueueItems(didl, 0)[1].Title = %q, want %q", items[1].Title, "Track Two")
 	}
 
 	// Test startIndex offset
 	offsetItems := ParseQueueItems(didl, 10)
 	if len(offsetItems) != 2 {
-		t.Fatalf("expected 2 items, got %d", len(offsetItems))
+		t.Fatalf("ParseQueueItems(didl, 10) len = %d, want 2", len(offsetItems))
 	}
 	if offsetItems[0].Position != 11 {
-		t.Errorf("expected position 11, got %d", offsetItems[0].Position)
+		t.Errorf("ParseQueueItems(didl, 10)[0].Position = %d, want 11", offsetItems[0].Position)
 	}
 	if offsetItems[1].Position != 12 {
-		t.Errorf("expected position 12, got %d", offsetItems[1].Position)
+		t.Errorf("ParseQueueItems(didl, 10)[1].Position = %d, want 12", offsetItems[1].Position)
 	}
 
 	// Test empty XML
 	emptyItems := ParseQueueItems("", 0)
 	if emptyItems != nil {
-		t.Errorf("expected nil for empty XML, got %+v", emptyItems)
+		t.Errorf("ParseQueueItems(\"\", 0) = %+v, want nil", emptyItems)
 	}
 }
 
@@ -629,19 +629,19 @@ func TestGetQueueMock(t *testing.T) {
 		t.Fatalf("GetQueue failed: %v", err)
 	}
 	if res.Returned != 1 {
-		t.Errorf("expected Returned 1, got %d", res.Returned)
+		t.Errorf("GetQueue(0, 10).Returned = %d, want 1", res.Returned)
 	}
 	if res.TotalMatches != 5 {
-		t.Errorf("expected TotalMatches 5, got %d", res.TotalMatches)
+		t.Errorf("GetQueue(0, 10).TotalMatches = %d, want 5", res.TotalMatches)
 	}
 	if len(res.Items) != 1 {
-		t.Fatalf("expected 1 item, got %d", len(res.Items))
+		t.Fatalf("GetQueue(0, 10) len(Items) = %d, want 1", len(res.Items))
 	}
 	if res.Items[0].Title != "Mock Track" {
-		t.Errorf("expected title 'Mock Track', got %s", res.Items[0].Title)
+		t.Errorf("GetQueue(0, 10).Items[0].Title = %q, want %q", res.Items[0].Title, "Mock Track")
 	}
 	if res.Items[0].Position != 1 {
-		t.Errorf("expected position 1, got %d", res.Items[0].Position)
+		t.Errorf("GetQueue(0, 10).Items[0].Position = %d, want 1", res.Items[0].Position)
 	}
 }
 
@@ -675,15 +675,15 @@ func TestSeekTrackMock(t *testing.T) {
 		t.Fatalf("SeekTrack failed: %v", err)
 	}
 	if requestedUnit != "TRACK_NR" {
-		t.Errorf("expected Unit TRACK_NR, got %s", requestedUnit)
+		t.Errorf("SeekTrack(3) Unit = %q, want %q", requestedUnit, "TRACK_NR")
 	}
 	if requestedTarget != "3" {
-		t.Errorf("expected Target 3, got %s", requestedTarget)
+		t.Errorf("SeekTrack(3) Target = %q, want %q", requestedTarget, "3")
 	}
 
 	// Invalid track seek (track < 1)
 	if err := client.SeekTrack(0); err == nil {
-		t.Error("expected error for track 0, got nil")
+		t.Error("SeekTrack(0) = nil, want error")
 	}
 }
 
@@ -717,10 +717,10 @@ func TestSeekTimeMock(t *testing.T) {
 		t.Fatalf("SeekTime(2:15) failed: %v", err)
 	}
 	if requestedUnit != "REL_TIME" {
-		t.Errorf("expected Unit REL_TIME, got %s", requestedUnit)
+		t.Errorf("SeekTime(\"2:15\") Unit = %q, want %q", requestedUnit, "REL_TIME")
 	}
 	if requestedTarget != "0:02:15" {
-		t.Errorf("expected normalized Target 0:02:15, got %s", requestedTarget)
+		t.Errorf("SeekTime(\"2:15\") Target = %q, want %q", requestedTarget, "0:02:15")
 	}
 
 	// Seek with H:MM:SS
@@ -728,12 +728,12 @@ func TestSeekTimeMock(t *testing.T) {
 		t.Fatalf("SeekTime(1:05:30) failed: %v", err)
 	}
 	if requestedTarget != "1:05:30" {
-		t.Errorf("expected Target 1:05:30, got %s", requestedTarget)
+		t.Errorf("SeekTime(\"1:05:30\") Target = %q, want %q", requestedTarget, "1:05:30")
 	}
 
 	// Invalid seek time format
 	if err := client.SeekTime("invalid"); err == nil {
-		t.Error("expected error for invalid seek time, got nil")
+		t.Error("SeekTime(\"invalid\") = nil, want error")
 	}
 }
 
@@ -799,15 +799,15 @@ func TestRemoveTrackRangeFromQueueMock(t *testing.T) {
 		t.Fatalf("RemoveTrackRangeFromQueue failed: %v", err)
 	}
 	if requestedStart != "4" {
-		t.Errorf("expected StartingIndex 4, got %s", requestedStart)
+		t.Errorf("RemoveTrackRangeFromQueue(4, 2) StartingIndex = %q, want %q", requestedStart, "4")
 	}
 	if requestedCount != "2" {
-		t.Errorf("expected NumberOfTracks 2, got %s", requestedCount)
+		t.Errorf("RemoveTrackRangeFromQueue(4, 2) NumberOfTracks = %q, want %q", requestedCount, "2")
 	}
 
 	// Invalid start (< 1)
 	if err := client.RemoveTrackRangeFromQueue(0, 1); err == nil {
-		t.Error("expected error for start 0, got nil")
+		t.Error("RemoveTrackRangeFromQueue(0, 1) = nil, want error")
 	}
 }
 
@@ -842,21 +842,21 @@ func TestReorderTracksInQueueMock(t *testing.T) {
 		t.Fatalf("ReorderTracksInQueue failed: %v", err)
 	}
 	if requestedStart != "5" {
-		t.Errorf("expected StartingIndex 5, got %s", requestedStart)
+		t.Errorf("ReorderTracksInQueue(5, 1, 2) StartingIndex = %q, want %q", requestedStart, "5")
 	}
 	if requestedCount != "1" {
-		t.Errorf("expected NumberOfTracks 1, got %s", requestedCount)
+		t.Errorf("ReorderTracksInQueue(5, 1, 2) NumberOfTracks = %q, want %q", requestedCount, "1")
 	}
 	if requestedInsert != "2" {
-		t.Errorf("expected InsertBefore 2, got %s", requestedInsert)
+		t.Errorf("ReorderTracksInQueue(5, 1, 2) InsertBefore = %q, want %q", requestedInsert, "2")
 	}
 
 	// Invalid parameters
 	if err := client.ReorderTracksInQueue(0, 1, 2); err == nil {
-		t.Error("expected error for startingIndex 0, got nil")
+		t.Error("ReorderTracksInQueue(0, 1, 2) = nil, want error")
 	}
 	if err := client.ReorderTracksInQueue(1, 1, 0); err == nil {
-		t.Error("expected error for insertBefore 0, got nil")
+		t.Error("ReorderTracksInQueue(1, 1, 0) = nil, want error")
 	}
 }
 
@@ -956,13 +956,13 @@ func TestGetPlayModeMock(t *testing.T) {
 		t.Fatalf("GetPlayMode failed: %v", err)
 	}
 	if settings.Mode != PlayModeShuffleNoRepeat {
-		t.Errorf("expected Mode SHUFFLE_NOREPEAT, got %s", settings.Mode)
+		t.Errorf("client.GetPlayMode().Mode = %q, want %q", settings.Mode, PlayModeShuffleNoRepeat)
 	}
 	if !settings.Shuffle {
-		t.Errorf("expected Shuffle true, got false")
+		t.Errorf("client.GetPlayMode().Shuffle = false, want true")
 	}
 	if settings.RepeatMode != "off" {
-		t.Errorf("expected RepeatMode off, got %s", settings.RepeatMode)
+		t.Errorf("client.GetPlayMode().RepeatMode = %q, want %q", settings.RepeatMode, "off")
 	}
 }
 
@@ -1010,7 +1010,7 @@ func TestSetShuffleAndRepeatPreservationMock(t *testing.T) {
 		t.Fatalf("SetShuffle(true) failed: %v", err)
 	}
 	if lastSetPlayMode != "SHUFFLE" {
-		t.Errorf("expected NewPlayMode SHUFFLE, got %s", lastSetPlayMode)
+		t.Errorf("SetShuffle(true) NewPlayMode = %q, want %q", lastSetPlayMode, "SHUFFLE")
 	}
 
 	// 2. Current state is SHUFFLE (shuffle: true, repeat: all).
@@ -1019,7 +1019,7 @@ func TestSetShuffleAndRepeatPreservationMock(t *testing.T) {
 		t.Fatalf("SetRepeat(one) failed: %v", err)
 	}
 	if lastSetPlayMode != "SHUFFLE_REPEAT_ONE" {
-		t.Errorf("expected NewPlayMode SHUFFLE_REPEAT_ONE, got %s", lastSetPlayMode)
+		t.Errorf("SetRepeat(\"one\") NewPlayMode = %q, want %q", lastSetPlayMode, "SHUFFLE_REPEAT_ONE")
 	}
 
 	// 3. Current state is SHUFFLE_REPEAT_ONE.
@@ -1028,7 +1028,7 @@ func TestSetShuffleAndRepeatPreservationMock(t *testing.T) {
 		t.Fatalf("SetShuffle(false) failed: %v", err)
 	}
 	if lastSetPlayMode != "REPEAT_ONE" {
-		t.Errorf("expected NewPlayMode REPEAT_ONE, got %s", lastSetPlayMode)
+		t.Errorf("SetShuffle(false) NewPlayMode = %q, want %q", lastSetPlayMode, "REPEAT_ONE")
 	}
 
 	// 4. Calling SetRepeat("off") should transition to NORMAL.
@@ -1036,7 +1036,7 @@ func TestSetShuffleAndRepeatPreservationMock(t *testing.T) {
 		t.Fatalf("SetRepeat(off) failed: %v", err)
 	}
 	if lastSetPlayMode != "NORMAL" {
-		t.Errorf("expected NewPlayMode NORMAL, got %s", lastSetPlayMode)
+		t.Errorf("SetRepeat(\"off\") NewPlayMode = %q, want %q", lastSetPlayMode, "NORMAL")
 	}
 }
 
@@ -1062,10 +1062,10 @@ func TestSetPlayModeRadioRejectionMock(t *testing.T) {
 
 	err := client.SetPlayMode(PlayModeShuffle)
 	if err == nil {
-		t.Fatal("expected error setting play mode on live radio stream, got nil")
+		t.Fatal("SetPlayMode(PlayModeShuffle) on radio stream = nil, want error")
 	}
 	if !strings.Contains(err.Error(), "live streams or radio") {
-		t.Errorf("expected clear radio rejection error, got: %v", err)
+		t.Errorf("SetPlayMode(PlayModeShuffle) error = %v, want radio rejection message", err)
 	}
 }
 
@@ -1107,14 +1107,14 @@ func TestCrossfadeModeMock(t *testing.T) {
 		t.Fatalf("GetCrossfadeMode failed: %v", err)
 	}
 	if !enabled {
-		t.Errorf("expected initial crossfade true, got false")
+		t.Errorf("client.GetCrossfadeMode() = false, want true")
 	}
 
 	if err := client.SetCrossfadeMode(false); err != nil {
 		t.Fatalf("SetCrossfadeMode(false) failed: %v", err)
 	}
 	if lastSetCrossfade != "0" {
-		t.Errorf("expected SetCrossfadeMode sent '0', got %s", lastSetCrossfade)
+		t.Errorf("SetCrossfadeMode(false) CrossfadeMode = %q, want %q", lastSetCrossfade, "0")
 	}
 
 	enabled, err = client.GetCrossfadeMode()
@@ -1122,7 +1122,7 @@ func TestCrossfadeModeMock(t *testing.T) {
 		t.Fatalf("GetCrossfadeMode failed: %v", err)
 	}
 	if enabled {
-		t.Errorf("expected updated crossfade false, got true")
+		t.Errorf("client.GetCrossfadeMode() = true, want false")
 	}
 }
 
@@ -1178,11 +1178,11 @@ func TestPlayModeCoordinatorResolutionMock(t *testing.T) {
 
 	mockTransport := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		rec := httptest.NewRecorder()
+		handler := followerHandler
 		if strings.HasPrefix(req.URL.Host, "10.0.0.1") {
-			coordHandler.ServeHTTP(rec, req)
-		} else {
-			followerHandler.ServeHTTP(rec, req)
+			handler = coordHandler
 		}
+		handler.ServeHTTP(rec, req)
 		return rec.Result(), nil
 	})
 
@@ -1194,7 +1194,7 @@ func TestPlayModeCoordinatorResolutionMock(t *testing.T) {
 		t.Fatalf("SetShuffle on follower failed: %v", err)
 	}
 	if coordSetPlayMode != "SHUFFLE_NOREPEAT" {
-		t.Errorf("expected coordinator to receive NewPlayMode SHUFFLE_NOREPEAT, got %s", coordSetPlayMode)
+		t.Errorf("SetShuffle(true) coordinator NewPlayMode = %q, want %q", coordSetPlayMode, "SHUFFLE_NOREPEAT")
 	}
 }
 

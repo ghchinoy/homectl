@@ -50,14 +50,16 @@ func main() {
 	sid1, err := client.Subscribe("/MediaRenderer/AVTransport/Event", callbackURL, 300)
 	if err != nil {
 		log.Printf("AVTransport Sub Failed: %v", err)
-	} else {
+	}
+	if err == nil {
 		fmt.Printf("AVTransport SID: %s\n", sid1)
 	}
 
 	sid2, err := client.Subscribe("/MediaRenderer/RenderingControl/Event", callbackURL, 300)
 	if err != nil {
 		log.Printf("RenderingControl Sub Failed: %v", err)
-	} else {
+	}
+	if err == nil {
 		fmt.Printf("RenderingControl SID: %s\n", sid2)
 	}
 

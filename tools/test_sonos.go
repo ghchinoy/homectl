@@ -11,12 +11,11 @@ import (
 )
 
 func main() {
-	targetIP := ""
+	targetIP := os.Getenv("HOMECTL_SONOS_IP")
 	if len(os.Args) > 1 {
 		targetIP = os.Args[1]
-	} else if env := os.Getenv("HOMECTL_SONOS_IP"); env != "" {
-		targetIP = env
-	} else {
+	}
+	if targetIP == "" {
 		cached, _ := sonos.LoadCache()
 		if len(cached) > 0 {
 			targetIP = cached[0].IP

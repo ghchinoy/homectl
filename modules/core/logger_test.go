@@ -24,9 +24,9 @@ func TestStdLogger(t *testing.T) {
 
 	out := buf.String()
 	if !strings.Contains(out, "PREFIX: item 42") {
-		t.Fatalf("buf.String() = %q, want to contain %q", out, "PREFIX: item 42")
+		t.Fatalf("StdLogger.Printf(\"item 42\") = %q, want substring %q", out, "PREFIX: item 42")
 	}
 	if !strings.Contains(out, "done") {
-		t.Fatalf("buf.String() = %q, want to contain %q", out, "done")
+		t.Fatalf("StdLogger.Println(\"done\") = %q, want substring %q", out, "done")
 	}
 }

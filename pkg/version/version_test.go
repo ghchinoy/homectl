@@ -28,6 +28,6 @@ func TestVersionGet(t *testing.T) {
 func TestVersionString(t *testing.T) {
 	s := String()
 	if !strings.HasPrefix(s, "v"+Version) {
-		t.Errorf("String() = %q, expected prefix %q", s, "v"+Version)
+		t.Errorf("version.String() = %q, want prefix %q", s, "v"+Version)
 	}
 }

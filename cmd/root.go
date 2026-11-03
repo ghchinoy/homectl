@@ -2,8 +2,10 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/ghchinoy/homectl/pkg/config"
@@ -13,8 +15,8 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   "homectl",
-	Short: "homectl is a CLI for local smart home management",
-	Long:  `A modern, Go-powered toolkit for local smart home management (Lutron, Sonos, Google Cast, and RTSP cameras).`,
+	Short: "Control and inspect local smart home devices from the terminal",
+	Long:  `A modern, Go-powered toolkit for local smart home management across Lutron Caseta/RA2 Select, Sonos UPnP speakers, Qolsys IQ Panels, Google Cast, and RTSP security cameras.`,
 }
 
 // Execute runs the root command and exits on error.
@@ -58,7 +60,7 @@ func ResolveLutronBridge(flagAddr string) (string, error) {
 		return bridges[0].IP, nil
 	}
 
-	return "", fmt.Errorf("no Lutron bridge specified or discovered; pass --bridge, set HOMECTL_LUTRON_BRIDGE, or set lutron_bridge in config.json")
+	return "", fmt.Errorf("no Lutron bridge specified or discovered; pass --bridge, set HOMECTL_LUTRON_BRIDGE, or set lutron_bridge in config.json (Hint: run 'homectl discover' to scan the network)")
 }
 
 func getClient(cmd *cobra.Command) (*leap.Client, error) {
@@ -97,6 +99,9 @@ func isJSON(cmd *cobra.Command) bool {
 		if f := c.Flags().Lookup("json"); f != nil && f.Value.String() == "true" {
 			return true
 		}
+		if f := c.Flags().Lookup("output"); f != nil && strings.EqualFold(f.Value.String(), "json") {
+			return true
+		}
 	}
 	return false
 }
@@ -110,8 +115,48 @@ func isDryRun(cmd *cobra.Command) bool {
 	return false
 }
 
+func getLimit(cmd *cobra.Command) int {
+	for c := cmd; c != nil; c = c.Parent() {
+		if f := c.Flags().Lookup("limit"); f != nil {
+			if n, err := c.Flags().GetInt("limit"); err == nil && n > 0 {
+				return n
+			}
+		}
+	}
+	return 0
+}
+
+func applyLimit[T any](cmd *cobra.Command, items []T) []T {
+	limit := getLimit(cmd)
+	if limit > 0 && len(items) > limit {
+		return items[:limit]
+	}
+	return items
+}
+
+// IsNoColor reports whether NO_COLOR is set in the environment.
+func IsNoColor() bool {
+	return os.Getenv("NO_COLOR") != ""
+}
+
+// IsNoTUI reports whether HOMECTL_NO_TUI is set in the environment.
+func IsNoTUI() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("HOMECTL_NO_TUI")))
+	return v != "" && v != "0" && v != "false"
+}
+
+func writeJSON(v any) error {
+	return json.NewEncoder(os.Stdout).Encode(v)
+}
+
 func init() {
+	rootCmd.AddGroup(
+		&cobra.Group{ID: "devices", Title: "Device Discovery & Control:"},
+		&cobra.Group{ID: "services", Title: "Interfaces & Daemons:"},
+	)
 	rootCmd.PersistentFlags().String("bridge", "", "Lutron Bridge IP address (defaults to auto-discovery or cache)")
 	rootCmd.PersistentFlags().Bool("json", false, "Output results as machine-readable JSON")
+	rootCmd.PersistentFlags().StringP("output", "o", "text", "Output format: text or json")
+	rootCmd.PersistentFlags().Int("limit", 0, "Maximum number of items to return in list outputs (0 = unlimited)")
 	rootCmd.PersistentFlags().Bool("dry-run", false, "Simulate operation without sending network mutations")
 }

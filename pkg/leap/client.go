@@ -70,7 +70,7 @@ func getLogger() *log.Logger {
 		if err := config.EnsureDir(); err != nil {
 			return
 		}
-		f, err := os.OpenFile(config.Path("leap.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		f, err := os.OpenFile(config.Path("leap.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 		if err == nil {
 			leapLogger = log.New(f, "LEAP: ", log.LstdFlags)
 		}
@@ -105,15 +105,20 @@ type Bridge struct {
 	IP   string `json:"IP"`
 }
 
-// Discover performs mDNS discovery to find Lutron bridges
+// Discover performs mDNS discovery to find Lutron bridges.
 func Discover(timeout time.Duration) ([]Bridge, error) {
+	return DiscoverContext(context.TODO(), timeout)
+}
+
+// DiscoverContext performs mDNS discovery to find Lutron bridges using the provided parent context.
+func DiscoverContext(parent context.Context, timeout time.Duration) ([]Bridge, error) {
 	resolver, err := zeroconf.NewResolver(nil)
 	if err != nil {
 		return nil, err
 	}
 
 	entries := make(chan *zeroconf.ServiceEntry)
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
 	err = resolver.Browse(ctx, "_leap._tcp", "local.", entries)
@@ -296,7 +301,7 @@ func NewClient(addr, certFile, keyFile, caFile string) (*Client, error) {
 
 // Connect opens the TLS connection to the bridge.
 func (c *Client) Connect() error {
-	return c.ConnectContext(context.Background())
+	return c.ConnectContext(context.TODO())
 }
 
 // ConnectContext opens the TLS connection to the bridge using the provided context.

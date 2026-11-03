@@ -196,6 +196,7 @@ type QueueEditParams struct {
 	AsNext       bool   `json:"as_next,omitempty" jsonschema:"If true, moves track(s) to play immediately after the currently playing track (for 'reorder')"`
 	Enabled      *bool  `json:"enabled,omitempty" jsonschema:"Enable or disable state (used for 'shuffle', 'crossfade', and boolean 'repeat')"`
 	RepeatMode   string `json:"repeat_mode,omitempty" jsonschema:"Repeat mode for 'repeat' action: 'off', 'all', or 'one'"`
+	DryRun       bool   `json:"dry_run,omitempty" jsonschema:"If true, simulates the queue edit without sending network mutations"`
 }
 
 // ListFavoritesResult represents the structured, object-wrapped output of sonos_list_favorites.
@@ -324,10 +325,13 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		Version: version.Version,
 	}, nil)
 
+	boolPtr := func(b bool) *bool { return &b }
+
 	// Tool 1: sonos_list_speakers (Read-Only)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "sonos_list_speakers",
 		Description: "Lists all discovered Sonos speakers on the network, returning IP, room name, Rincon ID, model, generation (S1/S2), and renderer status (bridges have is_renderer=false).",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args ListSpeakersParams) (*mcp.CallToolResult, any, error) {
 		var speakers []sonos.Device
 		var err error
@@ -369,6 +373,7 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "sonos_get_now_playing",
 		Description: "Retrieves the current playback state, track metadata, progress, and volume for a Sonos speaker as compact JSON. Automatically resolves stereo-pair/group followers to their coordinator so playback state is authoritative (see is_follower/coordinator_ip in the result).",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args NowPlayingParams) (*mcp.CallToolResult, any, error) {
 		if strings.TrimSpace(args.IP) == "" {
 			return nil, nil, fmt.Errorf("ip parameter is required")
@@ -459,6 +464,7 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "sonos_get_topology",
 		Description: "Returns the Sonos zone-group topology (standalone speakers, stereo pairs, and multi-room groups), identifying the coordinator and members of each group. Use this to understand which speaker is authoritative before controlling playback.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args NowPlayingParams) (*mcp.CallToolResult, any, error) {
 		if strings.TrimSpace(args.IP) == "" {
 			return nil, nil, fmt.Errorf("ip parameter is required (any speaker on the household)")
@@ -530,6 +536,7 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "sonos_control",
 		Description: "Controls playback and grouping on a Sonos speaker: 'play', 'pause', 'stop', 'next', 'previous', 'seek_track' (jump to track number), 'seek_time' (seek offset), 'join' (join group of target speaker), 'leave' / 'unjoin' (ungroup into standalone).",
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: boolPtr(false)},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args ControlParams) (*mcp.CallToolResult, any, error) {
 		if strings.TrimSpace(args.IP) == "" {
 			return nil, nil, fmt.Errorf("ip parameter is required")
@@ -630,6 +637,7 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "sonos_set_volume",
 		Description: "Sets the volume of a Sonos speaker (0-100) or applies a relative delta (e.g. +5, -10).",
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: boolPtr(false)},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args SetVolumeParams) (*mcp.CallToolResult, any, error) {
 		if strings.TrimSpace(args.IP) == "" {
 			return nil, nil, fmt.Errorf("ip parameter is required")
@@ -669,6 +677,7 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "sonos_list_favorites",
 		Description: "Lists all pinned Sonos favorites (playlists, albums, radio stations) on the speaker with ID, title, type, and description.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args ListFavoritesParams) (*mcp.CallToolResult, any, error) {
 		if strings.TrimSpace(args.IP) == "" {
 			return nil, nil, fmt.Errorf("ip parameter is required")
@@ -703,6 +712,7 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "sonos_play_favorite",
 		Description: "Starts playback of a pinned Sonos favorite item by its ID or title on the specified speaker (with automatic coordinator resolution).",
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: boolPtr(true)},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args PlayFavoriteParams) (*mcp.CallToolResult, any, error) {
 		if strings.TrimSpace(args.IP) == "" {
 			return nil, nil, fmt.Errorf("ip parameter is required")
@@ -731,6 +741,7 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "sonos_play_stream",
 		Description: "Plays an arbitrary HTTP or HTTPS audio stream (e.g. internet radio or audio podcast) on the specified speaker with automatic coordinator resolution.",
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: boolPtr(false)},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args PlayStreamParams) (*mcp.CallToolResult, any, error) {
 		if strings.TrimSpace(args.IP) == "" {
 			return nil, nil, fmt.Errorf("ip parameter is required")
@@ -772,6 +783,7 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "sonos_add_to_queue",
 		Description: "Adds an audio URI to the Sonos playback queue (optionally as next track) on the group coordinator.",
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: boolPtr(false)},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args AddToQueueParams) (*mcp.CallToolResult, any, error) {
 		if strings.TrimSpace(args.IP) == "" {
 			return nil, nil, fmt.Errorf("ip parameter is required")
@@ -801,6 +813,7 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "sonos_list_services",
 		Description: "Lists all registered music streaming services (Spotify, Apple Music, YouTube Music, etc.) available on the Sonos speaker catalog, noting the configured default.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args ListServicesParams) (*mcp.CallToolResult, any, error) {
 		if strings.TrimSpace(args.IP) == "" {
 			return nil, nil, fmt.Errorf("ip parameter is required")
@@ -847,6 +860,7 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "sonos_get_queue",
 		Description: "Inspects tracks in the Sonos playback queue on the speaker with track titles, artists, albums, durations, and positions, supporting pagination.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args GetQueueParams) (*mcp.CallToolResult, any, error) {
 		if strings.TrimSpace(args.IP) == "" {
 			return nil, nil, fmt.Errorf("ip parameter is required")
@@ -877,6 +891,7 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "sonos_queue_edit",
 		Description: "Edits the local playback queue on a Sonos speaker: 'remove' (delete track range), 'clear' (wipe entire queue), 'reorder' (move track range or bump to play next), and queue playback settings: 'shuffle' (enable/disable), 'repeat' (mode 'off'|'all'|'one'), 'crossfade' (enable/disable).",
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: boolPtr(true)},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args QueueEditParams) (*mcp.CallToolResult, any, error) {
 		if strings.TrimSpace(args.IP) == "" {
 			return nil, nil, fmt.Errorf("ip parameter is required")
@@ -893,6 +908,16 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		}
 
 		outPayload := map[string]any{"status": "ok", "action": action, "ip": args.IP}
+		if args.DryRun {
+			outPayload["dry_run"] = true
+			dryMsg := fmt.Sprintf("[DRY-RUN] Would execute queue action %q on %s", action, args.IP)
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: dryMsg},
+				},
+			}, outPayload, nil
+		}
+
 		var msg string
 
 		switch action {
@@ -931,10 +956,9 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 			if err := client.ReorderTracksInQueue(args.Track, count, insertBefore); err != nil {
 				return nil, nil, fmt.Errorf("failed to reorder queue on %s: %w", args.IP, err)
 			}
+			msg = fmt.Sprintf("Successfully moved %d track(s) from position %d to before position %d on %s", count, args.Track, insertBefore, args.IP)
 			if args.AsNext {
 				msg = fmt.Sprintf("Successfully moved %d track(s) from position %d to play next (inserted before track %d) on %s", count, args.Track, insertBefore, args.IP)
-			} else {
-				msg = fmt.Sprintf("Successfully moved %d track(s) from position %d to before position %d on %s", count, args.Track, insertBefore, args.IP)
 			}
 			outPayload["track"] = args.Track
 			outPayload["count"] = count
@@ -957,14 +981,12 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		case "repeat":
 			mode := strings.TrimSpace(strings.ToLower(args.RepeatMode))
 			if mode == "" {
-				if args.Enabled != nil {
-					if *args.Enabled {
-						mode = "all"
-					} else {
-						mode = "off"
-					}
-				} else {
+				if args.Enabled == nil {
 					return nil, nil, fmt.Errorf("repeat_mode ('off', 'all', 'one') or enabled (true/false) is required for repeat action")
+				}
+				mode = "off"
+				if *args.Enabled {
+					mode = "all"
 				}
 			}
 			if mode != "off" && mode != "all" && mode != "one" {

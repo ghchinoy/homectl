@@ -42,7 +42,7 @@ func TestManager_DiscoverAllContext(t *testing.T) {
 		m := NewManager()
 		devices := m.DiscoverAllContext(t.Context(), 100*time.Millisecond)
 		if len(devices) != 0 {
-			t.Errorf("got %d devices, want 0", len(devices))
+			t.Errorf("DiscoverAllContext(empty) len = %d, want 0", len(devices))
 		}
 	})
 
@@ -65,7 +65,7 @@ func TestManager_DiscoverAllContext(t *testing.T) {
 
 		devices := m.DiscoverAllContext(t.Context(), 200*time.Millisecond)
 		if got, want := len(devices), 2; got != want {
-			t.Fatalf("got %d devices, want %d", got, want)
+			t.Fatalf("DiscoverAllContext(2 providers) len = %d, want %d", got, want)
 		}
 
 		found := make(map[string]bool)
@@ -94,10 +94,10 @@ func TestManager_DiscoverAllContext(t *testing.T) {
 
 		devices := m.DiscoverAllContext(t.Context(), 200*time.Millisecond)
 		if got, want := len(devices), 1; got != want {
-			t.Fatalf("got %d devices, want %d", got, want)
+			t.Fatalf("DiscoverAllContext(failing+working) len = %d, want %d", got, want)
 		}
 		if got, want := devices[0].ID, "d2"; got != want {
-			t.Errorf("got device ID %q, want %q", got, want)
+			t.Errorf("DiscoverAllContext(failing+working)[0].ID = %q, want %q", got, want)
 		}
 	})
 
@@ -125,10 +125,10 @@ func TestManager_DiscoverAllContext(t *testing.T) {
 		}
 
 		if got, want := len(devices), 1; got != want {
-			t.Errorf("got %d devices, want %d", got, want)
+			t.Errorf("DiscoverAllContext(timeout) len = %d, want %d", got, want)
 		}
 		if !slowProvider.canceled.Load() {
-			t.Errorf("expected slow provider to be canceled")
+			t.Errorf("DiscoverAllContext(timeout) slowProvider.canceled = false, want true")
 		}
 	})
 
@@ -143,7 +143,7 @@ func TestManager_DiscoverAllContext(t *testing.T) {
 		m.AddProvider(p)
 		devices := m.DiscoverAll(100 * time.Millisecond)
 		if got, want := len(devices), 1; got != want {
-			t.Errorf("got %d devices, want %d", got, want)
+			t.Errorf("DiscoverAll(100ms) len = %d, want %d", got, want)
 		}
 	})
 }

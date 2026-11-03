@@ -9,10 +9,17 @@ import (
 )
 
 var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Print the homectl version, commit, and build info",
+	Use:     "version",
+	GroupID: "services",
+	Short:   "Print the homectl version, commit, and build info",
+	Long:    `Prints the current homectl semantic version, git commit hash, and build timestamp in human-readable or JSON format.`,
+	Example: `  # Print version string
+  homectl version
+
+  # Output detailed version metadata as JSON
+  homectl version --json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		jsonFlag, _ := cmd.Flags().GetBool("json")
+		jsonFlag := isJSON(cmd)
 		info := version.Get()
 		if jsonFlag {
 			enc := json.NewEncoder(cmd.OutOrStdout())

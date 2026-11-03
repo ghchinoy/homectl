@@ -98,31 +98,25 @@ func (m model) saveNicknames() {
 	if nicknames == nil {
 		nicknames = make(map[string]string)
 	}
+	updateNickname := func(key, nick string) {
+		delete(nicknames, key)
+		if nick != "" {
+			nicknames[key] = nick
+		}
+	}
 	for _, itm := range m.lightsList.Items() {
 		if i, ok := itm.(item); ok && i.zoneHref != "" {
-			if i.nickname != "" {
-				nicknames[i.zoneHref] = i.nickname
-			} else {
-				delete(nicknames, i.zoneHref)
-			}
+			updateNickname(i.zoneHref, i.nickname)
 		}
 	}
 	for _, itm := range m.musicList.Items() {
 		if i, ok := itm.(item); ok && i.ip != "" {
-			if i.nickname != "" {
-				nicknames[i.ip] = i.nickname
-			} else {
-				delete(nicknames, i.ip)
-			}
+			updateNickname(i.ip, i.nickname)
 		}
 	}
 	for _, itm := range m.areasList.Items() {
 		if i, ok := itm.(item); ok && i.zoneHref != "" {
-			if i.nickname != "" {
-				nicknames[i.zoneHref] = i.nickname
-			} else {
-				delete(nicknames, i.zoneHref)
-			}
+			updateNickname(i.zoneHref, i.nickname)
 		}
 	}
 	_ = config.SaveNicknames(nicknames)
@@ -143,16 +137,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.editing = false
 				var activeIdx int
 				var itm list.Item
-				if m.mode == modeLights {
+				switch m.mode {
+				case modeLights:
 					activeIdx = m.lightsList.Index()
 					itm = m.lightsList.SelectedItem()
-				} else if m.mode == modeMusic {
+				case modeMusic:
 					activeIdx = m.musicList.Index()
 					itm = m.musicList.SelectedItem()
-				} else if m.mode == modeAreas {
+				case modeAreas:
 					activeIdx = m.areasList.Index()
 					itm = m.areasList.SelectedItem()
-				} else {
+				default:
 					activeIdx = m.groupsList.Index()
 					itm = m.groupsList.SelectedItem()
 				}
@@ -160,13 +155,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if itm != nil {
 					i := itm.(item)
 					i.nickname = m.textInput.Value()
-					if m.mode == modeLights {
+					switch m.mode {
+					case modeLights:
 						m.lightsList.SetItem(activeIdx, i)
-					} else if m.mode == modeMusic {
+					case modeMusic:
 						m.musicList.SetItem(activeIdx, i)
-					} else if m.mode == modeAreas {
+					case modeAreas:
 						m.areasList.SetItem(activeIdx, i)
-					} else {
+					default:
 						m.groupsList.SetItem(activeIdx, i)
 					}
 					m.saveNicknames()
@@ -189,13 +185,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		case "tab":
-			if m.mode == modeLights {
+			switch m.mode {
+			case modeLights:
 				m.mode = modeMusic
-			} else if m.mode == modeMusic {
+			case modeMusic:
 				m.mode = modeAreas
-			} else if m.mode == modeAreas {
+			case modeAreas:
 				m.mode = modeSonosGroups
-			} else {
+			default:
 				m.mode = modeLights
 			}
 			return m, nil
@@ -342,13 +339,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	var listCmd tea.Cmd
-	if m.mode == modeLights {
+	switch m.mode {
+	case modeLights:
 		m.lightsList, listCmd = m.lightsList.Update(msg)
-	} else if m.mode == modeMusic {
+	case modeMusic:
 		m.musicList, listCmd = m.musicList.Update(msg)
-	} else if m.mode == modeAreas {
+	case modeAreas:
 		m.areasList, listCmd = m.areasList.Update(msg)
-	} else {
+	default:
 		m.groupsList, listCmd = m.groupsList.Update(msg)
 	}
 	cmds = append(cmds, listCmd)
@@ -510,16 +508,17 @@ func (m model) setLevel(level float64) tea.Cmd {
 	var activeIdx int
 	var itm list.Item
 
-	if m.mode == modeLights {
+	switch m.mode {
+	case modeLights:
 		activeIdx = m.lightsList.Index()
 		itm = m.lightsList.SelectedItem()
-	} else if m.mode == modeMusic {
+	case modeMusic:
 		activeIdx = m.musicList.Index()
 		itm = m.musicList.SelectedItem()
-	} else if m.mode == modeAreas {
+	case modeAreas:
 		activeIdx = m.areasList.Index()
 		itm = m.areasList.SelectedItem()
-	} else {
+	default:
 		activeIdx = m.groupsList.Index()
 		itm = m.groupsList.SelectedItem()
 	}
@@ -530,28 +529,30 @@ func (m model) setLevel(level float64) tea.Cmd {
 	i := itm.(item)
 	i.level = level
 
-	if m.mode == modeLights {
+	switch m.mode {
+	case modeLights:
 		m.lightsList.SetItem(activeIdx, i)
-	} else if m.mode == modeMusic {
+	case modeMusic:
 		m.musicList.SetItem(activeIdx, i)
-	} else if m.mode == modeAreas {
+	case modeAreas:
 		m.areasList.SetItem(activeIdx, i)
-	} else {
+	default:
 		m.groupsList.SetItem(activeIdx, i)
 	}
 
 	return func() tea.Msg {
 		var err error
-		if m.mode == modeLights {
+		switch m.mode {
+		case modeLights:
 			if i.isAll {
 				err = m.leapClient.SetAllLevels(level)
 			} else if i.zoneHref != "" {
 				err = m.leapClient.SetLevel(i.zoneHref, level)
 			}
-		} else if m.mode == modeMusic {
+		case modeMusic:
 			client := sonos.NewClient(i.ip)
 			err = client.SetVolume(int(level))
-		} else {
+		default:
 			if i.zoneHref != "" {
 				err = m.leapClient.SetAreaLevel(i.zoneHref, level)
 			}
@@ -595,9 +596,10 @@ func (m model) togglePlayback() tea.Cmd {
 	return func() tea.Msg {
 		client := sonos.NewClient(i.ip)
 		var err error
-		if i.status == "PLAYING" {
+		switch i.status {
+		case "PLAYING":
 			err = client.Pause()
-		} else {
+		default:
 			err = client.Play()
 		}
 		if err != nil {
@@ -640,14 +642,16 @@ func (m model) prevTrack() tea.Cmd {
 }
 
 func (m model) getCurrentItem() list.Item {
-	if m.mode == modeLights {
+	switch m.mode {
+	case modeLights:
 		return m.lightsList.SelectedItem()
-	} else if m.mode == modeMusic {
+	case modeMusic:
 		return m.musicList.SelectedItem()
-	} else if m.mode == modeAreas {
+	case modeAreas:
 		return m.areasList.SelectedItem()
+	default:
+		return m.groupsList.SelectedItem()
 	}
-	return m.groupsList.SelectedItem()
 }
 
 func (m model) View() string {
@@ -657,22 +661,23 @@ func (m model) View() string {
 
 	// Tabs with clear markers
 	var lightsTab, musicTab, areasTab, groupsTab string
-	if m.mode == modeLights {
+	switch m.mode {
+	case modeLights:
 		lightsTab = activeTabStyle.Render("[ LIGHTS ]")
 		musicTab = inactiveTabStyle.Render("  MUSIC  ")
 		areasTab = inactiveTabStyle.Render("  AREAS  ")
 		groupsTab = inactiveTabStyle.Render("  GROUPS ")
-	} else if m.mode == modeMusic {
+	case modeMusic:
 		lightsTab = inactiveTabStyle.Render("  LIGHTS ")
 		musicTab = activeTabStyle.Render("[  MUSIC ]")
 		areasTab = inactiveTabStyle.Render("  AREAS  ")
 		groupsTab = inactiveTabStyle.Render("  GROUPS ")
-	} else if m.mode == modeAreas {
+	case modeAreas:
 		lightsTab = inactiveTabStyle.Render("  LIGHTS ")
 		musicTab = inactiveTabStyle.Render("  MUSIC  ")
 		areasTab = activeTabStyle.Render("[  AREAS ]")
 		groupsTab = inactiveTabStyle.Render("  GROUPS ")
-	} else {
+	default:
 		lightsTab = inactiveTabStyle.Render("  LIGHTS ")
 		musicTab = inactiveTabStyle.Render("  MUSIC  ")
 		areasTab = inactiveTabStyle.Render("  AREAS  ")
@@ -685,13 +690,14 @@ func (m model) View() string {
 		Render(tabsRow)
 
 	var currentList list.Model
-	if m.mode == modeLights {
+	switch m.mode {
+	case modeLights:
 		currentList = m.lightsList
-	} else if m.mode == modeMusic {
+	case modeMusic:
 		currentList = m.musicList
-	} else if m.mode == modeAreas {
+	case modeAreas:
 		currentList = m.areasList
-	} else {
+	default:
 		currentList = m.groupsList
 	}
 
@@ -702,16 +708,16 @@ func (m model) View() string {
 	if selected != nil {
 		i := selected.(item)
 		var detailText string
-		if m.mode == modeLights {
+		switch m.mode {
+		case modeLights:
+			detailText = fmt.Sprintf(
+				"LIGHT DETAILS\n\nName: %s\nType: %s\nModel: %s\nZone: %s\nLevel: %.0f%%",
+				i.title, i.device.DeviceType, i.device.ModelNumber, i.zoneName, i.level,
+			)
 			if i.isAll {
 				detailText = "Master Control\n\nAffects all dimmable zones on the bridge."
-			} else {
-				detailText = fmt.Sprintf(
-					"LIGHT DETAILS\n\nName: %s\nType: %s\nModel: %s\nZone: %s\nLevel: %.0f%%",
-					i.title, i.device.DeviceType, i.device.ModelNumber, i.zoneName, i.level,
-				)
 			}
-		} else if m.mode == modeMusic {
+		case modeMusic:
 			detailText = fmt.Sprintf(
 				"SPEAKER DETAILS\n\nName: %s\nIP: %s\nModel: %s (%s)\nID: %s\nStatus: %s\nVolume: %.0f%%\nQueue: %d\n\nNOW PLAYING\n\nTrack:  %s\nArtist: %s\nAlbum:  %s",
 				i.title, i.ip, i.modelName, i.modelNum, i.rinconID, i.status, i.level, i.queueLen, i.trackTitle, i.artist, i.album,
@@ -725,12 +731,12 @@ func (m model) View() string {
 			if i.nextTrack != "" {
 				detailText += fmt.Sprintf("\n\nNEXT\n%s", i.nextTrack)
 			}
-		} else if m.mode == modeAreas {
+		case modeAreas:
 			detailText = fmt.Sprintf(
 				"AREA DETAILS\n\nName: %s\nHref: %s",
 				i.title, i.zoneHref,
 			)
-		} else {
+		default:
 			detailText = fmt.Sprintf(
 				"SONOS GROUP\n\nID: %s\nMembers: %s",
 				i.zoneHref, i.desc,

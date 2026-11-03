@@ -5,8 +5,10 @@ import (
 )
 
 var lutronCmd = &cobra.Command{
-	Use:   "lutron",
-	Short: "Control Lutron Caseta and RA2 Select devices",
+	Use:     "lutron",
+	GroupID: "devices",
+	Short:   "Control Lutron Caseta and RA2 Select lighting devices",
+	Long:    `Inspect and control Lutron Caseta and RA2 Select areas, zones, and dimmers over local mTLS LEAP.`,
 }
 
 func init() {

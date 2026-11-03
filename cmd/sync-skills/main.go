@@ -80,17 +80,22 @@ func main() {
 			}
 
 			if *checkMode {
-				if err := checkSkillSync(srcSkillDir, dstSkillDir, pluginName, skillName, *verbose); err != nil {
+				err := checkSkillSync(srcSkillDir, dstSkillDir, pluginName, skillName, *verbose)
+				if err != nil {
 					fmt.Fprintf(os.Stderr, "OUT-OF-SYNC: %v\n", err)
 					hasErrors = true
-				} else if *verbose {
+				}
+				if err == nil && *verbose {
 					fmt.Printf("OK: %s -> %s/skills/%s is in sync\n", skillName, pluginName, skillName)
 				}
-			} else {
-				if err := copySkillTree(srcSkillDir, dstSkillDir, *verbose); err != nil {
+			}
+			if !*checkMode {
+				err := copySkillTree(srcSkillDir, dstSkillDir, *verbose)
+				if err != nil {
 					fmt.Fprintf(os.Stderr, "ERROR copying %s -> %s: %v\n", srcSkillDir, dstSkillDir, err)
 					hasErrors = true
-				} else {
+				}
+				if err == nil {
 					fmt.Printf("Synced: skills/%s -> plugins/%s/skills/%s\n", skillName, pluginName, skillName)
 				}
 			}
@@ -270,7 +275,7 @@ func validateScriptReferences(skillMDPath, skillDir string) error {
 	for _, m := range matches {
 		expectedPath := filepath.Join(skillDir, m)
 		if _, err := os.Stat(expectedPath); os.IsNotExist(err) {
-			return fmt.Errorf("skill.md references %q, but %s does not exist inside the bundle", m, expectedPath)
+			return fmt.Errorf("SKILL.md references %q, but %s does not exist inside the bundle", m, expectedPath)
 		}
 	}
 	return nil

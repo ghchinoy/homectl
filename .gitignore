@@ -40,5 +40,6 @@ docs/src/assets/architecture/*.png
 .codex/
 .cursor/
 .agents/
+.serena/
 CLAUDE.md
 GEMINI.md

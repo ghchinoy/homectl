@@ -18,7 +18,7 @@ func TestNicknamesSaveAndLoad(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", tempDir)
 
 	if err := EnsureDir(); err != nil {
-		t.Fatalf("EnsureDir() = %v, want nil", err)
+		t.Fatalf("config.EnsureDir() = %v, want nil", err)
 	}
 
 	testNicknames := map[string]string{
@@ -36,10 +36,10 @@ func TestNicknamesSaveAndLoad(t *testing.T) {
 	}
 
 	if got := loaded["192.168.1.100"]; got != "Living Room Sonos" {
-		t.Errorf("LoadNicknames()[192.168.1.100] = %q, want %q", got, "Living Room Sonos")
+		t.Errorf("config.LoadNicknames()[192.168.1.100] = %q, want %q", got, "Living Room Sonos")
 	}
 	if got := loaded["/zone/1"]; got != "Kitchen Pendant" {
-		t.Errorf("LoadNicknames()[/zone/1] = %q, want %q", got, "Kitchen Pendant")
+		t.Errorf("config.LoadNicknames()[/zone/1] = %q, want %q", got, "Kitchen Pendant")
 	}
 }
 
@@ -62,9 +62,9 @@ func TestLoadConfigWithAPIHost(t *testing.T) {
 
 	cfg := LoadConfig()
 	if cfg.APIHost != "100.85.12.34" {
-		t.Errorf("expected APIHost to be '100.85.12.34', got %q", cfg.APIHost)
+		t.Errorf("config.LoadConfig().APIHost = %q, want %q", cfg.APIHost, "100.85.12.34")
 	}
 	if cfg.CallbackIP != "192.168.1.100" {
-		t.Errorf("expected CallbackIP to be '192.168.1.100', got %q", cfg.CallbackIP)
+		t.Errorf("config.LoadConfig().CallbackIP = %q, want %q", cfg.CallbackIP, "192.168.1.100")
 	}
 }

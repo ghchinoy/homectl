@@ -73,7 +73,7 @@ func TestSetLogger(t *testing.T) {
 
 	l := getLogger()
 	if l != customLogger {
-		t.Errorf("got logger %v, want %v", l, customLogger)
+		t.Errorf("leap.getLogger() = %v, want %v", l, customLogger)
 	}
 
 	l.Print("hello world")

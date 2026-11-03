@@ -37,7 +37,7 @@ func TestParseHandshakeResponse(t *testing.T) {
 	t.Run("valid 32-byte packet", func(t *testing.T) {
 		dev, ok := parseHandshakeResponse(packet, "192.168.1.150")
 		if !ok {
-			t.Fatalf("expected packet to parse successfully")
+			t.Fatalf("parseHandshakeResponse(32-byte) ok = false, want true")
 		}
 		if got, want := dev.IP, "192.168.1.150"; got != want {
 			t.Errorf("IP got: %q, want: %q", got, want)
@@ -55,7 +55,7 @@ func TestParseHandshakeResponse(t *testing.T) {
 		copy(largePacket, packet)
 		dev, ok := parseHandshakeResponse(largePacket, "192.168.1.151")
 		if !ok {
-			t.Fatalf("expected large packet to parse successfully")
+			t.Fatalf("parseHandshakeResponse(64-byte) ok = false, want true")
 		}
 		if got, want := dev.DeviceID, "0a1b2c3d"; got != want {
 			t.Errorf("DeviceID got: %q, want: %q", got, want)
@@ -66,14 +66,14 @@ func TestParseHandshakeResponse(t *testing.T) {
 		shortPacket := packet[:31]
 		_, ok := parseHandshakeResponse(shortPacket, "192.168.1.152")
 		if ok {
-			t.Errorf("expected truncated packet to be rejected")
+			t.Errorf("parseHandshakeResponse(31-byte) ok = true, want false")
 		}
 	})
 
 	t.Run("empty packet is rejected", func(t *testing.T) {
 		_, ok := parseHandshakeResponse(nil, "192.168.1.153")
 		if ok {
-			t.Errorf("expected empty packet to be rejected")
+			t.Errorf("parseHandshakeResponse(nil) ok = true, want false")
 		}
 	})
 }

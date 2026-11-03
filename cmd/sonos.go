@@ -84,30 +84,36 @@ func resolveSpeakerIP(arg string) (string, error) {
 	if err == nil && len(discovered) > 0 {
 		return discovered[0].IP, nil
 	}
-	return "", fmt.Errorf("no Sonos speaker IP provided and none discovered")
+	return "", fmt.Errorf("no Sonos speaker IP provided and none discovered (Hint: run 'homectl sonos list' to discover and cache speakers)")
 }
 
 var sonosCmd = &cobra.Command{
-	Use:   "sonos",
-	Short: "Control Sonos speakers",
+	Use:     "sonos",
+	GroupID: "devices",
+	Short:   "Control and inspect Sonos speakers",
+	Long:    `Discover Sonos S1/S2 speakers, inspect playback and topology, browse favorites and music services, and control transport, volume, grouping, and queues over UPnP SOAP.`,
 }
 
 var listSonosCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List discovered Sonos speakers",
+	Long:  `Discovers Sonos speakers on the LAN via mDNS and SSDP, updates the local speaker cache, and displays each speaker's generation (S1/S2), type, volume, transport status, and active track.`,
+	Example: `  # Discover and list all Sonos speakers
+  homectl sonos list
+
+  # Output Sonos speakers as JSON (limited to 5)
+  homectl sonos list --json --limit 5`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		jsonOut := isJSON(cmd)
 
 		// Load from cache first
 		speakers, _ := sonos.LoadCache()
-		if len(speakers) > 0 {
-			if !jsonOut {
-				fmt.Printf("Loaded %d speakers from cache. Refreshing...\n", len(speakers))
+		if !jsonOut {
+			msg := "No cache found. Discovering Sonos speakers..."
+			if len(speakers) > 0 {
+				msg = fmt.Sprintf("Loaded %d speakers from cache. Refreshing...", len(speakers))
 			}
-		} else {
-			if !jsonOut {
-				fmt.Println("No cache found. Discovering Sonos speakers...")
-			}
+			fmt.Println(msg)
 		}
 
 		// Perform discovery and save
@@ -120,6 +126,7 @@ var listSonosCmd = &cobra.Command{
 
 		// Reload merged cache for display
 		speakers, _ = sonos.LoadCache()
+		speakers = applyLimit(cmd, speakers)
 
 		if jsonOut {
 			var summaries []SonosSpeakerSummary
@@ -135,10 +142,9 @@ var listSonosCmd = &cobra.Command{
 						status = info.CurrentTransportState
 						pos, _ := client.GetPositionInfo()
 						meta, _ := client.ParseTrackMetadata(pos.TrackMetaData)
+						track = meta.StreamContent
 						if meta.Title != "" {
 							track = meta.Title
-						} else if meta.StreamContent != "" {
-							track = meta.StreamContent
 						}
 					}
 				}
@@ -172,10 +178,9 @@ var listSonosCmd = &cobra.Command{
 			volStr := "N/A"
 			status := "-"
 			track := "-"
-			devType := "Speaker"
-			if !s.IsRenderer {
-				devType = "Bridge"
-			} else {
+			devType := "Bridge"
+			if s.IsRenderer {
+				devType = "Speaker"
 				client := sonos.NewClient(s.IP)
 				vol, err := client.GetVolume()
 				volStr = strconv.Itoa(vol) + "%"
@@ -231,14 +236,37 @@ func verifyRenderer(ip string) error {
 var playSonosCmd = &cobra.Command{
 	Use:   "play [ip]",
 	Short: "Start playback on a Sonos speaker",
-	Args:  cobra.ExactArgs(1),
+	Long:  `Resumes or starts audio playback on the specified Sonos speaker (automatically targeting the group coordinator). Supports --dry-run and --json.`,
+	Example: `  # Start playback on speaker 192.168.1.50
+  homectl sonos play 192.168.1.50
+
+  # Simulate starting playback as JSON
+  homectl sonos play 192.168.1.50 --dry-run --json`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := verifyRenderer(args[0]); err != nil {
+		ip := args[0]
+		if err := verifyRenderer(ip); err != nil {
 			return err
 		}
-		client := sonos.NewClient(args[0])
+		if isDryRun(cmd) {
+			msg := fmt.Sprintf("[DRY-RUN] Would start playback on %s", ip)
+			if isJSON(cmd) {
+				return json.NewEncoder(os.Stdout).Encode(DryRunResult{
+					DryRun:  true,
+					Command: "sonos play",
+					Planned: map[string]any{"ip": ip, "action": "play"},
+					Message: msg,
+				})
+			}
+			fmt.Printf("[DRY-RUN] Simulating: %s (no changes made)\n", msg)
+			return nil
+		}
+		client := sonos.NewClient(ip)
 		if err := client.Play(); err != nil {
 			return fmt.Errorf("play: %w", err)
+		}
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "ok", "action": "play", "ip": ip})
 		}
 		fmt.Println("Playing...")
 		return nil
@@ -248,14 +276,37 @@ var playSonosCmd = &cobra.Command{
 var pauseSonosCmd = &cobra.Command{
 	Use:   "pause [ip]",
 	Short: "Pause playback on a Sonos speaker",
-	Args:  cobra.ExactArgs(1),
+	Long:  `Pauses active audio playback on the specified Sonos speaker. Supports --dry-run and --json.`,
+	Example: `  # Pause playback on speaker 192.168.1.50
+  homectl sonos pause 192.168.1.50
+
+  # Pause playback and return JSON confirmation
+  homectl sonos pause 192.168.1.50 --json`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := verifyRenderer(args[0]); err != nil {
+		ip := args[0]
+		if err := verifyRenderer(ip); err != nil {
 			return err
 		}
-		client := sonos.NewClient(args[0])
+		if isDryRun(cmd) {
+			msg := fmt.Sprintf("[DRY-RUN] Would pause playback on %s", ip)
+			if isJSON(cmd) {
+				return json.NewEncoder(os.Stdout).Encode(DryRunResult{
+					DryRun:  true,
+					Command: "sonos pause",
+					Planned: map[string]any{"ip": ip, "action": "pause"},
+					Message: msg,
+				})
+			}
+			fmt.Printf("[DRY-RUN] Simulating: %s (no changes made)\n", msg)
+			return nil
+		}
+		client := sonos.NewClient(ip)
 		if err := client.Pause(); err != nil {
 			return fmt.Errorf("pause: %w", err)
+		}
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "ok", "action": "pause", "ip": ip})
 		}
 		fmt.Println("Paused.")
 		return nil
@@ -265,14 +316,37 @@ var pauseSonosCmd = &cobra.Command{
 var stopSonosCmd = &cobra.Command{
 	Use:   "stop [ip]",
 	Short: "Stop playback on a Sonos speaker",
-	Args:  cobra.ExactArgs(1),
+	Long:  `Stops audio playback on the specified Sonos speaker. Supports --dry-run and --json.`,
+	Example: `  # Stop playback on speaker 192.168.1.50
+  homectl sonos stop 192.168.1.50
+
+  # Simulate stopping playback in JSON mode
+  homectl sonos stop 192.168.1.50 --dry-run --json`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := verifyRenderer(args[0]); err != nil {
+		ip := args[0]
+		if err := verifyRenderer(ip); err != nil {
 			return err
 		}
-		client := sonos.NewClient(args[0])
+		if isDryRun(cmd) {
+			msg := fmt.Sprintf("[DRY-RUN] Would stop playback on %s", ip)
+			if isJSON(cmd) {
+				return json.NewEncoder(os.Stdout).Encode(DryRunResult{
+					DryRun:  true,
+					Command: "sonos stop",
+					Planned: map[string]any{"ip": ip, "action": "stop"},
+					Message: msg,
+				})
+			}
+			fmt.Printf("[DRY-RUN] Simulating: %s (no changes made)\n", msg)
+			return nil
+		}
+		client := sonos.NewClient(ip)
 		if err := client.Stop(); err != nil {
 			return fmt.Errorf("stop: %w", err)
+		}
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "ok", "action": "stop", "ip": ip})
 		}
 		fmt.Println("Stopped.")
 		return nil
@@ -282,14 +356,37 @@ var stopSonosCmd = &cobra.Command{
 var nextSonosCmd = &cobra.Command{
 	Use:   "next [ip]",
 	Short: "Skip to the next track on a Sonos speaker",
-	Args:  cobra.ExactArgs(1),
+	Long:  `Advances the playback queue to the next track on the specified Sonos speaker. Supports --dry-run and --json.`,
+	Example: `  # Skip to the next track on 192.168.1.50
+  homectl sonos next 192.168.1.50
+
+  # Skip to the next track and emit JSON
+  homectl sonos next 192.168.1.50 --json`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := verifyRenderer(args[0]); err != nil {
+		ip := args[0]
+		if err := verifyRenderer(ip); err != nil {
 			return err
 		}
-		client := sonos.NewClient(args[0])
+		if isDryRun(cmd) {
+			msg := fmt.Sprintf("[DRY-RUN] Would skip to next track on %s", ip)
+			if isJSON(cmd) {
+				return json.NewEncoder(os.Stdout).Encode(DryRunResult{
+					DryRun:  true,
+					Command: "sonos next",
+					Planned: map[string]any{"ip": ip, "action": "next"},
+					Message: msg,
+				})
+			}
+			fmt.Printf("[DRY-RUN] Simulating: %s (no changes made)\n", msg)
+			return nil
+		}
+		client := sonos.NewClient(ip)
 		if err := client.Next(); err != nil {
 			return fmt.Errorf("next: %w", err)
+		}
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "ok", "action": "next", "ip": ip})
 		}
 		fmt.Println("Skipped to next.")
 		return nil
@@ -299,14 +396,37 @@ var nextSonosCmd = &cobra.Command{
 var prevSonosCmd = &cobra.Command{
 	Use:   "prev [ip]",
 	Short: "Skip to the previous track on a Sonos speaker",
-	Args:  cobra.ExactArgs(1),
+	Long:  `Returns to the previous track in the playback queue on the specified Sonos speaker. Supports --dry-run and --json.`,
+	Example: `  # Return to the previous track on 192.168.1.50
+  homectl sonos prev 192.168.1.50
+
+  # Return to the previous track and emit JSON
+  homectl sonos prev 192.168.1.50 --json`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := verifyRenderer(args[0]); err != nil {
+		ip := args[0]
+		if err := verifyRenderer(ip); err != nil {
 			return err
 		}
-		client := sonos.NewClient(args[0])
+		if isDryRun(cmd) {
+			msg := fmt.Sprintf("[DRY-RUN] Would skip to previous track on %s", ip)
+			if isJSON(cmd) {
+				return json.NewEncoder(os.Stdout).Encode(DryRunResult{
+					DryRun:  true,
+					Command: "sonos prev",
+					Planned: map[string]any{"ip": ip, "action": "prev"},
+					Message: msg,
+				})
+			}
+			fmt.Printf("[DRY-RUN] Simulating: %s (no changes made)\n", msg)
+			return nil
+		}
+		client := sonos.NewClient(ip)
 		if err := client.Previous(); err != nil {
 			return fmt.Errorf("prev: %w", err)
+		}
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "ok", "action": "prev", "ip": ip})
 		}
 		fmt.Println("Skipped to previous.")
 		return nil
@@ -316,7 +436,13 @@ var prevSonosCmd = &cobra.Command{
 var seekSonosCmd = &cobra.Command{
 	Use:   "seek [ip]",
 	Short: "Seek to a track number or time offset on a Sonos speaker",
-	Args:  cobra.ExactArgs(1),
+	Long:  `Jumps to a 1-based track index (--track) or seeks to a relative timestamp (--time [H:]MM:SS) on the specified Sonos speaker.`,
+	Example: `  # Jump to track 4 in the queue
+  homectl sonos seek 192.168.1.50 --track 4
+
+  # Seek to 1 minute 30 seconds in the current track
+  homectl sonos seek 192.168.1.50 --time 1:30 --json`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ip := args[0]
 		track, _ := cmd.Flags().GetInt("track")
@@ -334,13 +460,13 @@ var seekSonosCmd = &cobra.Command{
 
 		if isDryRun(cmd) {
 			planned := map[string]any{"ip": ip}
-			msg := ""
+			msg := fmt.Sprintf("[DRY-RUN] Would seek to time %s on %s", timeStr, ip)
 			if track > 0 {
 				planned["track"] = track
 				msg = fmt.Sprintf("[DRY-RUN] Would seek to track %d on %s", track, ip)
-			} else {
+			}
+			if track == 0 {
 				planned["time"] = timeStr
-				msg = fmt.Sprintf("[DRY-RUN] Would seek to time %s on %s", timeStr, ip)
 			}
 
 			if isJSON(cmd) {
@@ -373,21 +499,21 @@ var seekSonosCmd = &cobra.Command{
 				})
 			}
 			fmt.Printf("Successfully jumped to track %d on %s.\n", track, ip)
-		} else {
-			if err := client.SeekTime(timeStr); err != nil {
-				return fmt.Errorf("seek time: %w", err)
-			}
-			if isJSON(cmd) {
-				return json.NewEncoder(os.Stdout).Encode(map[string]any{
-					"status": "ok",
-					"action": "seek_time",
-					"ip":     ip,
-					"time":   timeStr,
-				})
-			}
-			fmt.Printf("Successfully sought to %s on %s.\n", timeStr, ip)
+			return nil
 		}
 
+		if err := client.SeekTime(timeStr); err != nil {
+			return fmt.Errorf("seek time: %w", err)
+		}
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"status": "ok",
+				"action": "seek_time",
+				"ip":     ip,
+				"time":   timeStr,
+			})
+		}
+		fmt.Printf("Successfully sought to %s on %s.\n", timeStr, ip)
 		return nil
 	},
 }
@@ -395,7 +521,13 @@ var seekSonosCmd = &cobra.Command{
 var nowPlayingCmd = &cobra.Command{
 	Use:   "now-playing [ip]",
 	Short: "Show what is currently playing on a Sonos speaker",
-	Args:  cobra.ExactArgs(1),
+	Long:  `Retrieves current transport state, volume, track metadata, progress, and queue count for a Sonos speaker, automatically resolving stereo-pair or group followers to their coordinator.`,
+	Example: `  # View current track on speaker 192.168.1.50
+  homectl sonos now-playing 192.168.1.50
+
+  # Retrieve now-playing metadata as JSON
+  homectl sonos now-playing 192.168.1.50 --json`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client := sonos.NewClient(args[0])
 		transport, _ := client.GetTransportInfo()
@@ -439,7 +571,13 @@ var nowPlayingCmd = &cobra.Command{
 var sonosDetailsCmd = &cobra.Command{
 	Use:   "details [ip]",
 	Short: "Show detailed status and metadata for a Sonos speaker",
-	Args:  cobra.ExactArgs(1),
+	Long:  `Retrieves hardware model details, S1/S2 generation, Rincon ID, transport status, volume, queue length, current track, and next track metadata from a Sonos speaker.`,
+	Example: `  # Show full hardware and playback details for 192.168.1.50
+  homectl sonos details 192.168.1.50
+
+  # Output speaker details as JSON
+  homectl sonos details 192.168.1.50 --json`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client := sonos.NewClient(args[0])
 
@@ -524,7 +662,13 @@ var sonosDetailsCmd = &cobra.Command{
 var setSonosVolumeCmd = &cobra.Command{
 	Use:   "volume [ip] [0-100]",
 	Short: "Set volume for a Sonos speaker",
-	Args:  cobra.ExactArgs(2),
+	Long:  `Sets the speaker volume (0-100) on the specified Sonos speaker. Supports --dry-run and --json.`,
+	Example: `  # Set volume on 192.168.1.50 to 25%
+  homectl sonos volume 192.168.1.50 25
+
+  # Simulate setting volume to 40% in JSON mode
+  homectl sonos volume 192.168.1.50 40 --dry-run --json`,
+	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ip := args[0]
 		vol, err := strconv.Atoi(args[1])
@@ -554,9 +698,19 @@ var setSonosVolumeCmd = &cobra.Command{
 		}
 
 		client := sonos.NewClient(ip)
-		fmt.Printf("Setting volume for %s to %d%%...\n", ip, vol)
+		if !isJSON(cmd) {
+			fmt.Printf("Setting volume for %s to %d%%...\n", ip, vol)
+		}
 		if err := client.SetVolume(vol); err != nil {
 			return fmt.Errorf("set volume: %w", err)
+		}
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"status": "ok",
+				"action": "volume",
+				"ip":     ip,
+				"volume": vol,
+			})
 		}
 		fmt.Println("Success!")
 		return nil
@@ -566,7 +720,13 @@ var setSonosVolumeCmd = &cobra.Command{
 var favoritesSonosCmd = &cobra.Command{
 	Use:   "favorites [ip]",
 	Short: "List pinned favorites from a Sonos speaker",
-	Args:  cobra.MaximumNArgs(1),
+	Long:  `Browses ContentDirectory FV:2 on a Sonos speaker to list all pinned Sonos Favorites (playlists, albums, radio stations).`,
+	Example: `  # List Sonos favorites using the default cached speaker
+  homectl sonos favorites
+
+  # List Sonos favorites from 192.168.1.50 as JSON
+  homectl sonos favorites 192.168.1.50 --json`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var rawIP string
 		if len(args) > 0 {
@@ -582,6 +742,7 @@ var favoritesSonosCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("list favorites: %w", err)
 		}
+		favs = applyLimit(cmd, favs)
 
 		if isJSON(cmd) {
 			return json.NewEncoder(os.Stdout).Encode(SonosFavoritesOutput{
@@ -607,7 +768,13 @@ var favoritesSonosCmd = &cobra.Command{
 var playFavoriteSonosCmd = &cobra.Command{
 	Use:   "play-favorite [ip] [favorite-id]",
 	Short: "Play a pinned favorite by ID on a Sonos speaker",
-	Args:  cobra.ExactArgs(2),
+	Long:  `Starts playback of a pinned Sonos Favorite by its item ID (e.g. FV:2/1) or title on the group coordinator, automatically executing the 4-step queue replacement protocol for multi-track containers.`,
+	Example: `  # Play favorite FV:2/1 on 192.168.1.50
+  homectl sonos play-favorite 192.168.1.50 "FV:2/1"
+
+  # Preview playing a favorite by title in JSON mode
+  homectl sonos play-favorite 192.168.1.50 "Chill Vibes" --dry-run --json`,
+	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ip := args[0]
 		favID := args[1]
@@ -630,9 +797,19 @@ var playFavoriteSonosCmd = &cobra.Command{
 		}
 
 		client := sonos.NewClient(ip)
-		fmt.Printf("Playing favorite %q on %s...\n", favID, ip)
+		if !isJSON(cmd) {
+			fmt.Printf("Playing favorite %q on %s...\n", favID, ip)
+		}
 		if err := client.PlayFavorite(favID); err != nil {
 			return fmt.Errorf("play favorite: %w", err)
+		}
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"status":      "ok",
+				"action":      "play_favorite",
+				"ip":          ip,
+				"favorite_id": favID,
+			})
 		}
 		fmt.Println("Success!")
 		return nil
@@ -642,7 +819,13 @@ var playFavoriteSonosCmd = &cobra.Command{
 var playStreamSonosCmd = &cobra.Command{
 	Use:   "play-stream [ip] [url]",
 	Short: "Play an HTTP/HTTPS audio stream on a Sonos speaker",
-	Args:  cobra.ExactArgs(2),
+	Long:  `Plays a direct HTTP or HTTPS audio stream (such as internet radio or a podcast episode) on the specified Sonos speaker.`,
+	Example: `  # Play an internet radio stream with a custom title
+  homectl sonos play-stream 192.168.1.50 https://ice1.somafm.com/groovesalad-128-mp3 --title "Groove Salad"
+
+  # Simulate playing a stream in JSON mode
+  homectl sonos play-stream 192.168.1.50 https://stream.example.com/live.mp3 --dry-run --json`,
+	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ip := args[0]
 		streamURL := args[1]
@@ -678,9 +861,20 @@ var playStreamSonosCmd = &cobra.Command{
 		}
 
 		client := sonos.NewClient(ip)
-		fmt.Printf("Starting stream %q (%s) on %s...\n", title, streamURL, ip)
+		if !isJSON(cmd) {
+			fmt.Printf("Starting stream %q (%s) on %s...\n", title, streamURL, ip)
+		}
 		if err := client.PlayStream(streamURL, title); err != nil {
 			return fmt.Errorf("play stream: %w", err)
+		}
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"status": "ok",
+				"action": "play_stream",
+				"ip":     ip,
+				"url":    streamURL,
+				"title":  title,
+			})
 		}
 		fmt.Println("Success!")
 		return nil
@@ -690,7 +884,13 @@ var playStreamSonosCmd = &cobra.Command{
 var queueAddSonosCmd = &cobra.Command{
 	Use:   "queue-add [ip] [uri]",
 	Short: "Add an audio track/stream URI to the Sonos queue",
-	Args:  cobra.ExactArgs(2),
+	Long:  `Enqueues an audio URI onto the Sonos playback queue (either appended to the end or inserted as the next track via --next).`,
+	Example: `  # Append a track URI to the queue
+  homectl sonos queue-add 192.168.1.50 x-file-cifs://nas/music/track.flac
+
+  # Insert a track as next in queue and return JSON
+  homectl sonos queue-add 192.168.1.50 x-file-cifs://nas/music/track.flac --next --json`,
+	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ip := args[0]
 		uri := args[1]
@@ -718,6 +918,16 @@ var queueAddSonosCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("queue add: %w", err)
 		}
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"status":         "ok",
+				"action":         "queue_add",
+				"ip":             ip,
+				"uri":            uri,
+				"track_position": pos,
+				"as_next":        asNext,
+			})
+		}
 		fmt.Printf("Enqueued at track position %d on %s\n", pos, ip)
 		return nil
 	},
@@ -726,7 +936,13 @@ var queueAddSonosCmd = &cobra.Command{
 var servicesSonosCmd = &cobra.Command{
 	Use:   "services [ip]",
 	Short: "List available music streaming services on a Sonos speaker",
-	Args:  cobra.MaximumNArgs(1),
+	Long:  `Queries the MusicServices SOAP endpoint on a Sonos speaker to list all available streaming service descriptors and highlight the configured default service.`,
+	Example: `  # List music services on the default cached speaker
+  homectl sonos services
+
+  # Output music services on 192.168.1.50 as JSON
+  homectl sonos services 192.168.1.50 --json`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var rawIP string
 		if len(args) > 0 {
@@ -742,6 +958,7 @@ var servicesSonosCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("list services: %w", err)
 		}
+		services = applyLimit(cmd, services)
 
 		cfg := config.LoadConfig()
 		defaultService, hasDefault := sonos.ResolveDefaultService(services, cfg.SonosDefaultService)
@@ -760,10 +977,9 @@ var servicesSonosCmd = &cobra.Command{
 
 		fmt.Printf("Sonos Music Services on %s (%d available):\n", ip, len(services))
 		if hasDefault {
-			fmt.Printf("Default Service: %s (ID: %s)\n\n", defaultService.Name, defaultService.ID)
-		} else {
-			fmt.Println()
+			fmt.Printf("Default Service: %s (ID: %s)\n", defaultService.Name, defaultService.ID)
 		}
+		fmt.Println()
 		fmt.Printf("%-6s %-30s %-8s %-10s\n", "ID", "NAME", "DEFAULT", "VERSION")
 		fmt.Println(strings.Repeat("-", 60))
 		for _, s := range services {
@@ -780,7 +996,13 @@ var servicesSonosCmd = &cobra.Command{
 var queueSonosCmd = &cobra.Command{
 	Use:   "queue [ip]",
 	Short: "View items in the Sonos playback queue",
-	Args:  cobra.MaximumNArgs(1),
+	Long:  `Browses the local playback queue (Q:0) on a Sonos speaker with pagination support (--start, --count, --limit).`,
+	Example: `  # View the first 20 tracks in the queue
+  homectl sonos queue 192.168.1.50
+
+  # Fetch 10 queue items starting at index 0 as JSON
+  homectl sonos queue 192.168.1.50 --start 0 --count 10 --json`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var rawIP string
 		if len(args) > 0 {
@@ -793,6 +1015,9 @@ var queueSonosCmd = &cobra.Command{
 
 		start, _ := cmd.Flags().GetInt("start")
 		count, _ := cmd.Flags().GetInt("count")
+		if limit := getLimit(cmd); limit > 0 && limit < count {
+			count = limit
+		}
 
 		client := sonos.NewClient(ip)
 		qRes, err := client.GetQueue(start, count)
@@ -836,7 +1061,13 @@ var queueSonosCmd = &cobra.Command{
 var queueRemoveSonosCmd = &cobra.Command{
 	Use:   "queue-remove [ip]",
 	Short: "Remove a track or range of tracks from the Sonos playback queue",
-	Args:  cobra.MaximumNArgs(1),
+	Long:  `Removes one or more tracks (--track, --count) from the local playback queue on a Sonos speaker. Supports --dry-run and --json.`,
+	Example: `  # Remove track 3 from the queue
+  homectl sonos queue-remove 192.168.1.50 --track 3
+
+  # Simulate removing 2 tracks starting at position 5 as JSON
+  homectl sonos queue-remove 192.168.1.50 --track 5 --count 2 --dry-run --json`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var rawIP string
 		if len(args) > 0 {
@@ -893,7 +1124,13 @@ var queueRemoveSonosCmd = &cobra.Command{
 var queueClearSonosCmd = &cobra.Command{
 	Use:   "queue-clear [ip]",
 	Short: "Clear all tracks from the Sonos playback queue",
-	Args:  cobra.MaximumNArgs(1),
+	Long:  `Removes all tracks from the local playback queue on a Sonos speaker. Supports --dry-run and --json.`,
+	Example: `  # Preview clearing the queue without modifying speaker state
+  homectl sonos queue-clear 192.168.1.50 --dry-run
+
+  # Clear all tracks from the queue and output JSON
+  homectl sonos queue-clear 192.168.1.50 --json`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var rawIP string
 		if len(args) > 0 {
@@ -939,7 +1176,13 @@ var queueClearSonosCmd = &cobra.Command{
 var queueReorderSonosCmd = &cobra.Command{
 	Use:   "queue-reorder [ip]",
 	Short: "Reorder a track or range of tracks in the Sonos playback queue",
-	Args:  cobra.MaximumNArgs(1),
+	Long:  `Moves one or more tracks (--track, --count) to a target queue position (--insert-before) or immediately after the current track (--as-next).`,
+	Example: `  # Move track 8 to play immediately after the current track
+  homectl sonos queue-reorder 192.168.1.50 --track 8 --as-next
+
+  # Move 2 tracks starting at position 5 to before position 2 in JSON mode
+  homectl sonos queue-reorder 192.168.1.50 --track 5 --count 2 --insert-before 2 --json`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var rawIP string
 		if len(args) > 0 {
@@ -970,13 +1213,13 @@ var queueReorderSonosCmd = &cobra.Command{
 
 		if isDryRun(cmd) {
 			planned := map[string]any{"ip": ip, "track": track, "count": count}
-			msg := ""
+			msg := fmt.Sprintf("[DRY-RUN] Would move %d track(s) from position %d to before position %d on %s", count, track, insertBefore, ip)
 			if asNext {
 				planned["as_next"] = true
 				msg = fmt.Sprintf("[DRY-RUN] Would move %d track(s) from position %d to play next on %s", count, track, ip)
-			} else {
+			}
+			if !asNext {
 				planned["insert_before"] = insertBefore
-				msg = fmt.Sprintf("[DRY-RUN] Would move %d track(s) from position %d to before position %d on %s", count, track, insertBefore, ip)
 			}
 
 			if isJSON(cmd) {
@@ -1015,11 +1258,11 @@ var queueReorderSonosCmd = &cobra.Command{
 				"insert_before": targetInsert,
 			})
 		}
+		outMsg := fmt.Sprintf("Successfully moved %d track(s) from position %d to before position %d on %s.", count, track, targetInsert, ip)
 		if asNext {
-			fmt.Printf("Successfully moved %d track(s) from position %d to play next (inserted before track %d) on %s.\n", count, track, targetInsert, ip)
-		} else {
-			fmt.Printf("Successfully moved %d track(s) from position %d to before position %d on %s.\n", count, track, targetInsert, ip)
+			outMsg = fmt.Sprintf("Successfully moved %d track(s) from position %d to play next (inserted before track %d) on %s.", count, track, targetInsert, ip)
 		}
+		fmt.Println(outMsg)
 		return nil
 	},
 }
@@ -1027,7 +1270,13 @@ var queueReorderSonosCmd = &cobra.Command{
 var queueModeSonosCmd = &cobra.Command{
 	Use:   "queue-mode [ip]",
 	Short: "Configure queue playback settings (shuffle, repeat, crossfade) on a Sonos speaker",
-	Args:  cobra.MaximumNArgs(1),
+	Long:  `Updates queue playback modes (shuffle on/off, repeat off/all/one, and crossfade on/off) on the group coordinator while preserving unmodified mode settings.`,
+	Example: `  # Enable shuffle and repeat all on 192.168.1.50
+  homectl sonos queue-mode 192.168.1.50 --shuffle on --repeat all
+
+  # Disable shuffle and enable crossfade in JSON mode
+  homectl sonos queue-mode 192.168.1.50 --shuffle off --crossfade on --json`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var rawIP string
 		if len(args) > 0 {
@@ -1172,7 +1421,13 @@ var queueModeSonosCmd = &cobra.Command{
 var joinSonosCmd = &cobra.Command{
 	Use:   "join [speaker-ip] [target-speaker-ip]",
 	Short: "Join a speaker to another speaker's group",
-	Args:  cobra.ExactArgs(2),
+	Long:  `Bonds a Sonos speaker to another speaker's zone group, enforcing S1/S2 household compatibility and rejecting non-rendering bridge devices.`,
+	Example: `  # Join speaker 192.168.1.51 to 192.168.1.50's group
+  homectl sonos join 192.168.1.51 192.168.1.50
+
+  # Join speaker and output JSON confirmation
+  homectl sonos join 192.168.1.51 192.168.1.50 --json`,
+	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		speakerIP := args[0]
 		targetIP := args[1]
@@ -1193,7 +1448,8 @@ var joinSonosCmd = &cobra.Command{
 		targetRincon := targetIP
 		if foundB && devB.RinconID != "" {
 			targetRincon = devB.RinconID
-		} else {
+		}
+		if !foundB || devB.RinconID == "" {
 			details, err := sonos.FetchDeviceDetails(targetIP)
 			if err == nil && details.RinconID != "" {
 				targetRincon = details.RinconID
@@ -1224,7 +1480,13 @@ var leaveSonosCmd = &cobra.Command{
 	Use:     "leave [speaker-ip]",
 	Aliases: []string{"unjoin"},
 	Short:   "Unjoin a speaker into a standalone group",
-	Args:    cobra.ExactArgs(1),
+	Long:    `Detaches a Sonos speaker from its current zone group so it becomes a standalone coordinator.`,
+	Example: `  # Unjoin speaker 192.168.1.51 into a standalone group
+  homectl sonos leave 192.168.1.51
+
+  # Unjoin speaker and output JSON confirmation
+  homectl sonos leave 192.168.1.51 --json`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		speakerIP := args[0]
 		if err := verifyRenderer(speakerIP); err != nil {

@@ -1,5 +1,3 @@
-import axios from 'axios';
-
 export interface LutronDevice {
   FullyQualifiedName?: string;
   Name: string;
@@ -93,47 +91,72 @@ export interface Camera {
   ip: string;
 }
 
-const api = axios.create({
-  baseURL: '/api'
-});
+async function getJSON<T>(path: string, params?: Record<string, string | number | undefined>): Promise<T> {
+  const url = new URL(`/api${path}`, window.location.origin);
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined) {
+        url.searchParams.set(k, String(v));
+      }
+    }
+  }
+  const resp = await fetch(url.toString());
+  if (!resp.ok) {
+    throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+  }
+  return resp.json() as Promise<T>;
+}
+
+async function postJSON<T = unknown>(path: string, body: unknown): Promise<T> {
+  const resp = await fetch(`/api${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+  }
+  const text = await resp.text();
+  return (text ? JSON.parse(text) : undefined) as T;
+}
 
 export const homectlApi = {
   // Lutron
-  getLutronDevices: () => api.get<LutronDevice[]>('/lutron/devices').then(r => r.data),
-  getLutronStatus: () => api.get<any[]>('/lutron/status').then(r => r.data),
-  setLutronLevel: (href: string, level: number) => api.post('/lutron/set', { href, level }),
-  setAllLutronLevel: (level: number) => api.post('/lutron/all', { level }),
+  getLutronDevices: () => getJSON<LutronDevice[]>('/lutron/devices'),
+  getLutronStatus: () => getJSON<any[]>('/lutron/status'),
+  setLutronLevel: (href: string, level: number) => postJSON('/lutron/set', { href, level }),
+  setAllLutronLevel: (level: number) => postJSON('/lutron/all', { level }),
 
   // Sonos
-  getSonosDevices: () => api.get<SonosDevice[]>('/sonos/devices').then(r => r.data),
-  getSonosStatus: () => api.get<Record<string, SonosStatus>>('/sonos/status').then(r => r.data),
-  controlSonos: (ip: string, action: string, volume?: number) => 
-    api.post('/sonos/control', { ip, action, volume }),
-  getSonosFavorites: (ip?: string) => 
-    api.get<SonosFavoritesResult>('/sonos/favorites', { params: ip ? { ip } : {} }).then(r => r.data),
-  playSonosFavorite: (ip: string, favoriteId: string) => 
-    api.post('/sonos/play-favorite', { ip, favorite_id: favoriteId }).then(r => r.data),
-  getSonosServices: (ip?: string) => 
-    api.get<SonosServicesResult>('/sonos/services', { params: ip ? { ip } : {} }).then(r => r.data),
-  playSonosStream: (ip: string, url: string, title?: string) => 
-    api.post('/sonos/play-stream', { ip, url, title }).then(r => r.data),
-  addSonosToQueue: (ip: string, uri: string, asNext?: boolean, metadata?: string) => 
-    api.post('/sonos/queue-add', { ip, uri, as_next: asNext, metadata }).then(r => r.data),
+  getSonosDevices: () => getJSON<SonosDevice[]>('/sonos/devices'),
+  getSonosStatus: () => getJSON<Record<string, SonosStatus>>('/sonos/status'),
+  controlSonos: (ip: string, action: string, volume?: number) =>
+    postJSON('/sonos/control', { ip, action, volume }),
+  getSonosFavorites: (ip?: string) =>
+    getJSON<SonosFavoritesResult>('/sonos/favorites', ip ? { ip } : undefined),
+  playSonosFavorite: (ip: string, favoriteId: string) =>
+    postJSON('/sonos/play-favorite', { ip, favorite_id: favoriteId }),
+  getSonosServices: (ip?: string) =>
+    getJSON<SonosServicesResult>('/sonos/services', ip ? { ip } : undefined),
+  playSonosStream: (ip: string, url: string, title?: string) =>
+    postJSON('/sonos/play-stream', { ip, url, title }),
+  addSonosToQueue: (ip: string, uri: string, asNext?: boolean, metadata?: string) =>
+    postJSON('/sonos/queue-add', { ip, uri, as_next: asNext, metadata }),
   getSonosQueue: (ip?: string, start?: number, count?: number) =>
-    api.get<SonosQueueResult>('/sonos/queue', { params: { ip, start, count } }).then(r => r.data),
+    getJSON<SonosQueueResult>('/sonos/queue', { ip, start, count }),
   seekSonosTrack: (ip: string, track: number) =>
-    api.post('/sonos/control', { ip, action: 'seek_track', track }),
+    postJSON('/sonos/control', { ip, action: 'seek_track', track }),
   seekSonosTime: (ip: string, target: string) =>
-    api.post('/sonos/control', { ip, action: 'seek_time', target }),
+    postJSON('/sonos/control', { ip, action: 'seek_time', target }),
 
   // Cameras
-  getCameras: () => api.get<Camera[]>('/security/cameras').then(r => r.data),
+  getCameras: () => getJSON<Camera[]>('/security/cameras'),
 
   // Cast
-  getCastDevices: () => api.get<CastDevice[]>('/cast/devices').then(r => r.data),
-  getCastStatus: (ip: string) => api.get<CastStatus>('/cast/status', { params: { ip } }).then(r => r.data),
-  controlCast: (ip: string, action: string, volume?: number) => 
-    api.post('/cast/control', { ip, action, volume }),
+  getCastDevices: () => getJSON<CastDevice[]>('/cast/devices'),
+  getCastStatus: (ip: string) => getJSON<CastStatus>('/cast/status', { ip }),
+  controlCast: (ip: string, action: string, volume?: number) =>
+    postJSON('/cast/control', { ip, action, volume }),
 
   // Utils
   getArtUrl: (ip: string, path: string) => {

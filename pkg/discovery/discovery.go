@@ -32,7 +32,7 @@ func (m *Manager) AddProvider(p Provider) {
 
 // DiscoverAll runs discovery on all registered providers concurrently.
 func (m *Manager) DiscoverAll(timeout time.Duration) []Device {
-	return m.DiscoverAllContext(context.Background(), timeout)
+	return m.DiscoverAllContext(context.TODO(), timeout)
 }
 
 // DiscoverAllContext runs discovery on all registered providers honoring the provided context.

@@ -1477,10 +1477,10 @@ func TestSonosControlTool_Join_Success(t *testing.T) {
 		t.Fatalf("CallTool sonos_control join failed: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("expected success, got tool error: %+v", res)
+		t.Fatalf("sonos_control(join) IsError = true, want false: %+v", res)
 	}
 	if mockSpeaker2.lastJoinedRincon != "RINCON_LR" {
-		t.Errorf("expected lastJoinedRincon = RINCON_LR, got %q", mockSpeaker2.lastJoinedRincon)
+		t.Errorf("sonos_control(join) lastJoinedRincon = %q, want %q", mockSpeaker2.lastJoinedRincon, "RINCON_LR")
 	}
 
 	// Kitchen leaves group
@@ -1495,10 +1495,10 @@ func TestSonosControlTool_Join_Success(t *testing.T) {
 		t.Fatalf("CallTool sonos_control leave failed: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("expected success on leave, got tool error: %+v", res)
+		t.Fatalf("sonos_control(leave) IsError = true, want false: %+v", res)
 	}
 	if !mockSpeaker2.leftGroup {
-		t.Errorf("expected leftGroup to be true")
+		t.Errorf("sonos_control(leave) leftGroup = false, want true")
 	}
 }
 
@@ -1554,11 +1554,11 @@ func TestSonosControlTool_Join_CrossGeneration_Rejection(t *testing.T) {
 		t.Fatalf("unexpected call error: %v", err)
 	}
 	if !res.IsError {
-		t.Fatalf("expected tool error when cross-grouping S1 and S2, got success")
+		t.Fatalf("sonos_control(join S1->S2) IsError = false, want true")
 	}
 	textContent, ok := res.Content[0].(*mcp.TextContent)
 	if !ok || !strings.Contains(textContent.Text, "cannot group S1 speaker") {
-		t.Errorf("expected error message to mention 'cannot group S1 speaker', got %v", res.Content)
+		t.Errorf("sonos_control(join S1->S2) Content = %v, want cross-generation error", res.Content)
 	}
 }
 
@@ -1608,11 +1608,11 @@ func TestSonosControlTool_NonRenderer_Rejection(t *testing.T) {
 		t.Fatalf("unexpected call error: %v", err)
 	}
 	if !res.IsError {
-		t.Fatalf("expected tool error when playing on bridge, got success")
+		t.Fatalf("sonos_control(play on bridge) IsError = false, want true")
 	}
 	textContent, ok := res.Content[0].(*mcp.TextContent)
 	if !ok || !strings.Contains(textContent.Text, "non-rendering device") {
-		t.Errorf("expected error to mention 'non-rendering device', got %v", res.Content)
+		t.Errorf("sonos_control(play on bridge) Content = %v, want non-rendering device error", res.Content)
 	}
 
 	// Volume on bridge should also be rejected
@@ -1627,7 +1627,7 @@ func TestSonosControlTool_NonRenderer_Rejection(t *testing.T) {
 		t.Fatalf("unexpected call error: %v", err)
 	}
 	if !res.IsError {
-		t.Fatalf("expected tool error when setting volume on bridge, got success")
+		t.Fatalf("sonos_set_volume(bridge) IsError = false, want true")
 	}
 }
 
@@ -1667,15 +1667,15 @@ func TestSonosListSpeakersTool_IncludesGenerationAndRenderer(t *testing.T) {
 		t.Fatalf("CallTool sonos_list_speakers failed: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("expected success, got error: %+v", res)
+		t.Fatalf("sonos_list_speakers(cached) IsError = true, want false: %+v", res)
 	}
 
 	if len(res.Content) < 2 {
-		t.Fatalf("expected at least 2 content items, got %d", len(res.Content))
+		t.Fatalf("sonos_list_speakers(cached) len(Content) = %d, want >= 2", len(res.Content))
 	}
 	textContent, ok := res.Content[1].(*mcp.TextContent)
 	if !ok {
-		t.Fatalf("expected TextContent, got %T", res.Content[1])
+		t.Fatalf("sonos_list_speakers(cached) Content[1] = %T, want *mcp.TextContent", res.Content[1])
 	}
 
 	var listRes ListSpeakersResult
@@ -1684,13 +1684,13 @@ func TestSonosListSpeakersTool_IncludesGenerationAndRenderer(t *testing.T) {
 	}
 
 	if listRes.Count != 2 {
-		t.Fatalf("expected count 2, got %d", listRes.Count)
+		t.Fatalf("sonos_list_speakers(cached).Count = %d, want 2", listRes.Count)
 	}
 
 	if listRes.Speakers[0].Generation != "S2" || !listRes.Speakers[0].IsRenderer {
-		t.Errorf("expected speaker 0 to have Generation=S2 and IsRenderer=true, got %+v", listRes.Speakers[0])
+		t.Errorf("sonos_list_speakers(cached).Speakers[0] = %+v, want Generation=S2 IsRenderer=true", listRes.Speakers[0])
 	}
 	if listRes.Speakers[1].Generation != "S1" || listRes.Speakers[1].IsRenderer {
-		t.Errorf("expected speaker 1 to have Generation=S1 and IsRenderer=false, got %+v", listRes.Speakers[1])
+		t.Errorf("sonos_list_speakers(cached).Speakers[1] = %+v, want Generation=S1 IsRenderer=false", listRes.Speakers[1])
 	}
 }

@@ -57,27 +57,27 @@ func TestScanSubnetRTSP(t *testing.T) {
 		return nil, errors.New("connection refused")
 	}
 
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
 	provider.scanSubnetRTSP(ctx, "192.168.1.", mockDialer, foundIPs, &devices, &mu)
 
 	if len(devices) != 1 {
-		t.Fatalf("scanSubnetRTSP() found %d devices, want 1", len(devices))
+		t.Fatalf("scanSubnetRTSP(\"192.168.1.\") len(devices) = %d, want 1", len(devices))
 	}
 	if devices[0].IP != "192.168.1.42" {
-		t.Errorf("devices[0].IP = %s, want %s", devices[0].IP, "192.168.1.42")
+		t.Errorf("scanSubnetRTSP(\"192.168.1.\") devices[0].IP = %q, want %q", devices[0].IP, "192.168.1.42")
 	}
 	if devices[0].Provider != "camera" || devices[0].Type != "Camera" {
-		t.Errorf("devices[0] metadata = %+v, want Camera provider and type", devices[0])
+		t.Errorf("scanSubnetRTSP(\"192.168.1.\") devices[0] = %+v, want Provider=camera Type=Camera", devices[0])
 	}
 	if !foundIPs["192.168.1.42"] {
-		t.Errorf("foundIPs[%q] = false, want true", "192.168.1.42")
+		t.Errorf("scanSubnetRTSP(\"192.168.1.\") foundIPs[\"192.168.1.42\"] = false, want true")
 	}
 
 	// Test deduplication
 	provider.scanSubnetRTSP(ctx, "192.168.1.", mockDialer, foundIPs, &devices, &mu)
 	if len(devices) != 1 {
-		t.Errorf("scanSubnetRTSP() after rerun found %d devices, want 1", len(devices))
+		t.Errorf("scanSubnetRTSP(\"192.168.1.\") deduplicated len(devices) = %d, want 1", len(devices))
 	}
 }
