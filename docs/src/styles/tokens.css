@@ -1,0 +1,323 @@
+/*
+ * tokens.css — the brand seam.
+ *
+ * ONE stylesheet, mapping Starlight's own `--sl-*` custom properties and
+ * gBreeze / GM3 tokens so the site is visibly its own thing rather than stock
+ * Starlight. Palette: GDM-style neutral canvas, near-black/white primary pill
+ * CTAs, Google Blue links & focus rings, and Elephant (Blue) + Goldfish
+ * (Orange) tonal accents.
+ *
+ * This file is also the artefact site B copies (proposal §5). Copy, do not
+ * package: a published theme package needs a registry, a version, a release
+ * process and a build-order constraint in two repos, to deduplicate a single
+ * stylesheet of CSS variables and component tokens between sites owned by one
+ * person. Drift is visible (the sites stop matching) and cheap to fix (copy
+ * again).
+ *
+ * Every value below is a presentation choice. Nothing here encodes a fact
+ * about the catalog.
+ */
+
+@font-face {
+  font-family: "Google Sans Flex";
+  src: url("../assets/fonts/google-sans-flex.woff2") format("woff2");
+  font-weight: 100 1000;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Google Sans Code";
+  src: url("../assets/fonts/google-sans-code.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --font-display: "Google Sans Flex", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Google Sans Code", ui-monospace, SFMono-Regular, "SF Mono",
+    Menlo, Consolas, "Liberation Mono", monospace;
+
+  --sl-font: var(--font-display);
+  --sl-font-system: var(--font-display);
+  --sl-font-mono: var(--font-mono);
+
+  /* Shape tokens */
+  --md-sys-shape-corner-lg: 20px;
+  --md-sys-shape-corner-md: 14px;
+
+  /* Dark mode (Starlight default: :root without data-theme="light") */
+  --md-sys-color-surface: #0f1013;
+  --md-sys-color-surface-container-low: #15171b;
+  --md-sys-color-surface-container: #1b1e23;
+  --md-sys-color-surface-container-high: #23272d;
+  --md-sys-color-on-surface: #e8eaed;
+  --md-sys-color-on-surface-variant: #9aa0a6;
+  --md-sys-color-outline: #5f6368;
+  --md-sys-color-outline-variant: #2b3037;
+
+  --md-sys-color-primary: #ffffff;
+  --md-sys-color-on-primary: #1f1f1f;
+  --md-sys-color-primary-container: #0b57d0;
+  --md-sys-color-on-primary-container: #d3e3fd;
+
+  --md-sys-color-secondary: #a8c7fa;
+  --md-sys-color-on-secondary: #062e6f;
+  --md-sys-color-secondary-container: #2b3037;
+  --md-sys-color-on-secondary-container: #e8eaed;
+
+  --egm-color-elephant: #7cacf8;
+  --egm-color-on-elephant: #041e49;
+  --egm-color-elephant-container: #041e49;
+  --egm-color-goldfish: #ff8d41;
+  --egm-color-on-goldfish: #2c1600;
+  --egm-color-goldfish-container: #582400;
+
+  /* Starlight Dark Theme variable mappings */
+  --sl-color-white: #e8eaed;
+  --sl-color-gray-1: #e8eaed;
+  --sl-color-gray-2: #9aa0a6;
+  --sl-color-gray-3: #80868b;
+  --sl-color-gray-4: #5f6368;
+  --sl-color-gray-5: #2b3037;
+  --sl-color-gray-6: #15171b;
+  --sl-color-black: #0f1013;
+
+  --sl-color-accent-low: #041e49;
+  --sl-color-accent: #7cacf8;
+  --sl-color-accent-high: #d3e3fd;
+  --sl-color-text: #e8eaed;
+  --sl-color-text-accent: #a8c7fa;
+  --sl-color-text-invert: #0f1013;
+
+  --sl-color-bg: #0f1013;
+  --sl-color-bg-nav: #0f1013;
+  --sl-color-bg-sidebar: #15171b;
+  --sl-color-bg-inline-code: #1b1e23;
+  --sl-color-bg-accent: #7cacf8;
+  --sl-color-hairline-light: #23272d;
+  --sl-color-hairline: #2b3037;
+  --sl-color-hairline-shade: #0f1013;
+
+  --sl-content-width: 50rem;
+}
+
+:root[data-theme="light"] {
+  --md-sys-color-surface: #ffffff;
+  --md-sys-color-surface-container-low: #f8f9fa;
+  --md-sys-color-surface-container: #f1f3f4;
+  --md-sys-color-surface-container-high: #e9ebee;
+  --md-sys-color-on-surface: #1f1f1f;
+  --md-sys-color-on-surface-variant: #5f6368;
+  --md-sys-color-outline: #80868b;
+  --md-sys-color-outline-variant: #dadce0;
+
+  --md-sys-color-primary: #1f1f1f;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #e8f0fe;
+  --md-sys-color-on-primary-container: #041e49;
+
+  --md-sys-color-secondary: #0b57d0;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #f1f3f4;
+  --md-sys-color-on-secondary-container: #1f1f1f;
+
+  --egm-color-elephant: #1b6ef3;
+  --egm-color-on-elephant: #ffffff;
+  --egm-color-elephant-container: #d3e3fd;
+  --egm-color-goldfish: #e86e00;
+  --egm-color-on-goldfish: #2c1600;
+  --egm-color-goldfish-container: #ffe8d6;
+
+  /* Starlight Light Theme variable mappings */
+  --sl-color-white: #1f1f1f;
+  --sl-color-gray-1: #1f1f1f;
+  --sl-color-gray-2: #5f6368;
+  --sl-color-gray-3: #5f6368;
+  --sl-color-gray-4: #80868b;
+  --sl-color-gray-5: #dadce0;
+  --sl-color-gray-6: #f8f9fa;
+  --sl-color-gray-7: #f1f3f4;
+  --sl-color-black: #ffffff;
+
+  --sl-color-accent-low: #e8f0fe;
+  --sl-color-accent: #0b57d0;
+  --sl-color-accent-high: #041e49;
+  --sl-color-text: #1f1f1f;
+  --sl-color-text-accent: #0b57d0;
+  --sl-color-text-invert: #ffffff;
+
+  --sl-color-bg: #ffffff;
+  --sl-color-bg-nav: #ffffff;
+  --sl-color-bg-sidebar: #f8f9fa;
+  --sl-color-bg-inline-code: #f1f3f4;
+  --sl-color-bg-accent: #0b57d0;
+  --sl-color-hairline-light: #e9ebee;
+  --sl-color-hairline: #dadce0;
+  --sl-color-hairline-shade: #dadce0;
+}
+
+/* Global typography & selection (EGM global.css conventions) */
+body {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+
+h1,
+h2,
+h3,
+h4,
+.site-title {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+/* Long declared descriptions are rendered in full and unclipped — no
+   line-clamp, no ellipsis, no max-height. I9. */
+.sl-markdown-content p,
+.entry-description {
+  text-wrap: pretty;
+}
+
+/* Splash hero: EGM display scale & pill CTA buttons */
+.hero h1 {
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.06;
+  text-wrap: balance;
+}
+
+.hero h1 a {
+  color: inherit;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 0.14em;
+}
+
+.hero h1 a:hover {
+  color: var(--md-sys-color-secondary);
+  text-decoration-color: currentColor;
+}
+
+.hero .tagline {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: clamp(1.05rem, 0.95rem + 0.35vw, 1.2rem);
+  line-height: 1.6;
+  text-wrap: balance;
+}
+
+.sl-link-button {
+  border-radius: 999px;
+  font-weight: 500;
+  padding: 0.65rem 1.35rem;
+  transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.sl-link-button.primary {
+  background-color: var(--md-sys-color-primary);
+  border-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+
+.sl-link-button.primary:hover {
+  opacity: 0.9;
+}
+
+.sl-link-button.secondary {
+  background-color: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface);
+}
+
+.sl-link-button.secondary:hover {
+  background-color: var(--md-sys-color-surface-container-low);
+  border-color: var(--md-sys-color-outline);
+}
+
+/* Navigation header & sidebar active state (GM3 tonal pill) */
+header.header {
+  background-color: var(--md-sys-color-surface);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.sidebar-content a {
+  border-radius: 999px;
+  padding-inline: 0.85rem;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+:root:not([data-theme="light"]) .sidebar-content a[aria-current="page"],
+:root:not([data-theme="light"]) .sidebar-content a[aria-current="page"]:hover,
+:root:not([data-theme="light"]) .sidebar-content a[aria-current="page"]:focus {
+  background-color: var(--egm-color-elephant-container);
+  color: #d3e3fd;
+  font-weight: 600;
+}
+
+:root[data-theme="light"] .sidebar-content a[aria-current="page"],
+:root[data-theme="light"] .sidebar-content a[aria-current="page"]:hover,
+:root[data-theme="light"] .sidebar-content a[aria-current="page"]:focus {
+  background-color: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  font-weight: 600;
+}
+
+/* Prose links: subtle underline that sharpens on hover, matching EGM */
+.sl-markdown-content a:not(.sl-link-button, .card a) {
+  color: var(--md-sys-color-secondary);
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 0.18em;
+}
+
+.sl-markdown-content a:not(.sl-link-button, .card a):hover {
+  text-decoration-color: currentColor;
+}
+
+/* gBreeze-inspired Cards */
+.card {
+  background-color: var(--md-sys-color-surface-container-low);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-md);
+  transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease;
+}
+
+.card:hover {
+  border-color: var(--md-sys-color-outline);
+  background-color: var(--md-sys-color-surface-container);
+  transform: translateY(-1px);
+}
+
+.card .icon {
+  border-radius: 50%;
+  background-color: var(--egm-color-elephant-container);
+  border-color: transparent;
+  color: var(--egm-color-elephant);
+}
+
+.card:nth-child(even) .icon {
+  background-color: var(--egm-color-goldfish-container);
+  color: var(--egm-color-goldfish);
+}
+
+/* Code blocks & inline code */
+.sl-markdown-content :not(pre) > code {
+  border-radius: 6px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background-color: var(--md-sys-color-surface-container-low);
+  padding: 0.12rem 0.38rem;
+  font-size: 0.875em;
+}
+
+.expressive-code .frame {
+  border-radius: var(--md-sys-shape-corner-md);
+  border-color: var(--md-sys-color-outline-variant);
+  box-shadow: none;
+}

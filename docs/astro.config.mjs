@@ -1,7 +1,6 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
-import catppuccin from '@catppuccin/starlight';
 import starlightImageZoom from 'starlight-image-zoom';
 
 export default defineConfig({
@@ -14,11 +13,8 @@ export default defineConfig({
       logo: {
         src: './src/assets/homectl.svg',
       },
+      customCss: ['./src/styles/tokens.css'],
       plugins: [
-        catppuccin({
-          dark: { flavor: 'mocha', accent: 'sky' },
-          light: { flavor: 'latte', accent: 'sky' },
-        }),
         starlightImageZoom(),
       ],
       social: [

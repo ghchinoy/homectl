@@ -205,7 +205,7 @@ npm run build # Build production bundle to ui/dist
 
 ### Documentation Site Development
 
-The documentation site is built with Astro Starlight and Catppuccin:
+The documentation site is built with Astro Starlight, GM3 design tokens, and self-hosted Google Sans Flex/Code fonts:
 
 ```bash
 cd docs
