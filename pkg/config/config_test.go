@@ -7,6 +7,12 @@ import (
 )
 
 func TestGetPath(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tempDir)
+
+	if got, want := ConfigDir(), filepath.Join(tempDir, "homectl"); got != want {
+		t.Fatalf("ConfigDir() with XDG_CONFIG_HOME = %q, want %q", got, want)
+	}
 	p := Path("test.json")
 	if got := filepath.Base(p); got != "test.json" {
 		t.Errorf("Path(%q) base = %q, want %q", "test.json", got, "test.json")

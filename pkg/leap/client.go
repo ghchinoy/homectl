@@ -149,8 +149,11 @@ func cacheFile() string {
 	return config.Path("lutron_cache.json")
 }
 
-// SaveCache persists discovered bridges to a local file
+// SaveCache persists discovered bridges to a local file.
 func SaveCache(bridges []Bridge) error {
+	if err := config.EnsureDir(); err != nil {
+		return err
+	}
 	data, err := json.MarshalIndent(bridges, "", "  ")
 	if err != nil {
 		return err

@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -36,8 +37,12 @@ func NewXDGStorage(appName string) *XDGStorage {
 	return &XDGStorage{appName: appName}
 }
 
-// Dir returns the root directory for this XDGStorage instance.
+// Dir returns the root directory for this XDGStorage instance, honoring
+// XDG_CONFIG_HOME across all platforms before falling back to os.UserConfigDir().
 func (s *XDGStorage) Dir() string {
+	if xdg := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); xdg != "" {
+		return filepath.Join(xdg, s.appName)
+	}
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		homeDir, _ := os.UserHomeDir()

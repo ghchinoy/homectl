@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // AppConfig represents the application configuration
@@ -18,8 +19,12 @@ type AppConfig struct {
 	QolsysToken         string `json:"qolsys_token,omitempty"` // Qolsys IQ Panel 6-digit access token
 }
 
-// ConfigDir returns the path to the configuration directory (~/.config/homectl).
+// ConfigDir returns the path to the configuration directory, honoring XDG_CONFIG_HOME
+// across all platforms (including macOS) before falling back to os.UserConfigDir().
 func ConfigDir() string {
+	if xdg := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); xdg != "" {
+		return filepath.Join(xdg, "homectl")
+	}
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		homeDir, _ := os.UserHomeDir()
@@ -85,6 +90,9 @@ func LoadNicknames() map[string]string {
 
 // SaveNicknames saves the device nicknames to nicknames.json.
 func SaveNicknames(nicknames map[string]string) error {
+	if err := EnsureDir(); err != nil {
+		return err
+	}
 	data, err := json.MarshalIndent(nicknames, "", "  ")
 	if err != nil {
 		return err
