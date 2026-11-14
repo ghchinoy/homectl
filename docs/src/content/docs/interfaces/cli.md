@@ -205,6 +205,7 @@ Flags:
 * `-H, --host string`: Host/IP address to bind the API server to (default `0.0.0.0`; supports `127.0.0.1`, Tailscale `100.x.y.z`).
 * `-p, --port int`: Port to listen on (default `8080`).
 * `--ui string`: Path to directory containing built Web UI assets (default `./ui/dist`).
+* `--debug`: Enable diagnostic debug endpoints (`/api/debug/*`; disabled by default).
 
 Security examples:
 ```bash

@@ -917,6 +917,7 @@ func Start(leapClient *leap.Client) error {
 	callbackURL, err := listener.Start()
 
 	if err == nil {
+		defer listener.Close()
 
 		m.sonosListener = listener
 

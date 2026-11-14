@@ -417,7 +417,21 @@ func ParseDeviceDescription(data []byte) (DeviceDetails, error) {
 	}, nil
 }
 
-const defaultUserAgent = "homectl/1.0"
+const (
+	defaultUserAgent     = "homectl/1.0"
+	maxSOAPResponseBytes = 4 << 20 // 4 MiB cap on UPnP XML/SOAP responses
+)
+
+func readBounded(r io.Reader, limit int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("response exceeded maximum size of %d bytes", limit)
+	}
+	return data, nil
+}
 
 // FetchDeviceDetails fetches device metadata, Rincon ID, generation (S1/S2), and renderer status from the Sonos XML description.
 func FetchDeviceDetails(ip string) (DeviceDetails, error) {
@@ -434,7 +448,7 @@ func FetchDeviceDetails(ip string) (DeviceDetails, error) {
 	}
 	defer resp.Body.Close()
 
-	data, err := io.ReadAll(resp.Body)
+	data, err := readBounded(resp.Body, maxSOAPResponseBytes)
 	if err != nil {
 		return DeviceDetails{}, fmt.Errorf("reading device description from %s: %w", ip, err)
 	}
@@ -564,7 +578,7 @@ func (c *Client) SOAPAction(controlURL, serviceType, action string, args map[str
 	}
 
 	defer resp.Body.Close()
-	b, err := io.ReadAll(resp.Body)
+	b, err := readBounded(resp.Body, maxSOAPResponseBytes)
 	if err != nil {
 		return nil, fmt.Errorf("reading SOAP response: %w", err)
 	}

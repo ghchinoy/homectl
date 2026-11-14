@@ -3,7 +3,7 @@
 # homectl installer script
 # This script builds and installs homectl as a systemd service.
 
-set -e
+set -euo pipefail
 
 APP_NAME="homectl"
 BINARY_DEST="/usr/local/bin/${APP_NAME}"
@@ -11,18 +11,17 @@ SHARE_DEST="/usr/local/share/${APP_NAME}"
 UI_DEST="${SHARE_DEST}/ui"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
 
-echo "Building ${APP_NAME}..."
+echo "Building ${APP_NAME} with version metadata..."
 
-# 1. Build Go binary
-mkdir -p bin
-go build -o "bin/${APP_NAME}" .
+# 1. Build Go binary via Makefile so LDFLAGS (Version, GitCommit, BuildDate) are embedded
+make bin-homectl
 
-# 2. Build UI
+# 2. Build UI deterministically from lockfile
 echo "Building UI..."
-pushd ui
-npm install
+pushd ui > /dev/null
+npm ci
 npm run build
-popd
+popd > /dev/null
 
 # 3. Create destination directories
 echo "Creating directories..."

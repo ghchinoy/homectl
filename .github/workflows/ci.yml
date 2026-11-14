@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go Build, Race Tests & Vulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify gofmt formatting
+        run: |
+          UNFORMATTED="$(gofmt -l .)"
+          if [ -n "${UNFORMATTED}" ]; then
+            echo "Unformatted Go files:"
+            echo "${UNFORMATTED}"
+            exit 1
+          fi
+
+      - name: Run go vet across workspace modules
+        run: go vet ./... ./modules/core/... ./modules/sonos/...
+
+      - name: Run Go race test suite across workspace modules
+        run: go test -race ./... ./modules/core/... ./modules/sonos/...
+
+      - name: Verify skill bundle synchronization
+        run: make check-skills
+
+      - name: Build CLI and MCP binaries
+        run: make build
+
+      - name: Run govulncheck
+        run: |
+          go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+          (cd modules/sonos && go run golang.org/x/vuln/cmd/govulncheck@latest ./...)
+
+  node:
+    name: Web UI & Docs Audit and Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.23.4'
+          cache: npm
+          cache-dependency-path: |
+            ui/package-lock.json
+            docs/package-lock.json
+
+      - name: Audit and build Web UI
+        working-directory: ui
+        run: |
+          npm ci
+          npm audit --audit-level=moderate
+          npm run build
+
+      - name: Audit and build Starlight documentation
+        working-directory: docs
+        run: |
+          npm ci
+          npm audit --audit-level=moderate
+          npm run build

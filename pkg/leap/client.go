@@ -270,7 +270,39 @@ type Parameter struct {
 	Value float64 `json:"Value"`
 }
 
-// NewClient creates a new LEAP client with the provided certificates
+// verifyBridgePeerCert verifies the peer certificate chain against caCertPool
+// without enforcing DNS/IP hostname SAN matching (Lutron bridges present a
+// device-specific CN rather than the user's dynamic/static LAN IP).
+func verifyBridgePeerCert(caCertPool *x509.CertPool) func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+	return func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+		if len(rawCerts) == 0 {
+			return errors.New("no peer certificates presented by Lutron bridge")
+		}
+		certs := make([]*x509.Certificate, len(rawCerts))
+		for i, asn1Data := range rawCerts {
+			parsed, err := x509.ParseCertificate(asn1Data)
+			if err != nil {
+				return fmt.Errorf("failed to parse bridge certificate %d: %w", i, err)
+			}
+			certs[i] = parsed
+		}
+		intermediates := x509.NewCertPool()
+		for _, ic := range certs[1:] {
+			intermediates.AddCert(ic)
+		}
+		_, err := certs[0].Verify(x509.VerifyOptions{
+			Roots:         caCertPool,
+			Intermediates: intermediates,
+			KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageAny},
+		})
+		if err != nil {
+			return fmt.Errorf("bridge certificate failed CA verification: %w", err)
+		}
+		return nil
+	}
+}
+
+// NewClient creates a new LEAP client with the provided certificates.
 func NewClient(addr, certFile, keyFile, caFile string) (*Client, error) {
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
@@ -282,12 +314,18 @@ func NewClient(addr, certFile, keyFile, caFile string) (*Client, error) {
 		return nil, fmt.Errorf("failed to read CA cert: %w", err)
 	}
 	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(caCert)
+	if !caCertPool.AppendCertsFromPEM(caCert) {
+		return nil, fmt.Errorf("failed to parse CA cert PEM from %q", caFile)
+	}
 
+	// InsecureSkipVerify disables default hostname matching (since bridges are dialed
+	// by LAN IP), while VerifyPeerCertificate enforces strict chain validation against lutron_ca.crt.
 	tlsConfig := &tls.Config{
-		Certificates:       []tls.Certificate{cert},
-		RootCAs:            caCertPool,
-		InsecureSkipVerify: true,
+		Certificates:          []tls.Certificate{cert},
+		RootCAs:               caCertPool,
+		MinVersion:            tls.VersionTLS12,
+		InsecureSkipVerify:    true,
+		VerifyPeerCertificate: verifyBridgePeerCert(caCertPool),
 	}
 
 	return &Client{

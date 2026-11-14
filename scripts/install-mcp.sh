@@ -27,9 +27,94 @@ if [ -f "${OPENCODE_CONFIG}" ]; then
     cp "${OPENCODE_CONFIG}" "${BACKUP}"
     echo "    Backup saved to ${BACKUP}"
 
-    jq --arg bin "${TARGET_BIN}" \
-       '.mcp.sonos = { "type": "local", "command": [$bin], "enabled": true }' \
-       "${OPENCODE_CONFIG}" > "${OPENCODE_CONFIG}.tmp"
+    python3 - "${OPENCODE_CONFIG}" "${TARGET_BIN}" <<'PY'
+import json
+import sys
+
+cfg_path, target_bin = sys.argv[1], sys.argv[2]
+with open(cfg_path, "r", encoding="utf-8") as f:
+    raw = f.read()
+
+# Strip JSONC // and /* */ comments and trailing commas while preserving quoted strings
+out = []
+i, n = 0, len(raw)
+in_str = False
+while i < n:
+    ch = raw[i]
+    if in_str:
+        out.append(ch)
+        if ch == "\\" and i + 1 < n:
+            out.append(raw[i + 1])
+            i += 2
+            continue
+        if ch == '"':
+            in_str = False
+        i += 1
+        continue
+    if ch == '"':
+        in_str = True
+        out.append(ch)
+        i += 1
+        continue
+    if ch == "/" and i + 1 < n and raw[i + 1] == "/":
+        i += 2
+        while i < n and raw[i] not in "\r\n":
+            i += 1
+        continue
+    if ch == "/" and i + 1 < n and raw[i + 1] == "*":
+        i += 2
+        while i + 1 < n and not (raw[i] == "*" and raw[i + 1] == "/"):
+            i += 1
+        i += 2
+        continue
+    out.append(ch)
+    i += 1
+
+cleaned = "".join(out)
+# Remove trailing commas before } or ] outside strings
+final_chars = []
+i, m = 0, len(cleaned)
+in_str = False
+while i < m:
+    ch = cleaned[i]
+    if in_str:
+        final_chars.append(ch)
+        if ch == "\\" and i + 1 < m:
+            final_chars.append(cleaned[i + 1])
+            i += 2
+            continue
+        if ch == '"':
+            in_str = False
+        i += 1
+        continue
+    if ch == '"':
+        in_str = True
+        final_chars.append(ch)
+        i += 1
+        continue
+    if ch == ",":
+        j = i + 1
+        while j < m and cleaned[j] in " \t\r\n":
+            j += 1
+        if j < m and cleaned[j] in "}]":
+            i += 1
+            continue
+    final_chars.append(ch)
+    i += 1
+
+doc = json.loads("".join(final_chars) or "{}")
+if not isinstance(doc.get("mcp"), dict):
+    doc["mcp"] = {}
+doc["mcp"]["sonos"] = {
+    "type": "local",
+    "command": [target_bin],
+    "enabled": True,
+}
+
+with open(cfg_path + ".tmp", "w", encoding="utf-8") as f:
+    json.dump(doc, f, indent=2)
+    f.write("\n")
+PY
     mv "${OPENCODE_CONFIG}.tmp" "${OPENCODE_CONFIG}"
     echo "==> Successfully registered sonos MCP server in OpenCode!"
 else

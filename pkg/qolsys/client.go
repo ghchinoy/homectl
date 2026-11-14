@@ -5,12 +5,13 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 	"time"
 
-	"nhooyr.io/websocket"
-	"nhooyr.io/websocket/wsjson"
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 )
 
 // Client represents a connection to a Qolsys IQ Panel
@@ -48,7 +49,11 @@ func (c *Client) Connect(ctx context.Context) error {
 		HTTPClient: hc,
 	}
 
-	url := fmt.Sprintf("wss://%s:12345", c.addr)
+	target := c.addr
+	if _, _, splitErr := net.SplitHostPort(target); splitErr != nil {
+		target = net.JoinHostPort(target, "12345")
+	}
+	url := fmt.Sprintf("wss://%s", target)
 	conn, _, err := websocket.Dial(ctx, url, opts)
 	if err != nil {
 		return fmt.Errorf("failed to dial Qolsys panel: %w", err)

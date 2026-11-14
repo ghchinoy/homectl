@@ -1,15 +1,21 @@
 package sonos
 
 import (
+	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/ghchinoy/homectl/modules/core"
 )
+
+const maxGENABodyBytes = 1 << 20 // 1 MiB cap on inbound UPnP NOTIFY XML bodies
 
 // EventMsg represents a processed event from a Sonos device
 type EventMsg struct {
@@ -37,12 +43,16 @@ type LastChangeParser struct {
 	} `xml:"InstanceID>NextTrackMetaData"`
 }
 
-// GENAListener handles incoming UPnP notifications
+// GENAListener handles incoming UPnP notifications.
 type GENAListener struct {
 	Port     int
 	Handler  func(EventMsg)
 	Logger   core.Logger
 	Settings core.Settings
+
+	mu       sync.Mutex
+	listener net.Listener
+	server   *http.Server
 }
 
 func (l *GENAListener) getLogger() core.Logger {
@@ -59,7 +69,7 @@ func (l *GENAListener) getSettings() core.Settings {
 	return defaultSettings
 }
 
-// Start starts the HTTP listener on a random available port
+// Start starts the HTTP listener on a random available port.
 func (l *GENAListener) Start() (string, error) {
 	addr, err := net.ResolveTCPAddr("tcp", "0.0.0.0:0")
 	if err != nil {
@@ -71,14 +81,58 @@ func (l *GENAListener) Start() (string, error) {
 		return "", err
 	}
 
-	l.Port = listener.Addr().(*net.TCPAddr).Port
-
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", l.handleNotify)
 
-	go http.Serve(listener, mux)
+	srv := &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       30 * time.Second,
+	}
+
+	l.mu.Lock()
+	l.Port = listener.Addr().(*net.TCPAddr).Port
+	l.listener = listener
+	l.server = srv
+	l.mu.Unlock()
+
+	go func() {
+		if serveErr := srv.Serve(listener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			l.getLogger().Printf("GENA server error: %v\n", serveErr)
+		}
+	}()
 
 	return l.CallbackURL(), nil
+}
+
+// Stop gracefully shuts down the GENA HTTP listener using the provided context.
+func (l *GENAListener) Stop(ctx context.Context) error {
+	if l == nil {
+		return nil
+	}
+	l.mu.Lock()
+	srv := l.server
+	ln := l.listener
+	l.server = nil
+	l.listener = nil
+	l.mu.Unlock()
+
+	if srv != nil {
+		return srv.Shutdown(ctx)
+	}
+	if ln != nil {
+		return ln.Close()
+	}
+	return nil
+}
+
+// Close shuts down the GENA HTTP listener with a bounded 2-second timeout.
+func (l *GENAListener) Close() error {
+	ctx, cancel := context.WithTimeout(context.TODO(), 2*time.Second)
+	defer cancel()
+	return l.Stop(ctx)
 }
 
 // CallbackURL returns the HTTP callback URL for GENA event notifications.
@@ -123,8 +177,14 @@ func (l *GENAListener) handleNotify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
+	r.Body = http.MaxBytesReader(w, r.Body, maxGENABodyBytes)
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxGENABodyBytes+1))
 	if err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			http.Error(w, "notify payload too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "failed to read body", http.StatusBadRequest)
 		return
 	}

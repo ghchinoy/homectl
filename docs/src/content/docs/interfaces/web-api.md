@@ -46,13 +46,20 @@ When running `homectl serve`, the application exposes a REST API on the configur
 | `GET` | `/api/security/cameras` | Returns all discovered RTSP and ONVIF security cameras |
 | `GET` | `/api/security/stream` | Streams real-time MJPEG video transcoded via FFmpeg. Query param: `?ip=...` |
 
+### Security & Request Guards
+
+All mutating `POST` endpoints enforce:
+* **Local / Same-Origin Guard:** Browser requests must originate from the server's `Host`, `localhost` / loopback, or configured `api_host` (cross-origin `Origin` and `Sec-Fetch-Site: cross-site` requests are rejected with `403 Forbidden`).
+* **Bounded Payload Limits:** JSON request bodies are capped at `64 KiB` (`413 Request Entity Too Large`), and album art proxy responses are capped at `10 MiB` with media header allowlisting (`nosniff`).
+* **Unicast Device IP Validation:** Device `ip` parameters reject hostnames, explicit ports, loopback, link-local (`169.254.0.0/16`), multicast, and unspecified addresses.
+
 ---
 
 ## Web UI Architecture (Lit + Vite)
 
 The web dashboard is located under `ui/` in the repository and built with [Lit WebComponents](https://lit.dev) and [Vite](https://vitejs.dev):
 
-* **Centralized API Client (`ui/src/api.ts`):** Single typed Axios wrapper for all backend calls.
+* **Centralized API Client (`ui/src/api.ts`):** Zero-dependency typed browser `fetch` client for all backend calls.
 * **Component Isolation:** Each card inherits base styling from `BaseCard` (`ui/src/components/base-card.ts`):
   * `<lutron-card>`: Dynamic brightness illumination color and slider.
   * `<sonos-card>`: Album art, track metadata, and volume.

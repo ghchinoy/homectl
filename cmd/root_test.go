@@ -836,4 +836,74 @@ func TestIsAllowedLocalOrigin(t *testing.T) {
 	if isAllowedLocalOrigin(reqEvil) {
 		t.Errorf("isAllowedLocalOrigin(%q) = true, want false", reqEvil.Header.Get("Origin"))
 	}
+
+	reqNull := httptest.NewRequest(http.MethodPost, "http://192.168.1.10:8080/api/lutron/all", nil)
+	reqNull.Host = "192.168.1.10:8080"
+	reqNull.Header.Set("Origin", "null")
+	if isAllowedLocalOrigin(reqNull) {
+		t.Errorf("isAllowedLocalOrigin(%q) = true, want false", "null")
+	}
+
+	reqCrossFetch := httptest.NewRequest(http.MethodPost, "http://192.168.1.10:8080/api/lutron/all", nil)
+	reqCrossFetch.Host = "192.168.1.10:8080"
+	reqCrossFetch.Header.Set("Sec-Fetch-Site", "cross-site")
+	if isAllowedLocalOrigin(reqCrossFetch) {
+		t.Errorf("isAllowedLocalOrigin(%q) = true, want false", "Sec-Fetch-Site=cross-site")
+	}
+}
+
+func TestValidateDeviceIP(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		want    string
+		wantErr bool
+	}{
+		{name: "valid_private_ipv4", raw: "192.168.1.50", want: "192.168.1.50"},
+		{name: "empty", raw: "", wantErr: true},
+		{name: "hostname_rejected", raw: "speaker.local", wantErr: true},
+		{name: "host_port_rejected", raw: "192.168.1.50:8080", wantErr: true},
+		{name: "loopback_rejected", raw: "127.0.0.1", wantErr: true},
+		{name: "link_local_rejected", raw: "169.254.169.254", wantErr: true},
+		{name: "multicast_rejected", raw: "239.255.255.250", wantErr: true},
+		{name: "unspecified_rejected", raw: "0.0.0.0", wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := validateDeviceIP(tc.raw)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("validateDeviceIP(%q) err = %v, wantErr %v", tc.raw, err, tc.wantErr)
+			}
+			if !tc.wantErr && got != tc.want {
+				t.Errorf("validateDeviceIP(%q) = %q, want %q", tc.raw, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDecodeJSONBody_MaxBytes(t *testing.T) {
+	t.Run("valid_payload", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/lutron/all", strings.NewReader(`{"level":50}`))
+		var dst struct {
+			Level float64 `json:"level"`
+		}
+		if ok := decodeJSONBody(rec, req, &dst); !ok || dst.Level != 50 {
+			t.Errorf("decodeJSONBody(valid) = (%v, %.0f), want (true, 50)", ok, dst.Level)
+		}
+	})
+
+	t.Run("oversized_payload_413", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		huge := `{"pad":"` + strings.Repeat("a", maxAPIJSONBodyBytes+1024) + `"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/lutron/all", strings.NewReader(huge))
+		var dst map[string]any
+		if ok := decodeJSONBody(rec, req, &dst); ok {
+			t.Fatalf("decodeJSONBody(oversized) = true, want false")
+		}
+		if rec.Code != http.StatusRequestEntityTooLarge {
+			t.Errorf("decodeJSONBody(oversized) status = %d, want %d", rec.Code, http.StatusRequestEntityTooLarge)
+		}
+	})
 }
