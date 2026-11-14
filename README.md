@@ -3,7 +3,7 @@
 [![CI](https://github.com/ghchinoy/homectl/actions/workflows/ci.yml/badge.svg)](https://github.com/ghchinoy/homectl/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-Starlight-blue)](https://ghchinoy.github.io/homectl/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Go Version](https://img.shields.io/badge/go-1.26.10+-00ADD8?logo=go)](go.mod)
+[![Go Version](https://img.shields.io/badge/go-1.26.11+-00ADD8?logo=go)](go.mod)
 
 A modern, Go-powered toolkit for local smart home management, providing unified control of Lutron Caséta lighting, Sonos whole-home audio, Google Cast devices, and RTSP security cameras via CLI, Terminal UI (TUI), Web UI, and Model Context Protocol (MCP) Agent Plugins.
 
@@ -209,7 +209,7 @@ make check-skills
 
 ### Prerequisites
 
-* **Go:** 1.26.10+
+* **Go:** 1.26.11+
 * **Node.js:** 22.23.4+ and `npm` (for the Web UI and Starlight docs)
 * **FFmpeg:** Required on the host system for on-demand camera transcoding (`ffmpeg -i rtsp://...`)
 * **Graphviz (`dot`):** Optional; required for compiling architecture diagrams (`make diagrams`)

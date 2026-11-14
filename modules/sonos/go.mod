@@ -1,6 +1,6 @@
 module github.com/ghchinoy/homectl/modules/sonos
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/ghchinoy/homectl/modules/core v0.0.0

@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Expanded Mock & Protocol Test Suites:** Added `cmd/serve_test.go`, `pkg/qolsys/client_test.go`, `cmd/sync-skills/main_test.go`, `modules/sonos/events_test.go`, and in-memory mTLS LEAP mock server tests in `pkg/leap/client_test.go` ([control-9ch]).
 
 ### Changed
-- **Toolchain & Dependency Upgrades:** Raised Go workspace floor to `1.26.10` across root, `modules/core`, and `modules/sonos`; migrated `pkg/qolsys` from archived `nhooyr.io/websocket` to `github.com/coder/websocket`; replaced `axios` in `ui/src/api.ts` with native browser `fetch`; and enforced `engines.node >= 22.23.4` ([control-i16], [control-601]).
+- **Toolchain & Dependency Upgrades:** Raised Go workspace floor to `1.26.11` across root, `modules/core`, and `modules/sonos`; migrated `pkg/qolsys` from archived `nhooyr.io/websocket` to `github.com/coder/websocket`; replaced `axios` in `ui/src/api.ts` with native browser `fetch`; and enforced `engines.node >= 22.23.4` ([control-i16], [control-601]).
 - **Concurrent Sonos Status Endpoint:** Updated `/api/sonos/status` to poll speakers concurrently, skip non-rendering bridges (`status: "BRIDGE"`), and resolve `x-rincon:` stereo-pair/group followers to their authoritative coordinator ([control-2bi]).
 - **Installer Hardening:** Updated `scripts/install.sh` to embed version `LDFLAGS` (`make bin-homectl`) and run `npm ci`, and replaced bare `jq` in `scripts/install-mcp.sh` with a comment-preserving JSONC parser ([control-2bi]).
 
@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - **Lutron LEAP mTLS CA Verification:** Enforced `VerifyPeerCertificate` against `lutron_ca.crt` (`MinVersion: TLS 1.2`) on IP-dialed bridge connections instead of accepting unverified self-signed peers ([control-gqf]).
 - **HTTP Gateway CSRF, SSRF & Payload Bounds:** Wrapped all mutating `POST` routes in `homectl serve` with `requireLocalOrigin` and `64 KiB` `http.MaxBytesReader` limits; enforced unicast `validateDeviceIP` validation across all device endpoints; blocked hostname SSRF and restricted response headers on `/api/sonos/art`; gated `/api/debug/lutron` behind `--debug`; and capped UPnP SOAP (`4 MiB`), GENA `NOTIFY` (`1 MiB`), and art proxy (`10 MiB`) reads ([control-i16], [control-gqf]).
-- **Upstream CVE Remediation & Action Pinning:** Patched `astro` (`7.4.12`, `GHSA-r3h5-4585-7x3w`), `sharp` (`0.35.5`), `vite` (`7.3.8`), and Go `1.26.10` stdlib advisories, and pinned all GitHub Actions to immutable commit SHAs ([control-i16], [control-601], [control-2bi]).
+- **Upstream CVE Remediation & Action Pinning:** Patched `astro` (`7.4.12`, `GHSA-r3h5-4585-7x3w`), `sharp` (`0.35.5`), `vite` (`7.3.8`), and Go `1.26.11` stdlib advisories, and pinned all GitHub Actions to immutable commit SHAs ([control-i16], [control-601], [control-2bi]).
 
 ## [0.3.0] - 2026-10-06
 

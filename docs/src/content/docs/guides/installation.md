@@ -8,7 +8,7 @@ description: Install homectl as a standalone binary or a systemd service.
 ## Prerequisites
 
 - **Operating System:** Linux (Ubuntu/Debian, Arch, Fedora) or macOS (Darwin arm64/amd64).
-- **Go:** 1.26.10+ (when building from source).
+- **Go:** 1.26.11+ (when building from source).
 - **Node.js:** 22.23.4+ and `npm` (when building the Web UI or documentation from source).
 - **FFmpeg:** Optional; required only for RTSP camera transcoding.
 

@@ -9,7 +9,7 @@ description: Get up and running with homectl in under 2 minutes.
 
 ### 1. Clone & Build
 
-Ensure you have **Go 1.26.10+** and **Node.js 22.23.4+** installed (or download a prebuilt archive from [GitHub Releases](https://github.com/ghchinoy/homectl/releases)):
+Ensure you have **Go 1.26.11+** and **Node.js 22.23.4+** installed (or download a prebuilt archive from [GitHub Releases](https://github.com/ghchinoy/homectl/releases)):
 
 ```bash
 git clone https://github.com/ghchinoy/homectl.git
