@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-14
+
+_Security hardening, agent-aware CLI & MCP parity, legacy Sonos cache self-healing, Agent Plugins v1.0.0 conformance, embedded Web UI, and SLSA-attested binary release automation._
+
 ### Added
 - **Agent-Aware CLI Parity:** Added command grouping (`GroupID`), `Long`/`Example` help blocks across all 38 commands, `-o / --output`, `--limit`, `NO_COLOR`, and `HOMECTL_NO_TUI` headless guards, `--json` and `--dry-run` support on `sonos play/pause/stop/next/prev`, and `HOMECTL_QOLSYS_HOST` / `HOMECTL_QOLSYS_TOKEN` environment variable and `config.json` fallbacks ([control-rr6]).
 - **MCP Tool Annotations & Queue Dry-Run:** Added `mcp.ToolAnnotations` (`ReadOnlyHint`, `DestructiveHint`, `IdempotentHint`) across all 12 tools in `cmd/mcp-sonos`, `dry_run` preview mode on `sonos_queue_edit`, and `.claude-plugin/marketplace.json` discovery index ([control-rr6], [control-qln]).
@@ -22,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Legacy `sonos_cache.json` Zero-Value `IsRenderer` Bug:** Added `sonos.NormalizeDevice` across `LoadCache`, `SaveCache`, `mcp-sonos`, CLI, and REST handlers so pre-`48551fc` cached speakers (`Move 2`, `Play:1`, `Play:3`, `Arc`, `Port`) no longer zero-value `IsRenderer=false` and block playback or volume commands ([control-o15]).
+- **Cross-Platform `XDG_CONFIG_HOME` & Cache Directory Creation:** Honored `XDG_CONFIG_HOME` across macOS and Linux in `pkg/config.ConfigDir()` and `core.XDGStorage.Dir()`, and ensured `leap.SaveCache` and `config.SaveNicknames` create the configuration directory before writing.
 - **Live Camera MJPEG Stream Timeout:** Cleared the server-wide 30-second `WriteTimeout` on `/api/security/stream` via `http.ResponseController` so continuous RTSP-to-MJPEG streams no longer terminate after 30 seconds ([control-gqf]).
 - **GENA Listener Port Lifecycle:** Added `http.Server` timeouts and `Close()` / `Stop()` shutdown to `sonos.GENAListener` and wired cleanup on TUI exit ([control-gqf]).
 
@@ -121,5 +126,6 @@ _Major architectural release introducing disaggregated Go modules, standalone Ag
 - Master "All Lights" control in CLI and TUI ([control-45p]).
 - Lutron pairing scripts and certificate helpers ([control-unc]).
 
-[Unreleased]: https://github.com/ghchinoy/homectl/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/ghchinoy/homectl/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/ghchinoy/homectl/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ghchinoy/homectl/releases/tag/v0.3.0

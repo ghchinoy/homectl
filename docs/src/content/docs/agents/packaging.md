@@ -49,7 +49,7 @@ Defines metadata, semantic version, license, and keywords (the `"name"` field ma
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "sonos",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Smart home audio plugin for Sonos speakers: discovery, compact track metadata, playback control, and volume management.",
   "author": {
     "name": "ghchinoy",

@@ -135,7 +135,7 @@ printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion
 
 Expected output:
 ```json
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"homectl-sonos","version":"0.3.0"}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"homectl-sonos","version":"0.4.0"}}}
 {"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"sonos_list_speakers",...},{"name":"sonos_get_now_playing",...}]}}
 ```
 

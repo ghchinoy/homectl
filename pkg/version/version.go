@@ -7,7 +7,7 @@ import (
 
 var (
 	// Version is the current semantic version of homectl.
-	Version = "0.3.0"
+	Version = "0.4.0"
 	// GitCommit is the git commit hash, populated via -ldflags.
 	GitCommit = "dev"
 	// BuildDate is the ISO8601 build timestamp, populated via -ldflags.
