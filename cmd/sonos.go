@@ -219,7 +219,7 @@ func findCachedDevice(target string) (sonos.Device, bool) {
 	trimmed := strings.TrimSpace(target)
 	for _, d := range cached {
 		if strings.EqualFold(d.IP, trimmed) || strings.EqualFold(d.Name, trimmed) || strings.EqualFold(d.RinconID, trimmed) {
-			return d, true
+			return sonos.NormalizeDevice(d), true
 		}
 	}
 	return sonos.Device{}, false

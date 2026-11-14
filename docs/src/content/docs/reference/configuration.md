@@ -18,9 +18,13 @@ Location: `~/.config/homectl/config.json`
 
 ```json
 {
+  "api_host": "127.0.0.1",
   "callback_ip": "192.168.1.100",
+  "lutron_bridge": "192.168.1.50",
+  "sonos_default_service": "Spotify",
   "camera_auth": "admin:MyCameraPassword",
-  "api_host": "127.0.0.1"
+  "qolsys_host": "192.168.1.30",
+  "qolsys_token": "123456"
 }
 ```
 
@@ -30,7 +34,11 @@ Location: `~/.config/homectl/config.json`
 | :--- | :--- | :--- |
 | `api_host` | string | **Optional.** Host or IP address for `homectl serve` to bind to (e.g. `"127.0.0.1"`, `"0.0.0.0"`, or a Tailscale IP `"100.x.y.z"`). Defaults to `"0.0.0.0"`. |
 | `callback_ip` | string | **Optional.** The local IP address of your host machine. IoT devices (like Sonos speakers) send inbound HTTP `NOTIFY` events to this IP. Essential when running `homectl` in multi-homed or containerized environments. |
+| `lutron_bridge` | string | **Optional.** Static IP address of the Lutron Smart Bridge (overridden by `HOMECTL_LUTRON_BRIDGE` or `--bridge`). |
+| `sonos_default_service` | string | **Optional.** Preferred music streaming service name or ID (e.g. `"Spotify"`, `"Apple Music"`) highlighted by `sonos services` and `sonos_list_services`. |
 | `camera_auth` | string | **Optional.** Global `username:password` credentials automatically prepended to discovered RTSP camera URLs when streaming. |
+| `qolsys_host` | string | **Optional.** Static IP address of the Qolsys IQ Panel (overridden by `HOMECTL_QOLSYS_HOST` or `--host`). |
+| `qolsys_token` | string | **Optional.** 6-digit Control4 / 3rd-party integration token for the Qolsys IQ Panel (overridden by `HOMECTL_QOLSYS_TOKEN` or `--token`). |
 
 ---
 

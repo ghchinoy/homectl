@@ -1379,6 +1379,55 @@ func TestParseDeviceDescription(t *testing.T) {
 			wantGeneration: GenerationS1,
 			wantIsRenderer: true,
 		},
+		{
+			name: "real_sonos_nested_deviceList_media_renderer",
+			xmlData: `<?xml version="1.0" encoding="utf-8" ?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <device>
+    <deviceType>urn:schemas-upnp-org:device:ZonePlayer:1</deviceType>
+    <roomName>Office</roomName>
+    <UDN>uuid:RINCON_000E58A0000F01400</UDN>
+    <modelName>Sonos Play:1</modelName>
+    <modelNumber>S1</modelNumber>
+    <swGen>2</swGen>
+    <serviceList>
+      <service>
+        <serviceType>urn:schemas-upnp-org:service:DeviceProperties:1</serviceType>
+      </service>
+      <service>
+        <serviceType>urn:schemas-upnp-org:service:ZoneGroupTopology:1</serviceType>
+      </service>
+    </serviceList>
+    <deviceList>
+      <device>
+        <deviceType>urn:schemas-upnp-org:device:MediaServer:1</deviceType>
+        <serviceList>
+          <service>
+            <serviceType>urn:schemas-upnp-org:service:ContentDirectory:1</serviceType>
+          </service>
+        </serviceList>
+      </device>
+      <device>
+        <deviceType>urn:schemas-upnp-org:device:MediaRenderer:1</deviceType>
+        <serviceList>
+          <service>
+            <serviceType>urn:schemas-upnp-org:service:RenderingControl:1</serviceType>
+          </service>
+          <service>
+            <serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
+          </service>
+        </serviceList>
+      </device>
+    </deviceList>
+  </device>
+</root>`,
+			wantName:       "Office",
+			wantRincon:     "RINCON_000E58A0000F01400",
+			wantModelName:  "Sonos Play:1",
+			wantModelNum:   "S1",
+			wantGeneration: GenerationS2,
+			wantIsRenderer: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1457,5 +1506,47 @@ func TestJoinAndLeaveGroupMock(t *testing.T) {
 	}
 	if capturedAction != "BecomeCoordinatorOfStandaloneGroup" {
 		t.Errorf("unexpected action for LeaveGroup: %q", capturedAction)
+	}
+}
+
+func TestLoadCache_NormalizesLegacyPre48551fcEntries(t *testing.T) {
+	mem := core.NewMemoryStorage()
+	SetDefaultStorage(mem)
+
+	// Legacy sonos_cache.json written before commit 48551fc (no Generation or IsRenderer fields)
+	legacyJSON := `[
+  {"Name":"Move 2","IP":"192.168.1.120","RinconID":"RINCON_MOVE2","ModelName":"Sonos Move 2","ModelNumber":"S44"},
+  {"Name":"Play:1","IP":"192.168.1.121","RinconID":"RINCON_PLAY1","ModelName":"Sonos Play:1","ModelNumber":"S1"},
+  {"Name":"Play:5 Gen 1","IP":"192.168.1.122","RinconID":"RINCON_P5G1","ModelName":"Sonos Play:5","ModelNumber":"S5"},
+  {"Name":"Network Bridge","IP":"192.168.1.123","RinconID":"RINCON_BR","ModelName":"Sonos Bridge","ModelNumber":"ZB100"}
+]`
+	if err := mem.WriteFile("sonos_cache.json", []byte(legacyJSON), 0644); err != nil {
+		t.Fatalf("mem.WriteFile(sonos_cache.json) failed: %v", err)
+	}
+
+	loaded, err := LoadCache()
+	if err != nil {
+		t.Fatalf("sonos.LoadCache(legacy) failed: %v", err)
+	}
+	if len(loaded) != 4 {
+		t.Fatalf("sonos.LoadCache(legacy) len = %d, want 4", len(loaded))
+	}
+
+	byName := make(map[string]Device, len(loaded))
+	for _, d := range loaded {
+		byName[d.Name] = d
+	}
+
+	if got := byName["Move 2"]; !got.IsRenderer || got.Generation != GenerationS2 {
+		t.Errorf("NormalizeDevice(Move 2) = %+v, want IsRenderer=true Generation=S2", got)
+	}
+	if got := byName["Play:1"]; !got.IsRenderer || got.Generation != GenerationS2 {
+		t.Errorf("NormalizeDevice(Play:1) = %+v, want IsRenderer=true Generation=S2", got)
+	}
+	if got := byName["Play:5 Gen 1"]; !got.IsRenderer || got.Generation != GenerationS1 {
+		t.Errorf("NormalizeDevice(Play:5 Gen 1) = %+v, want IsRenderer=true Generation=S1", got)
+	}
+	if got := byName["Network Bridge"]; got.IsRenderer || got.Generation != GenerationS1 {
+		t.Errorf("NormalizeDevice(Network Bridge) = %+v, want IsRenderer=false Generation=S1", got)
 	}
 }

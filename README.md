@@ -1,8 +1,9 @@
 # homectl
 
+[![CI](https://github.com/ghchinoy/homectl/actions/workflows/ci.yml/badge.svg)](https://github.com/ghchinoy/homectl/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-Starlight-blue)](https://ghchinoy.github.io/homectl/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Go Version](https://img.shields.io/badge/go-1.25+-00ADD8?logo=go)](go.mod)
+[![Go Version](https://img.shields.io/badge/go-1.26.10+-00ADD8?logo=go)](go.mod)
 
 A modern, Go-powered toolkit for local smart home management, providing unified control of Lutron Caséta lighting, Sonos whole-home audio, Google Cast devices, and RTSP security cameras via CLI, Terminal UI (TUI), Web UI, and Model Context Protocol (MCP) Agent Plugins.
 
@@ -13,6 +14,7 @@ A modern, Go-powered toolkit for local smart home management, providing unified 
 ## Table of Contents
 
 - [Installation](#installation)
+  - [Download a Prebuilt Release](#download-a-prebuilt-release-macos--linux)
   - [Build from Source](#build-from-source-macos--linux)
   - [Install All Binaries & Agent Plugins](#install-all-binaries--agent-plugins)
 - [Usage](#usage)
@@ -29,7 +31,7 @@ A modern, Go-powered toolkit for local smart home management, providing unified 
   - [Building & Testing](#building--testing)
   - [Web UI Development](#web-ui-development)
   - [Documentation Site Development](#documentation-site-development)
-- [Deployment (Linux Service)](#deployment-linux-service)
+- [Deployment (Linux Service & Releases)](#deployment-linux-service--releases)
 - [Acknowledgements](#acknowledgements)
 - [Contributing](#contributing)
 - [License](#license)
@@ -38,19 +40,23 @@ A modern, Go-powered toolkit for local smart home management, providing unified 
 
 ## Installation
 
+### Download a Prebuilt Release (macOS & Linux)
+
+Download the latest signed archive for your platform (`darwin/arm64`, `darwin/amd64`, `linux/amd64`, `linux/arm64`) from [GitHub Releases](https://github.com/ghchinoy/homectl/releases) and extract `homectl` and `homectl-mcp-sonos` onto your `PATH`.
+
 ### Build from Source (macOS & Linux)
 
 ```bash
 git clone https://github.com/ghchinoy/homectl.git
 cd homectl
-go build -o homectl .
-sudo mv homectl /usr/local/bin/
+make build
+sudo cp ./bin/homectl /usr/local/bin/
 ```
 
 ### Install All Binaries & Agent Plugins
 
 ```bash
-# Compiles homectl, mcp-sonos, and sync-skills into ./bin/
+# Compiles homectl, mcp-sonos, and sync-skills into ./bin/ with version LDFLAGS
 make build
 
 # Installs MCP servers to ~/.local/bin and auto-registers in OpenCode
@@ -69,8 +75,8 @@ Launch the full-screen terminal dashboard:
 homectl ui
 ```
 
-- **`Tab`**: Cycle views between Lights, Music, and Areas.
-- **`0`–`9`**: Quickly adjust dimming level or speaker volume.
+- **`Tab`**: Cycle views between **Lights**, **Music**, **Areas**, and **Groups**.
+- **`0`**: Set brightness or speaker volume to `0%` (OFF); **`1`–`9`** set `10%`–`90%`; **`+` / `-`** adjust by `1%`.
 - **`Space`**: Toggle Play / Pause on selected speaker.
 - **`n` / `p`**: Skip to Next / Previous track.
 - **`e`**: Edit and persist custom nickname for selected device.
@@ -79,30 +85,36 @@ homectl ui
 ### CLI Quickstart
 
 ```bash
+# Print build version, commit, and platform metadata
+homectl version
+
 # Discover all compatible smart home devices on the local network
-homectl discover
+homectl discover --limit 10
 
 # Control Lutron lighting (dimming 0-100%)
 homectl lutron list devices
 homectl lutron set level /zone/1 75
 homectl lutron set all 0
 
-# Control Sonos whole-home audio
+# Control Sonos whole-home audio (S1 & S2 households)
 homectl sonos list
 homectl sonos play 192.168.1.100
 homectl sonos volume 192.168.1.100 25
 homectl sonos now-playing 192.168.1.100
-homectl sonos favorites
-homectl sonos play-stream 192.168.1.100 http://stream.somafm.com/groovesalad-128-mp3
+homectl sonos favorites 192.168.1.100
+homectl sonos play-stream 192.168.1.100 https://stream.somafm.com/groovesalad-128-mp3
 homectl sonos seek 192.168.1.100 --track 3
 homectl sonos seek 192.168.1.100 --time 1:30
 homectl sonos queue 192.168.1.100
+homectl sonos queue-mode 192.168.1.100 --shuffle on --repeat all
+homectl sonos join 192.168.1.101 192.168.1.100
+homectl sonos leave 192.168.1.101
 
-# Stream Qolsys alarm panel telemetry
-homectl qolsys monitor --host 192.168.1.30 --token 123456
+# Stream Qolsys alarm panel telemetry (via env vars to keep secrets out of shell history)
+HOMECTL_QOLSYS_HOST=192.168.1.30 HOMECTL_QOLSYS_TOKEN=123456 homectl qolsys monitor --json
 ```
 
-All CLI commands support `--json` for machine-readable output and `--dry-run` for safe pre-flight simulation.
+All CLI commands support `--json` (or `-o json`) for machine-readable output, `--limit` for context-window scoping, `--dry-run` for safe pre-flight simulation, and `NO_COLOR` / `HOMECTL_NO_TUI` environment overrides.
 
 ### Agent Plugins & MCP Servers
 
@@ -117,13 +129,14 @@ Exposes 12 token-budgeted tools (`sonos_list_speakers`, `sonos_get_now_playing`,
 
 ### Web UI & API Server
 
-Start the REST API server and serve the built Web UI:
+Start the REST API server (serves the embedded Web UI automatically, or `--ui ./ui/dist` when overriding from disk):
 
 ```bash
-homectl serve --port 8080 --ui ./ui/dist
+# Bind to localhost for local or reverse-proxy access
+homectl serve -H 127.0.0.1 --port 8080
 ```
 
-Open `http://localhost:8080` in your browser to access the responsive Lit card dashboard.
+Open `http://127.0.0.1:8080` in your browser to access the responsive Lit card dashboard.
 
 ---
 
@@ -149,13 +162,22 @@ Create `~/.config/homectl/config.json`:
 
 ```json
 {
+  "api_host": "127.0.0.1",
   "callback_ip": "192.168.1.100",
-  "camera_auth": "admin:yourpassword"
+  "lutron_bridge": "192.168.1.50",
+  "sonos_default_service": "Spotify",
+  "camera_auth": "admin:yourpassword",
+  "qolsys_host": "192.168.1.30",
+  "qolsys_token": "123456"
 }
 ```
 
+* **`api_host`**: (Optional) Host/IP address for `homectl serve` to bind to (`127.0.0.1`, Tailscale `100.x.y.z`, or `0.0.0.0`).
 * **`callback_ip`**: (Optional) Local host LAN IP address for inbound Sonos UPnP GENA event notifications.
+* **`lutron_bridge`**: (Optional) Static Lutron Smart Bridge IP (overridden by `HOMECTL_LUTRON_BRIDGE` or `--bridge`).
+* **`sonos_default_service`**: (Optional) Preferred streaming provider name or ID (e.g. `Spotify`, `Apple Music`).
 * **`camera_auth`**: (Optional) Global `username:password` credentials automatically prepended to RTSP camera URLs.
+* **`qolsys_host` / `qolsys_token`**: (Optional) Qolsys IQ Panel IP and 6-digit C4 token (overridden by `HOMECTL_QOLSYS_HOST` / `HOMECTL_QOLSYS_TOKEN`).
 
 ### Credentials & Storage
 
@@ -187,8 +209,8 @@ make check-skills
 
 ### Prerequisites
 
-* **Go:** 1.25+
-* **Node.js:** 20+ and `npm` (for the Web UI and Starlight docs)
+* **Go:** 1.26.10+
+* **Node.js:** 22.23.4+ and `npm` (for the Web UI and Starlight docs)
 * **FFmpeg:** Required on the host system for on-demand camera transcoding (`ffmpeg -i rtsp://...`)
 * **Graphviz (`dot`):** Optional; required for compiling architecture diagrams (`make diagrams`)
 
@@ -198,7 +220,7 @@ The web frontend is written in TypeScript using Lit components and bundled with 
 
 ```bash
 cd ui
-npm install
+npm ci
 npm run dev   # Start Vite dev server on :5173 with API proxy to :8080
 npm run build # Build production bundle to ui/dist
 ```
@@ -209,14 +231,14 @@ The documentation site is built with Astro Starlight, GM3 design tokens, and sel
 
 ```bash
 cd docs
-npm install
+npm ci
 npm run dev   # Start documentation dev server
 npm run build # Build static HTML and Pagefind search index
 ```
 
 ---
 
-## Deployment (Linux Service)
+## Deployment (Linux Service & Releases)
 
 To install `homectl` as a persistent background daemon managed by `systemd` on Linux:
 
@@ -225,9 +247,18 @@ To install `homectl` as a persistent background daemon managed by `systemd` on L
 ```
 
 This automated script:
-1. Builds the Go binary and compiles the Lit Web UI production bundle.
+1. Builds the Go binary with embedded version metadata (`make bin-homectl`) and compiles the Lit Web UI production bundle (`npm ci && npm run build`).
 2. Installs the binary to `/usr/local/bin/homectl` and web assets to `/usr/local/share/homectl/ui`.
-3. Generates, enables, and starts a `systemd` user service on port `8086`.
+3. Generates, enables, and starts a system-level `systemd` unit (`/etc/systemd/system/homectl.service`) on port `8086`.
+
+### Publishing a Tagged Release
+
+Pushing an annotated semver tag (`v*.*.*`) triggers `.github/workflows/release.yml`, which builds `ui/dist`, cross-compiles `homectl` and `homectl-mcp-sonos` for `{darwin,linux}/{amd64,arm64}` with tag-aligned `-ldflags`, generates SHA-256 checksums and SLSA build provenance attestations, and publishes a GitHub Release:
+
+```bash
+git tag -a v0.4.0 -m "Release v0.4.0"
+git push origin v0.4.0
+```
 
 ### Managing the Service
 

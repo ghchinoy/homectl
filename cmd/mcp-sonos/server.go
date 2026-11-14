@@ -292,7 +292,7 @@ func findDeviceByTarget(devices []sonos.Device, target string) (sonos.Device, bo
 	trimmed := strings.TrimSpace(target)
 	for _, d := range devices {
 		if strings.EqualFold(d.IP, trimmed) || strings.EqualFold(d.Name, trimmed) || strings.EqualFold(d.RinconID, trimmed) {
-			return d, true
+			return sonos.NormalizeDevice(d), true
 		}
 	}
 	return sonos.Device{}, false
@@ -338,6 +338,7 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 
 		if !args.Refresh {
 			speakers, _ = cfg.CacheLoader()
+			speakers = sonos.NormalizeDevices(speakers)
 		}
 
 		if len(speakers) == 0 || args.Refresh {
@@ -345,6 +346,7 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 			if err != nil {
 				return nil, nil, fmt.Errorf("discovery failed: %w", err)
 			}
+			speakers = sonos.NormalizeDevices(speakers)
 			if len(speakers) > 0 {
 				_ = cfg.CacheSaver(speakers)
 			}

@@ -5,11 +5,23 @@ description: Complete command-line interface documentation for homectl.
 
 `homectl` provides a modular CLI built with Cobra. All commands support `--help` for inline documentation.
 
-## Global Flags
+## Global Flags & Environment Variables
 
-* `--bridge string`: Lutron Bridge IP address. Defaults to auto-discovery or cached IP.
-* `--json`: Output results as machine-readable JSON.
-* `--dry-run`: Simulate operation without sending network mutations.
+* `--bridge string`: Lutron Bridge IP address (overrides `HOMECTL_LUTRON_BRIDGE`, `config.json`, or auto-discovery).
+* `--json`: Output results as machine-readable JSON (shorthand alias for `-o json`).
+* `-o, --output string`: Output format: `text` or `json` (default `text`).
+* `--limit int`: Cap the number of items returned by list/discovery commands (`0` = unlimited) to conserve LLM context windows.
+* `--dry-run`: Simulate mutating operations without dispatching network commands.
+
+### Supported Environment Variables
+
+| Variable | Description |
+| :--- | :--- |
+| `HOMECTL_LUTRON_BRIDGE` | Static Lutron Smart Bridge IP address |
+| `HOMECTL_QOLSYS_HOST` | Qolsys IQ Panel IP address (avoids leaking host/token in shell history) |
+| `HOMECTL_QOLSYS_TOKEN` | 6-digit Qolsys C4 integration token |
+| `HOMECTL_NO_TUI` | When set (`1` / `true`), refuses interactive TUI launch in automated/headless harnesses |
+| `NO_COLOR` | Disables ANSI color escape codes across CLI and TUI output |
 
 ---
 
@@ -17,10 +29,11 @@ description: Complete command-line interface documentation for homectl.
 
 ```text
 homectl
+├── version          # Print build version, git commit, Go toolchain, and OS/arch
 ├── discover         # Network-wide device scan
 ├── ui               # Launch interactive Bubble Tea TUI
-├── serve            # Start REST API server and static UI host
-├── lutron           # Control Lutron Caseta / RA2 Select
+├── serve            # Start REST API server and embedded/static UI host
+├── lutron           # Control Lutron Caséta / RA2 Select
 │   ├── list         # List devices, zones, and areas
 │   │   ├── devices
 │   │   ├── zones
@@ -28,14 +41,14 @@ homectl
 │   └── set          # Set dimming levels
 │       ├── level
 │       └── all
-├── sonos            # Control Sonos speakers
-│   ├── list         # List speakers with transport and volume
+├── sonos            # Control Sonos speakers (S1 & S2)
+│   ├── list         # List speakers with generation, transport, and volume
 │   ├── details      # Show queue and audio stream details
-│   ├── play         # Start playback
-│   ├── pause        # Pause playback
-│   ├── stop         # Stop playback
-│   ├── next         # Next track
-│   ├── prev         # Previous track
+│   ├── play         # Start playback (--dry-run, --json)
+│   ├── pause        # Pause playback (--dry-run, --json)
+│   ├── stop         # Stop playback (--dry-run, --json)
+│   ├── next         # Next track (--dry-run, --json)
+│   ├── prev         # Previous track (--dry-run, --json)
 │   ├── seek         # Seek track or time offset
 │   ├── now-playing  # Quick track metadata display
 │   ├── volume       # Set volume (0-100)
@@ -48,7 +61,9 @@ homectl
 │   ├── queue-clear  # Clear all tracks from playback queue
 │   ├── queue-reorder# Reorder tracks in playback queue
 │   ├── queue-mode   # Configure playback modes (shuffle, repeat, crossfade)
-│   └── services     # List streaming services catalog
+│   ├── services     # List streaming services catalog
+│   ├── join         # Bond speaker to another speaker's group
+│   └── leave        # Unjoin speaker into standalone group
 └── qolsys           # Qolsys alarm panel integration
     └── monitor      # Stream live panel events via WebSocket
 ```
@@ -56,6 +71,13 @@ homectl
 ---
 
 ## Command Details
+
+### `homectl version`
+Prints build metadata (`version`, `git_commit`, `build_date`, `go_version`, `platform`):
+```bash
+homectl version
+homectl version --json
+```
 
 ### `homectl discover`
 Runs concurrent discovery across all registered providers:
@@ -191,20 +213,20 @@ homectl sonos leave 192.168.1.121
 ```
 
 ### `homectl qolsys monitor`
-Connects to a Qolsys IQ Panel and prints incoming event frames:
+Connects to a Qolsys IQ Panel and prints incoming event frames (supports `HOMECTL_QOLSYS_HOST` / `HOMECTL_QOLSYS_TOKEN` environment variables and `config.json` fallbacks so tokens stay out of shell history):
 ```bash
-homectl qolsys monitor --host 192.168.1.30 --token 123456
+HOMECTL_QOLSYS_HOST=192.168.1.30 HOMECTL_QOLSYS_TOKEN=123456 homectl qolsys monitor --json
 ```
 
 ### `homectl serve`
-Starts the HTTP API server:
+Starts the HTTP API server (serving the embedded Web UI automatically when `--ui` is omitted, or reading from disk when `--ui` is specified):
 ```bash
-homectl serve --port 8080 --ui ./ui/dist
+homectl serve -H 127.0.0.1 --port 8080
 ```
 Flags:
 * `-H, --host string`: Host/IP address to bind the API server to (default `0.0.0.0`; supports `127.0.0.1`, Tailscale `100.x.y.z`).
 * `-p, --port int`: Port to listen on (default `8080`).
-* `--ui string`: Path to directory containing built Web UI assets (default `./ui/dist`).
+* `--ui string`: Optional path to directory containing built Web UI assets (falls back to embedded `ui/dist` bundle when omitted or missing).
 * `--debug`: Enable diagnostic debug endpoints (`/api/debug/*`; disabled by default).
 
 Security examples:

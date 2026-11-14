@@ -81,7 +81,10 @@ Because speakers, dimmers, and alarm panels operate in physical residential spac
 3. **Late-Night Sound Rules (10:00 PM – 7:00 AM):**
    * Volume is automatically capped at **25%** unless explicitly overridden by the user.
 
-### Security Panel Boundaries (`qolsys-guard`)
+### Security Panel Boundaries (`qolsys-guard` — Planned)
+:::note[Implementation Status]
+`skills/sonos-soundscape` is shipped and active today. `skills/qolsys-guard` defines the safety specification for the planned `mcp-qolsys` vertical (`pkg/qolsys` and `homectl qolsys monitor` are available today).
+:::
 1. **Perimeter Verification Pre-Flight:**
    * Before arming the alarm system, the agent must query sensor status to ensure all perimeter doors and windows are closed.
 2. **Mandatory PIN Gating:**

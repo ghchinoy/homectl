@@ -5,6 +5,10 @@ description: Architecture of concurrent camera discovery, RTSP streaming, FFmpeg
 
 The security camera vertical enables discovery, browser playback, and multimodal AI visual inspection across IP security cameras (Alarm.com, Hikvision, Dahua, Axis, and generic ONVIF devices).
 
+:::note[Implementation Status]
+The Go concurrent discovery engine (`pkg/camera`), Web UI `<camera-card>`, and FFmpeg MJPEG proxy (`/api/security/*` in `cmd/serve.go`) are **shipped and active today**. Extraction into a standalone `modules/camera` workspace module, `cmd/mcp-camera` server, and `skills/camera-inspector` plugin bundle follows the Sonos pilot blueprint and is planned for an upcoming release.
+:::
+
 ---
 
 ## Architectural Diagram

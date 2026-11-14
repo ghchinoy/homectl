@@ -24,10 +24,10 @@ description: High-level system design and architectural principles of homectl.
                               │
      ┌────────────────────────┼────────────────────────┐
      │                        │                        │
-┌────▼──────┐           ┌─────▼─────┐            ┌─────▼──────┐
-│ pkg/leap  │           │ pkg/sonos │            │ pkg/camera │
-│  (TLS)    │           │(UPnP/GENA)│            │(RTSP/FFmpeg│
-└────┬──────┘           └─────┬─────┘            └─────┬──────┘
+┌────▼──────┐         ┌───────▼───────┐          ┌─────▼──────┐
+│ pkg/leap  │         │ modules/sonos │          │ pkg/camera │
+│  (mTLS)   │         │  (UPnP/GENA)  │          │(RTSP/FFmpeg│
+└────┬──────┘         └───────┬───────┘          └─────┬──────┘
      │                        │                        │
 ┌────▼──────┐           ┌─────▼─────┐            ┌─────▼──────┐
 │  Lutron   │           │   Sonos   │            │ Security   │
@@ -49,7 +49,7 @@ All persistent runtime state—including TLS certificates, discovery caches, app
 ├── lutron_client.key    # Client private key for Lutron LEAP
 └── lutron_ca.crt        # Lutron root authority cert
 ```
-The codebase uses `pkg/config.GetPath(filename)` exclusively, preventing hardcoded paths.
+The codebase uses `pkg/config.Path(filename)` (and `core.Storage` in workspace modules) exclusively, preventing hardcoded paths.
 
 ### 2. Multi-Protocol Discovery Pipeline (`pkg/discovery`)
 Rather than coupling discovery to individual device drivers, `pkg/discovery` defines a unified interface:

@@ -315,18 +315,49 @@ func cacheFile() string {
 	return defaultStorage.Path("sonos_cache.json")
 }
 
-// SaveCache merges newly discovered devices with existing ones and persists them
+// NormalizeDevice backfills Generation and IsRenderer on legacy (pre-48551fc)
+// cached Device records where Generation was omitted and IsRenderer unmarshaled
+// as false, while preserving explicit non-renderer flags on modern records.
+func NormalizeDevice(d Device) Device {
+	lowerModelName := strings.ToLower(strings.TrimSpace(d.ModelName))
+	knownNonRenderer := IsNonRendererModel(d.ModelNumber) ||
+		strings.Contains(lowerModelName, "bridge") ||
+		strings.Contains(lowerModelName, "boost")
+	if d.Generation == "" {
+		d.IsRenderer = !knownNonRenderer
+		d.Generation = ClassifyGeneration("", d.ModelNumber)
+		return d
+	}
+	if knownNonRenderer {
+		d.IsRenderer = false
+	}
+	return d
+}
+
+// NormalizeDevices returns a normalized copy of a Device slice.
+func NormalizeDevices(devices []Device) []Device {
+	if len(devices) == 0 {
+		return devices
+	}
+	out := make([]Device, len(devices))
+	for i, d := range devices {
+		out[i] = NormalizeDevice(d)
+	}
+	return out
+}
+
+// SaveCache merges newly discovered devices with existing ones and persists them.
 func SaveCache(newDevices []Device) error {
 	existing, _ := LoadCache()
 	merged := make(map[string]Device)
 	for _, d := range existing {
 		if d.RinconID != "" {
-			merged[d.RinconID] = d
+			merged[d.RinconID] = NormalizeDevice(d)
 		}
 	}
 	for _, d := range newDevices {
 		if d.RinconID != "" {
-			merged[d.RinconID] = d
+			merged[d.RinconID] = NormalizeDevice(d)
 		}
 	}
 	var result []Device
@@ -343,7 +374,7 @@ func SaveCache(newDevices []Device) error {
 	return defaultStorage.WriteFile("sonos_cache.json", data, 0644)
 }
 
-// LoadCache retrieves previously discovered devices from the local storage
+// LoadCache retrieves previously discovered devices from local storage and normalizes legacy entries.
 func LoadCache() ([]Device, error) {
 	data, err := defaultStorage.ReadFile("sonos_cache.json")
 	if err != nil {
@@ -353,7 +384,7 @@ func LoadCache() ([]Device, error) {
 	if err := json.Unmarshal(data, &devices); err != nil {
 		return nil, err
 	}
-	return devices, nil
+	return NormalizeDevices(devices), nil
 }
 
 func hostPort(addr string, defaultPort int) string {
@@ -375,6 +406,12 @@ func ParseDeviceDescription(data []byte) (DeviceDetails, error) {
 		Services    []struct {
 			ServiceType string `xml:"serviceType"`
 		} `xml:"device>serviceList>service"`
+		SubDevices []struct {
+			DeviceType string `xml:"deviceType"`
+			Services   []struct {
+				ServiceType string `xml:"serviceType"`
+			} `xml:"serviceList>service"`
+		} `xml:"device>deviceList>device"`
 	}
 	if err := xml.Unmarshal(data, &desc); err != nil {
 		return DeviceDetails{}, fmt.Errorf("parsing device description XML: %w", err)
@@ -391,12 +428,29 @@ func ParseDeviceDescription(data []byte) (DeviceDetails, error) {
 	}
 
 	isRenderer := !IsNonRendererModel(desc.ModelNumber)
-	if len(desc.Services) > 0 {
+	if len(desc.Services) > 0 || len(desc.SubDevices) > 0 {
 		isRenderer = false
 		for _, s := range desc.Services {
 			if strings.Contains(s.ServiceType, "AVTransport") {
 				isRenderer = true
 				break
+			}
+		}
+		if !isRenderer {
+			for _, sub := range desc.SubDevices {
+				if strings.Contains(sub.DeviceType, "MediaRenderer") {
+					isRenderer = true
+					break
+				}
+				for _, s := range sub.Services {
+					if strings.Contains(s.ServiceType, "AVTransport") {
+						isRenderer = true
+						break
+					}
+				}
+				if isRenderer {
+					break
+				}
 			}
 		}
 	}

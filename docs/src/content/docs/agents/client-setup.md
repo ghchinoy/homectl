@@ -135,7 +135,7 @@ printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion
 
 Expected output:
 ```json
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"homectl-sonos","version":"1.0.0"}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"homectl-sonos","version":"0.3.0"}}}
 {"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"sonos_list_speakers",...},{"name":"sonos_get_now_playing",...}]}}
 ```
 
@@ -157,7 +157,7 @@ Once configured, your AI agent can autonomously discover and control your hardwa
 >
 > **Agent Action:**
 > 1. Invokes `sonos_list_speakers` to resolve "Kitchen" to `192.168.1.121`.
-> 2. Invokes `sonos_list_favorites` to find the favorite ID for "Morning Jazz".
+> 2. Invokes `sonos_list_favorites(ip: "192.168.1.121")` to find the favorite ID for "Morning Jazz".
 > 3. Invokes `sonos_set_volume(ip: "192.168.1.121", volume: 30)`.
 > 4. Invokes `sonos_play_favorite(ip: "192.168.1.121", favorite_id: "FV:2/3")`.
 >
@@ -167,8 +167,8 @@ Once configured, your AI agent can autonomously discover and control your hardwa
 > **User:** *"Group the patio and deck speakers with the living room soundbar."*
 >
 > **Agent Action:**
-> 1. Invokes `sonos_get_topology` to find the coordinator for "Living Room".
-> 2. Invokes `sonos_control(ip: "192.168.1.130", action: "join", master: "192.168.1.100")`.
-> 3. Invokes `sonos_control(ip: "192.168.1.131", action: "join", master: "192.168.1.100")`.
+> 1. Invokes `sonos_get_topology(ip: "192.168.1.100")` to verify the coordinator for "Living Room".
+> 2. Invokes `sonos_control(ip: "192.168.1.130", action: "join", target: "192.168.1.100")`.
+> 3. Invokes `sonos_control(ip: "192.168.1.131", action: "join", target: "192.168.1.100")`.
 >
 > **Agent Response:** *"Joined the Patio and Deck speakers into the Living Room group."*

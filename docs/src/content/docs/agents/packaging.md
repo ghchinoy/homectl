@@ -44,12 +44,12 @@ homectl/
 Each plugin bundle under `plugins/<svc>/` contains three configuration manifests:
 
 ### 1. `plugin.json` (Agent Plugins Spec 1.0.0)
-Defines metadata, semantic version, license, and keywords:
+Defines metadata, semantic version, license, and keywords (the `"name"` field matches the `plugins/<svc>/` directory name per Agent Plugins v1.0.0):
 ```json
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "name": "homectl-sonos",
-  "version": "0.1.0",
+  "name": "sonos",
+  "version": "0.3.0",
   "description": "Smart home audio plugin for Sonos speakers: discovery, compact track metadata, playback control, and volume management.",
   "author": {
     "name": "ghchinoy",
@@ -59,6 +59,8 @@ Defines metadata, semantic version, license, and keywords:
   "keywords": ["sonos", "smart-home", "audio", "mcp", "upnp", "homectl"]
 }
 ```
+
+At the repository root, `.claude-plugin/marketplace.json` indexes all packaged plugins under `./plugins` so Claude Code and Agent Plugins v1.0.0 validators can discover them automatically.
 
 ### 2. `mcp.json` (Standard MCP Stdio Declaration)
 Defines how general MCP clients spawn the server:

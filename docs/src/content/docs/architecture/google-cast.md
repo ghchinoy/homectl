@@ -5,6 +5,10 @@ description: Architecture of Google Cast V2 integration, mDNS discovery, and MCP
 
 The Google Cast vertical integrates `homectl` with Chromecasts, Google TV Streamers, and Google Nest Hub displays across the local network.
 
+:::note[Implementation Status]
+The Go Cast V2 discovery/control engine (`pkg/cast`), Web UI `<cast-card>`, and REST API (`/api/cast/*`) are **shipped and active today**. Extraction into a standalone `modules/cast` workspace module, `cmd/mcp-cast` server, and `skills/cast-media-director` plugin bundle follows the Sonos pilot blueprint and is planned for an upcoming release.
+:::
+
 ---
 
 ## Architectural Diagram

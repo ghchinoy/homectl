@@ -19,24 +19,24 @@ description: Complete tool definitions, parameter schemas, and SEP-2106 output s
 
 ## 2. Sonos MCP Server (`cmd/mcp-sonos`)
 
-The `mcp-sonos` server exposes **10 focused tools** and **1 live resource**.
+The `mcp-sonos` server exposes **12 focused tools**, each annotated with standard MCP `ToolAnnotations` (`ReadOnlyHint`, `DestructiveHint`, and `IdempotentHint`) so agent harnesses can distinguish safe inspection calls from physical actuator or queue mutations.
 
 ### Tool Catalog Summary
 
-| Tool Name | Mode | Purpose | Key Parameters |
+| Tool Name | Annotations | Purpose | Key Parameters |
 | :--- | :---: | :--- | :--- |
-| **`sonos_list_speakers`** | 🔒 Read-Only | Discovers or lists cached network speakers with generation (S1/S2) and renderer status | `refresh?: bool` |
-| **`sonos_get_now_playing`** | 🔒 Read-Only | Retrieves authoritative track metadata, status, play mode, shuffle, repeat, crossfade | `ip: string` |
-| **`sonos_get_topology`** | 🔒 Read-Only | Inspects zone groups, members, and stereo pairs | `ip: string` |
-| **`sonos_list_favorites`** | 🔒 Read-Only | Lists pinned cloud tracks, playlists, and radio | `ip?: string` |
-| **`sonos_list_services`** | 🔒 Read-Only | Enumerates available music services on household | `ip?: string` |
-| **`sonos_control`** | ⚡ Mutating | Playback & grouping (`play`, `pause`, `stop`, `next`, `prev`, `seek_track`, `seek_time`, `join`, `leave`, `unjoin`) | `ip: string`, `action: string`, `track?: int`, `target?: string` |
-| **`sonos_set_volume`** | ⚡ Mutating | Sets absolute volume (0–100) or applies step delta | `ip: string`, `volume?: int`, `delta?: int` |
-| **`sonos_play_favorite`** | ⚡ Mutating | Launches playback of a pinned cloud favorite | `ip: string`, `favorite_id: string` |
-| **`sonos_play_stream`** | ⚡ Mutating | Streams an arbitrary HTTP/HTTPS audio URL | `ip: string`, `url: string`, `title?: string` |
-| **`sonos_add_to_queue`** | ⚡ Mutating | Enqueues a track URI into the active queue | `ip: string`, `uri: string`, `metadata?: string`, `as_next?: bool` |
-| **`sonos_get_queue`** | 🔒 Read-Only | Inspects tracks in playback queue with pagination | `ip: string`, `start?: int`, `count?: int` |
-| **`sonos_queue_edit`** | ⚡ Mutating | Edits queue (`remove`, `clear`, `reorder` / bump to next) or configures playback settings (`shuffle`, `repeat`, `crossfade`) | `ip: string`, `action: string`, `track?: int`, `count?: int`, `insert_before?: int`, `as_next?: bool`, `enabled?: bool`, `repeat_mode?: string` |
+| **`sonos_list_speakers`** | 🔒 `readOnly`, `idempotent` | Discovers or lists cached network speakers with generation (S1/S2) and renderer status | `refresh?: bool` |
+| **`sonos_get_now_playing`** | 🔒 `readOnly`, `idempotent` | Retrieves authoritative track metadata, status, play mode, shuffle, repeat, crossfade | `ip: string` |
+| **`sonos_get_topology`** | 🔒 `readOnly`, `idempotent` | Inspects zone groups, members, and stereo pairs | `ip: string` |
+| **`sonos_list_favorites`** | 🔒 `readOnly`, `idempotent` | Lists pinned cloud tracks, playlists, and radio | `ip: string` |
+| **`sonos_list_services`** | 🔒 `readOnly`, `idempotent` | Enumerates available music services and configured default on household | `ip: string` |
+| **`sonos_get_queue`** | 🔒 `readOnly`, `idempotent` | Inspects tracks in playback queue with pagination | `ip: string`, `start?: int`, `count?: int` |
+| **`sonos_control`** | ⚡ Mutating (`non-destructive`) | Playback & grouping (`play`, `pause`, `stop`, `next`, `previous`, `seek_track`, `seek_time`, `join`, `leave`, `unjoin`) | `ip: string`, `action: string`, `track?: int`, `target?: string` |
+| **`sonos_set_volume`** | ⚡ Mutating (`non-destructive`) | Sets absolute volume (0–100) or applies step delta | `ip: string`, `volume?: int`, `delta?: int` |
+| **`sonos_play_favorite`** | ⚠️ Mutating (`destructive`) | Replaces active transport/queue and launches a pinned cloud favorite | `ip: string`, `favorite_id: string` |
+| **`sonos_play_stream`** | ⚠️ Mutating (`destructive`) | Replaces active transport with an HTTP/HTTPS audio URL | `ip: string`, `url: string`, `title?: string` |
+| **`sonos_add_to_queue`** | ⚡ Mutating (`non-destructive`) | Enqueues a track URI into the active queue | `ip: string`, `uri: string`, `metadata?: string`, `as_next?: bool` |
+| **`sonos_queue_edit`** | ⚠️ Mutating (`destructive`, `dry_run`) | Edits queue (`remove`, `clear`, `reorder` / bump to next) or configures playback settings (`shuffle`, `repeat`, `crossfade`) | `ip: string`, `action: string`, `track?: int`, `count?: int`, `insert_before?: int`, `as_next?: bool`, `enabled?: bool`, `repeat_mode?: string`, `dry_run?: bool` |
 
 ---
 
@@ -161,8 +161,9 @@ Lists pinned cloud media (Spotify playlists, Apple Music albums, radio stations)
   {
     "type": "object",
     "properties": {
-      "ip": { "type": "string", "description": "Optional speaker IP. If omitted, uses first discovered speaker." }
-    }
+      "ip": { "type": "string", "description": "IP address of the Sonos speaker (required)" }
+    },
+    "required": ["ip"]
   }
   ```
 * **Return Schema (`ListFavoritesResult`):**
@@ -172,6 +173,33 @@ Lists pinned cloud media (Spotify playlists, Apple Music albums, radio stations)
     "favorites": [
       { "id": "FV:2/1", "title": "Morning Jazz", "type": "playlist", "album_art_uri": "/getaa?..." },
       { "id": "FV:2/2", "title": "SomaFM Groove Salad", "type": "station" }
+    ]
+  }
+  ```
+
+---
+
+### `sonos_list_services` (Read-Only)
+Enumerates available music streaming services registered on the Sonos household alongside the configured default provider (`sonos_default_service` in `config.json`).
+
+* **Parameters:**
+  ```json
+  {
+    "type": "object",
+    "properties": {
+      "ip": { "type": "string", "description": "IP address of the Sonos speaker (required)" }
+    },
+    "required": ["ip"]
+  }
+  ```
+* **Return Schema (`ListServicesResult`):**
+  ```json
+  {
+    "count": 2,
+    "default_service": "Spotify",
+    "services": [
+      { "id": "2311", "name": "Spotify", "auth_type": "AppLink" },
+      { "id": "204", "name": "Apple Music", "auth_type": "AppLink" }
     ]
   }
   ```
@@ -335,6 +363,10 @@ Edits the local playback queue on a Sonos speaker. Supports removing tracks (`ac
         "type": "string",
         "enum": ["off", "all", "one"],
         "description": "Repeat mode for repeat action ('off', 'all', or 'one')"
+      },
+      "dry_run": {
+        "type": "boolean",
+        "description": "If true, validates and simulates the queue mutation without modifying speaker state"
       }
     },
     "required": ["ip", "action"]

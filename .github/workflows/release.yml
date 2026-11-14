@@ -1,0 +1,99 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, Attest & Publish Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.23.4'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Verify quality gates before packaging
+        run: |
+          make check-skills
+          go vet ./... ./modules/core/... ./modules/sonos/...
+          go test -race ./... ./modules/core/... ./modules/sonos/...
+
+      - name: Build production Web UI bundle for embedding
+        working-directory: ui
+        run: |
+          npm ci
+          npm audit --audit-level=moderate
+          npm run build
+
+      - name: Cross-compile release archives and SHA-256 checksums
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG_NAME#v}"
+          GIT_COMMIT="$(git rev-parse --short HEAD)"
+          BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          LDFLAGS="-s -w -X github.com/ghchinoy/homectl/pkg/version.Version=${VERSION} -X github.com/ghchinoy/homectl/pkg/version.GitCommit=${GIT_COMMIT} -X github.com/ghchinoy/homectl/pkg/version.BuildDate=${BUILD_DATE}"
+
+          mkdir -p release-dist
+          for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do
+            GOOS="${target%/*}"
+            GOARCH="${target#*/}"
+            STAGE_DIR="release-stage/homectl_${VERSION}_${GOOS}_${GOARCH}"
+            mkdir -p "${STAGE_DIR}"
+
+            CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" \
+              go build -trimpath -tags embed_ui -ldflags "${LDFLAGS}" -o "${STAGE_DIR}/homectl" .
+            CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" \
+              go build -trimpath -ldflags "${LDFLAGS}" -o "${STAGE_DIR}/homectl-mcp-sonos" ./cmd/mcp-sonos
+
+            cp LICENSE README.md CHANGELOG.md "${STAGE_DIR}/"
+            tar -C release-stage -czf "release-dist/homectl_${VERSION}_${GOOS}_${GOARCH}.tar.gz" "homectl_${VERSION}_${GOOS}_${GOARCH}"
+          done
+
+          (
+            cd release-dist
+            sha256sum *.tar.gz > checksums.txt
+          )
+
+      - name: Attest SLSA build provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: 'release-dist/*.tar.gz'
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          gh release create "${TAG_NAME}" \
+            release-dist/*.tar.gz \
+            release-dist/checksums.txt \
+            --verify-tag \
+            --title "homectl ${TAG_NAME}" \
+            --generate-notes

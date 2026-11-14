@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/ghchinoy/homectl/modules/core"
 	"github.com/ghchinoy/homectl/modules/sonos"
@@ -208,6 +211,52 @@ func TestAPIMux_LutronAndSecurityGuards(t *testing.T) {
 		bridgeEntry, ok := got["192.168.1.50"]
 		if !ok || bridgeEntry["status"] != "BRIDGE" || bridgeEntry["is_renderer"] != false {
 			t.Errorf("GET /api/sonos/status[192.168.1.50] = %+v, want status=BRIDGE is_renderer=false", bridgeEntry)
+		}
+	})
+}
+
+func TestResolveUIHandler_EmbeddedFallbackAndDiskPrecedence(t *testing.T) {
+	embedded := fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte("<!doctype html><title>embedded-homectl</title>")},
+	}
+
+	t.Run("falls back to embedded FS when default uiDir lacks index.html", func(t *testing.T) {
+		missingDir := filepath.Join(t.TempDir(), "nonexistent-ui")
+		handler, source := resolveUIHandler(missingDir, false, embedded)
+		if source != "embedded://ui/dist" {
+			t.Fatalf("resolveUIHandler(missing, flagChanged=false) source = %q, want %q", source, "embedded://ui/dist")
+		}
+		mux := newAPIMuxWithUI(&mockLutronAPI{}, handler, false)
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "embedded-homectl") {
+			t.Errorf("GET / (embedded) = (%d, %q), want (200, contains embedded-homectl)", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("serves disk directory when index.html is present on disk", func(t *testing.T) {
+		diskDir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(diskDir, "index.html"), []byte("<!doctype html><title>disk-homectl</title>"), 0644); err != nil {
+			t.Fatalf("os.WriteFile(index.html) failed: %v", err)
+		}
+		handler, source := resolveUIHandler(diskDir, false, embedded)
+		if source == "embedded://ui/dist" {
+			t.Fatalf("resolveUIHandler(diskDir, flagChanged=false) source = %q, want disk path", source)
+		}
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "disk-homectl") {
+			t.Errorf("GET / (disk) = (%d, %q), want (200, contains disk-homectl)", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("honors explicit --ui flag even when directory is empty", func(t *testing.T) {
+		explicitDir := t.TempDir()
+		_, source := resolveUIHandler(explicitDir, true, embedded)
+		if source == "embedded://ui/dist" {
+			t.Errorf("resolveUIHandler(explicitDir, flagChanged=true) source = %q, want explicit disk path", source)
 		}
 	})
 }

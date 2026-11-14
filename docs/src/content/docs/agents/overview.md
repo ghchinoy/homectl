@@ -36,7 +36,7 @@ Controlling physical smart home hardware through Large Language Models (LLMs) pr
 ### Pillar 1: Model Context Protocol (MCP) Servers
 The runtime bridge between LLM agents and device drivers:
 * **Pure Go Static Binaries (`bin/mcp-<svc>`):** Micro-servers compiled directly from Go source (`cmd/mcp-<svc>`) using the official `@modelcontextprotocol/go-sdk`. They boot in under **5ms** with zero external runtime dependencies (no Node.js, Python runtime, or heavy `node_modules` trees).
-* **Consolidated, Token-Budgeted Tooling:** Rejects granular tool sprawl. Instead of exposing 60 disjoint tools, `homectl` exposes **10 intent-oriented tools** per domain (consuming under **1,500 tokens** total).
+* **Consolidated, Token-Budgeted Tooling:** Rejects granular tool sprawl. Instead of exposing 60 disjoint tools, `homectl` exposes **10–12 intent-oriented tools** per domain (`12` in `mcp-sonos`, consuming under **1,500 tokens** total) annotated with `ReadOnlyHint`, `DestructiveHint`, and `IdempotentHint`.
 * **SEP-2106 Structured Output Compliance:** Every tool returns a structured Go record/object wrapper (`ListSpeakersResult`, `TopologyResult`) rather than bare arrays or unstructured string dumps, preventing schema validation failures in strict clients.
 
 ### Pillar 2: Agent Skills ("Skill with Code")
@@ -59,7 +59,7 @@ A comparison of prompt overhead between unoptimized 1:1 protocol exposure and `h
 
 | Metric | Direct 1:1 Action Mapping | homectl Intent-Based Architecture | Efficiency Gain |
 | :--- | :---: | :---: | :---: |
-| **Tool Count** | 50+ individual tools | **10 consolidated tools** | **~80%** fewer tools |
+| **Tool Count** | 50+ individual tools | **12 consolidated tools** | **~76%** fewer tools |
 | **Schema Prompt Overhead** | ~40 KB (~12,000 tokens) | **~4.5 KB (~1,500 tokens)** | **~88%** token savings |
 | **Track Metadata Inspection** | ~1,800 tokens (raw XML) | **~40 bytes (compact JSON)** | **~94%** token savings |
 | **Cold Start Latency** | 1,500ms – 4,000ms (interpreted) | **< 5ms (Go binary)** | **>99%** faster boot |

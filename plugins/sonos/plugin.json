@@ -1,6 +1,6 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "name": "homectl-sonos",
+  "name": "sonos",
   "version": "0.3.0",
   "description": "Smart home audio plugin for Sonos speakers: discovery, compact track metadata, playback control, and volume management.",
   "author": {

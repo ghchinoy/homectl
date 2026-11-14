@@ -5,6 +5,10 @@ description: Architecture of the Qolsys IQ Panel integration, encrypted WebSocke
 
 The Qolsys vertical connects `homectl` to Qolsys IQ Panel 2+ and IQ Panel 4 residential alarm panels, enabling real-time sensor telemetry and safety-gated arming controls.
 
+:::note[Implementation Status]
+The Go encrypted WebSocket engine (`pkg/qolsys`, built on `github.com/coder/websocket`) and CLI event monitor (`homectl qolsys monitor`) are **shipped and active today**. Extraction into a standalone `modules/qolsys` workspace module, `cmd/mcp-qolsys` server, and `skills/qolsys-guard` plugin bundle follows the Sonos pilot blueprint and is planned for an upcoming release.
+:::
+
 ---
 
 ## Architectural Diagram

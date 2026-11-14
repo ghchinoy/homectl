@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
@@ -24,6 +25,7 @@ import (
 	"github.com/ghchinoy/homectl/pkg/config"
 	"github.com/ghchinoy/homectl/pkg/discovery"
 	"github.com/ghchinoy/homectl/pkg/leap"
+	"github.com/ghchinoy/homectl/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -171,12 +173,11 @@ var serveCmd = &cobra.Command{
 		defer client.Close()
 
 		uiDir, _ := cmd.Flags().GetString("ui")
-		resolvedUIDir := filepath.Clean(uiDir)
-		if evalDir, evalErr := filepath.EvalSymlinks(resolvedUIDir); evalErr == nil {
-			resolvedUIDir = evalDir
-		}
+		uiFlagChanged := cmd.Flags().Changed("ui")
+		embeddedFS, _ := ui.DistFS()
+		uiHandler, uiSource := resolveUIHandler(uiDir, uiFlagChanged, embeddedFS)
 
-		mux := newAPIMux(client, resolvedUIDir, debugEnabled)
+		mux := newAPIMuxWithUI(client, uiHandler, debugEnabled)
 
 		flagHost, _ := cmd.Flags().GetString("host")
 		host := ResolveAPIHost(flagHost)
@@ -198,11 +199,11 @@ var serveCmd = &cobra.Command{
 				_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
 					"event":  "listening",
 					"addr":   addr,
-					"ui_dir": resolvedUIDir,
+					"ui_dir": uiSource,
 				})
 			}
 			if !jsonOut {
-				fmt.Printf("Starting homectl API server on %s (serving UI from %s)\n", addr, resolvedUIDir)
+				fmt.Printf("Starting homectl API server on %s (serving UI from %s)\n", addr, uiSource)
 				if host == "0.0.0.0" || host == "" {
 					fmt.Println("[SECURITY ADVISORY] API server bound to 0.0.0.0 (all network interfaces) without authentication.")
 					fmt.Println("                   To restrict access, bind to loopback (-H 127.0.0.1) or your Tailscale IP (-H 100.x.y.z),")
@@ -231,7 +232,32 @@ var serveCmd = &cobra.Command{
 	},
 }
 
+// resolveUIHandler selects the static UI HTTP handler and display label.
+// When --ui is explicitly passed on the CLI, disk serving is always honored.
+// Otherwise, if index.html exists in uiDir on disk it is served from disk,
+// falling back to embeddedFS (when compiled with -tags embed_ui) for standalone binaries.
+func resolveUIHandler(uiDir string, uiFlagChanged bool, embeddedFS fs.FS) (http.Handler, string) {
+	resolvedUIDir := filepath.Clean(uiDir)
+	if evalDir, evalErr := filepath.EvalSymlinks(resolvedUIDir); evalErr == nil {
+		resolvedUIDir = evalDir
+	}
+	if uiFlagChanged {
+		return http.FileServer(http.Dir(resolvedUIDir)), resolvedUIDir
+	}
+	if info, err := os.Stat(filepath.Join(resolvedUIDir, "index.html")); err == nil && !info.IsDir() {
+		return http.FileServer(http.Dir(resolvedUIDir)), resolvedUIDir
+	}
+	if embeddedFS != nil {
+		return http.FileServer(http.FS(embeddedFS)), "embedded://ui/dist"
+	}
+	return http.FileServer(http.Dir(resolvedUIDir)), resolvedUIDir
+}
+
 func newAPIMux(client lutronAPI, resolvedUIDir string, debugEnabled bool) *http.ServeMux {
+	return newAPIMuxWithUI(client, http.FileServer(http.Dir(resolvedUIDir)), debugEnabled)
+}
+
+func newAPIMuxWithUI(client lutronAPI, uiHandler http.Handler, debugEnabled bool) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/lutron/devices", func(w http.ResponseWriter, r *http.Request) {
@@ -353,8 +379,9 @@ func newAPIMux(client lutronAPI, resolvedUIDir string, debugEnabled bool) *http.
 			if d.IP == "" {
 				continue
 			}
+			d = sonos.NormalizeDevice(d)
 			// Skip non-rendering bridges/boosts so they do not incur SOAP errors/timeouts
-			if !d.IsRenderer && (d.Generation != "" || sonos.IsNonRendererModel(d.ModelNumber)) {
+			if !d.IsRenderer {
 				mu.Lock()
 				results[d.IP] = map[string]any{
 					"status":      "BRIDGE",
@@ -871,7 +898,9 @@ func newAPIMux(client lutronAPI, resolvedUIDir string, debugEnabled bool) *http.
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	mux.Handle("/", http.FileServer(http.Dir(resolvedUIDir)))
+	if uiHandler != nil {
+		mux.Handle("/", uiHandler)
+	}
 	return mux
 }
 

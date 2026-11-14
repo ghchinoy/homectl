@@ -13,16 +13,20 @@ Before submitting changes, all code must pass repository quality gates:
 # 1. Format Go code
 gofmt -s -w .
 
-# 2. Run static analysis
-go vet ./...
+# 2. Run static analysis across all workspace modules
+go vet ./... ./modules/core/... ./modules/sonos/...
 
-# 3. Execute unit and integration tests
-go test -v ./...
+# 3. Execute unit and race-detector tests across root, modules/core, and modules/sonos
+make test
+# or: go test -race ./... ./modules/core/... ./modules/sonos/...
 
-# 4. Verify TypeScript and Web UI build
+# 4. Verify skill/plugin bundle synchronization
+make check-skills
+
+# 5. Verify TypeScript and Web UI build
 npm --prefix ui run build
 
-# 5. Verify Documentation site build
+# 6. Verify Documentation site build
 npm --prefix docs run build
 ```
 
@@ -41,8 +45,8 @@ bd ready
 # View details for a specific task
 bd show <id>
 
-# Claim a task
-bd update <id> --status in_progress
+# Atomically claim a task
+bd update <id> --claim
 
 # Close a completed task
 bd close <id>

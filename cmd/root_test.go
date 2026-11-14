@@ -712,6 +712,16 @@ func TestSonosGenerationAndRendererValidation(t *testing.T) {
 			t.Errorf("joinSonosCmd.RunE(S1, S2) = %v, want cross-generation error", err)
 		}
 	})
+
+	t.Run("legacy pre-48551fc cache speaker allowed on play dry-run", func(t *testing.T) {
+		_ = memStorage.WriteFile("sonos_cache.json", []byte(`[{"Name":"Move 2","IP":"192.168.1.120","RinconID":"RINCON_M2","ModelName":"Sonos Move 2","ModelNumber":"S44"}]`), 0644)
+		cmd, _, _ := rootCmd.Find([]string{"sonos", "play"})
+		_ = rootCmd.PersistentFlags().Set("dry-run", "true")
+		defer rootCmd.PersistentFlags().Set("dry-run", "false")
+		if err := cmd.RunE(cmd, []string{"192.168.1.120"}); err != nil {
+			t.Errorf("playSonosCmd.RunE(legacy Move 2) = %v, want nil", err)
+		}
+	})
 }
 
 func TestVersionCommand(t *testing.T) {

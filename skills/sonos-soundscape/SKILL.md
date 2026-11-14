@@ -142,7 +142,7 @@ When interacting with `homectl-sonos-mcp`:
 | `sonos_play_stream`    | ⚡ Mutating | Play HTTP/HTTPS audio stream (radio/podcast/TTS) | `ip: string`, `url: string`, `title?: string` |
 | `sonos_add_to_queue`   | ⚡ Mutating | Add audio URI to queue (optionally as next track) | `ip: string`, `uri: string`, `metadata?: string`, `as_next?: bool` |
 | `sonos_get_queue`      | 🔒 Read-Only | Inspect tracks in queue with titles, artists, positions | `ip: string`, `start?: int`, `count?: int` |
-| `sonos_queue_edit`     | ⚡ Mutating | Edit queue: remove, clear, reorder, or configure shuffle/repeat/crossfade | `ip: string`, `action: string`, `track?: int`, `count?: int`, `insert_before?: int`, `as_next?: bool`, `enabled?: bool`, `repeat_mode?: string` |
+| `sonos_queue_edit`     | ⚡ Mutating | Edit queue: remove, clear, reorder, or configure shuffle/repeat/crossfade | `ip: string`, `action: string`, `track?: int`, `count?: int`, `insert_before?: int`, `as_next?: bool`, `enabled?: bool`, `repeat_mode?: string`, `dry_run?: bool` |
 | `sonos_list_services`  | 🔒 Read-Only | List streaming services & default provider | `ip: string` |
 
 ---
@@ -154,9 +154,6 @@ Before adjusting audio in any room:
 - [ ] Is the speaker a rendering device (`is_renderer: true`) and not a bridge or dock?
 - [ ] If grouping speakers, are both speakers in the same Sonos generation (`Generation: "S1"` vs. `"S2"`)?
 - [ ] Is the proposed volume change within safe limits (≤ 60% or step delta ≤ 10%)?
-- [ ] If playing a stream, is the URL scheme `http` or `https`?
-- [ ] If selecting music, did you check `sonos_list_favorites` or the default service first?
-- [ ] If track info is required, did you use `sonos_get_now_playing` to conserve context?
 - [ ] If playing a stream, is the URL scheme `http` or `https`?
 - [ ] If selecting music, did you check `sonos_list_favorites` or the default service first?
 - [ ] If track info is required, did you use `sonos_get_now_playing` to conserve context?

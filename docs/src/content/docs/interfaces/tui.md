@@ -11,10 +11,10 @@ description: The interactive multi-mode terminal dashboard for homectl.
 
 ## Views & Navigation
 
-The TUI features a tabbed navigation system across three primary operational views:
+The TUI features a tabbed navigation system across four operational views:
 
 ### 1. Lights View
-Displays all discovered Lutron Caseta / RA2 Select dimmers and switches:
+Displays all discovered Lutron Caséta / RA2 Select dimmers and switches:
 * **Visual Progress Bars:** Shows brightness level from 0% (OFF) to 100%.
 * **Master Switch:** Top-level `ALL LIGHTS` control to clear or illuminate the entire home.
 * **Device Details Sidebar:** Displays zone href, model number, device type, and assigned nickname.
@@ -28,14 +28,20 @@ Displays discovered Sonos speakers:
 ### 3. Areas View
 Filters and groups devices by their assigned physical rooms or areas on the Lutron bridge.
 
+### 4. Groups View
+Displays active Sonos multi-room zone groups, stereo pairs, and coordinator/follower topology across S1 and S2 households.
+
 ---
 
 ## Keyboard Shortcuts
 
 | Key | Context | Action |
 | :--- | :--- | :--- |
-| **`Tab`** | Global | Cycle forward between Lights, Music, and Areas tabs |
-| **`0` – `9`** | Lights / Music | Set level or volume: `1`=10%, `5`=50%, `0`=100% |
+| **`Tab`** | Global | Cycle forward between Lights, Music, Areas, and Groups tabs |
+| **`0`** | Lights / Music | Set brightness or volume to `0%` (OFF / Mute) |
+| **`1` – `9`** | Lights / Music | Set brightness or volume to `10%` – `90%` (`1`=10%, `5`=50%, `9`=90%) |
+| **`+` / `-`** | Lights / Music | Fine-adjust brightness or volume by `+1%` / `-1%` |
+| **`r`** | Global | Refresh device status and trigger background re-discovery |
 | **`Space`** | Music | Toggle Play / Pause on the selected speaker |
 | **`n`** | Music | Skip to Next track |
 | **`p`** | Music | Skip to Previous track |
@@ -43,6 +49,10 @@ Filters and groups devices by their assigned physical rooms or areas on the Lutr
 | **`Enter`** | Editing Nickname | Save and persist nickname to `nicknames.json` |
 | **`Esc`** | Editing Nickname | Cancel nickname edit |
 | **`q` / `Ctrl+C`** | Global | Quit `homectl ui` |
+
+:::tip[Headless & Non-TTY Guardrails]
+Setting `HOMECTL_NO_TUI=1` (or invoking `homectl ui` without an interactive TTY) exits cleanly with an actionable error instead of hanging automated agent harnesses. Setting `NO_COLOR=1` disables ANSI styling.
+:::
 
 ---
 

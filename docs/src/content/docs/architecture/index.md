@@ -18,7 +18,7 @@ description: Comprehensive system architecture, multi-tier design, and module in
 ### 1. Interaction Tier (Humans & AI Agents)
 * **AI Coding Agents (OpenCode, Claude, Gemini):** Interact with `homectl` via Model Context Protocol (MCP) tool calls over standard I/O (stdio). Agent reasoning is guided by declarative **Agent Skills** (`skills/<name>/SKILL.md`) that codify safety rules, token economics, and error recovery protocols.
 * **Cobra CLI (`cmd/`):** Scriptable command-line interface supporting human-friendly tabular output and machine-readable structured output via the `--json` flag. All mutating commands support `--dry-run` simulation.
-* **Bubble Tea TUI (`pkg/tui`):** Responsive terminal dashboard featuring multi-mode tab navigation (Lights, Music, Areas), live volume and dimming progress bars, and inline nickname editing.
+* **Bubble Tea TUI (`pkg/tui`):** Responsive terminal dashboard featuring four-tab navigation (Lights, Music, Areas, and Groups), live volume and dimming progress bars, and inline nickname editing.
 * **Lit Web UI (`ui/`):** Fast, reactive single-page application built with Lit WebComponents and Vite. Utilizes an isolated "smart parent / dumb card" component architecture with optimistic state updates.
 
 ### 2. Agent Plugin Tier (`plugins/<svc>/`)
@@ -30,15 +30,15 @@ Each integrated IoT ecosystem is packaged as a self-contained Agent Plugin adher
 
 ### 3. Service Gateway & MCP Servers (`bin/*`)
 * **`homectl serve`**: HTTP API server running on port `8080` (or `8086` under `systemd`), providing REST endpoints (`/api/lutron/*`, `/api/sonos/*`, `/api/cast/*`, `/api/security/*`) and hosting compiled Web UI assets.
-* **Standalone MCP Servers (`cmd/mcp-<svc>/`)**: Dedicated micro-executables (`mcp-sonos`, `mcp-lutron`, etc.) built with `@modelcontextprotocol/go-sdk`. Each server enforces strict separation of concerns, ensuring an agent only loads the tools relevant to its current domain.
+* **Standalone MCP Servers (`cmd/mcp-<svc>/`)**: Dedicated micro-executables (`cmd/mcp-sonos` shipped today; `mcp-lutron`, `mcp-cast`, `mcp-camera`, and `mcp-qolsys` planned along the same vertical blueprint) built with `@modelcontextprotocol/go-sdk`. Each server enforces strict separation of concerns, ensuring an agent only loads the tools relevant to its current domain.
 
-### 4. Disaggregated Go Monorepo (`modules/*`)
+### 4. Disaggregated Go Monorepo (`modules/*` & `pkg/*`)
 The Go codebase is organized as a multi-module workspace (`go.work`):
 * **`modules/core`**: Interface-only foundational module defining injectable primitives:
   * `core.Storage`: Abstract filesystem operations (XDG standard vs. in-memory for testing).
   * `core.Logger`: Pluggable structured and standard loggers without global `init()` side-effects.
   * `core.Settings`: Configuration parameters (e.g. `CallbackIP` for inbound NAT traversal).
-* **Per-Service Domain Modules (`modules/sonos`, `modules/lutron`, etc.)**: Encapsulate protocol clients, state management, and network calls. Each module contains its own isolated `go.mod` and comprehensive mock-transport test suites.
+* **Domain Engines (`modules/sonos` and `pkg/{leap,cast,camera,qolsys}`)**: `modules/sonos` is the first fully disaggregated workspace module (`go.mod` + mock-transport test suite), while Lutron (`pkg/leap`), Google Cast (`pkg/cast`), Cameras (`pkg/camera`), and Qolsys (`pkg/qolsys`) currently reside in `pkg/` alongside CLI, TUI, and REST handlers.
 
 ### 5. Local Physical Subnet Tier
 `homectl` interacts directly with hardware on the local network (`192.168.x.x`):

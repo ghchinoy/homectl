@@ -8,6 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Agent-Aware CLI Parity:** Added command grouping (`GroupID`), `Long`/`Example` help blocks across all 38 commands, `-o / --output`, `--limit`, `NO_COLOR`, and `HOMECTL_NO_TUI` headless guards, `--json` and `--dry-run` support on `sonos play/pause/stop/next/prev`, and `HOMECTL_QOLSYS_HOST` / `HOMECTL_QOLSYS_TOKEN` environment variable and `config.json` fallbacks ([control-rr6]).
+- **MCP Tool Annotations & Queue Dry-Run:** Added `mcp.ToolAnnotations` (`ReadOnlyHint`, `DestructiveHint`, `IdempotentHint`) across all 12 tools in `cmd/mcp-sonos`, `dry_run` preview mode on `sonos_queue_edit`, and `.claude-plugin/marketplace.json` discovery index ([control-rr6], [control-qln]).
+- **Embedded Web UI & Tag-Aligned Release Pipeline:** Added automatic `go:embed` Web UI fallback in `homectl serve`, dynamic git-tag `VERSION` derivation in `Makefile`, and SHA-pinned `.github/workflows/ci.yml` and `.github/workflows/release.yml` workflows building `{darwin,linux}/{amd64,arm64}` binaries with SHA-256 checksums and SLSA provenance ([control-2bi], [control-3lv]).
+- **GM3 Starlight Documentation Theme:** Replaced Catppuccin theme with GM3 design tokens and self-hosted Google Sans Flex / Google Sans Code fonts.
+- **Expanded Mock & Protocol Test Suites:** Added `cmd/serve_test.go`, `pkg/qolsys/client_test.go`, `cmd/sync-skills/main_test.go`, `modules/sonos/events_test.go`, and in-memory mTLS LEAP mock server tests in `pkg/leap/client_test.go` ([control-9ch]).
+
+### Changed
+- **Toolchain & Dependency Upgrades:** Raised Go workspace floor to `1.26.10` across root, `modules/core`, and `modules/sonos`; migrated `pkg/qolsys` from archived `nhooyr.io/websocket` to `github.com/coder/websocket`; replaced `axios` in `ui/src/api.ts` with native browser `fetch`; and enforced `engines.node >= 22.23.4` ([control-i16], [control-601]).
+- **Concurrent Sonos Status Endpoint:** Updated `/api/sonos/status` to poll speakers concurrently, skip non-rendering bridges (`status: "BRIDGE"`), and resolve `x-rincon:` stereo-pair/group followers to their authoritative coordinator ([control-2bi]).
+- **Installer Hardening:** Updated `scripts/install.sh` to embed version `LDFLAGS` (`make bin-homectl`) and run `npm ci`, and replaced bare `jq` in `scripts/install-mcp.sh` with a comment-preserving JSONC parser ([control-2bi]).
+
+### Fixed
+- **Legacy `sonos_cache.json` Zero-Value `IsRenderer` Bug:** Added `sonos.NormalizeDevice` across `LoadCache`, `SaveCache`, `mcp-sonos`, CLI, and REST handlers so pre-`48551fc` cached speakers (`Move 2`, `Play:1`, `Play:3`, `Arc`, `Port`) no longer zero-value `IsRenderer=false` and block playback or volume commands ([control-o15]).
+- **Live Camera MJPEG Stream Timeout:** Cleared the server-wide 30-second `WriteTimeout` on `/api/security/stream` via `http.ResponseController` so continuous RTSP-to-MJPEG streams no longer terminate after 30 seconds ([control-gqf]).
+- **GENA Listener Port Lifecycle:** Added `http.Server` timeouts and `Close()` / `Stop()` shutdown to `sonos.GENAListener` and wired cleanup on TUI exit ([control-gqf]).
+
+### Security
+- **Lutron LEAP mTLS CA Verification:** Enforced `VerifyPeerCertificate` against `lutron_ca.crt` (`MinVersion: TLS 1.2`) on IP-dialed bridge connections instead of accepting unverified self-signed peers ([control-gqf]).
+- **HTTP Gateway CSRF, SSRF & Payload Bounds:** Wrapped all mutating `POST` routes in `homectl serve` with `requireLocalOrigin` and `64 KiB` `http.MaxBytesReader` limits; enforced unicast `validateDeviceIP` validation across all device endpoints; blocked hostname SSRF and restricted response headers on `/api/sonos/art`; gated `/api/debug/lutron` behind `--debug`; and capped UPnP SOAP (`4 MiB`), GENA `NOTIFY` (`1 MiB`), and art proxy (`10 MiB`) reads ([control-i16], [control-gqf]).
+- **Upstream CVE Remediation & Action Pinning:** Patched `astro` (`7.4.12`, `GHSA-r3h5-4585-7x3w`), `sharp` (`0.35.5`), `vite` (`7.3.8`), and Go `1.26.10` stdlib advisories, and pinned all GitHub Actions to immutable commit SHAs ([control-i16], [control-601], [control-2bi]).
+
 ## [0.3.0] - 2026-10-06
 
 _Feature release introducing unified build versioning, Sonos S1/S2 hardware classification, queue management suite, configurable API host binding, and expanded test coverage._
@@ -100,8 +122,4 @@ _Major architectural release introducing disaggregated Go modules, standalone Ag
 - Lutron pairing scripts and certificate helpers ([control-unc]).
 
 [Unreleased]: https://github.com/ghchinoy/homectl/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/ghchinoy/homectl/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/ghchinoy/homectl/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/ghchinoy/homectl/compare/v0.0.1...v0.1.0
-[0.0.1]: https://github.com/ghchinoy/homectl/compare/v0.0.0...v0.0.1
-[0.0.0]: https://github.com/ghchinoy/homectl/releases/tag/v0.0.0
+[0.3.0]: https://github.com/ghchinoy/homectl/releases/tag/v0.3.0

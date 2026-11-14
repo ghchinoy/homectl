@@ -9,12 +9,12 @@ description: Get up and running with homectl in under 2 minutes.
 
 ### 1. Clone & Build
 
-Ensure you have **Go 1.25+** installed:
+Ensure you have **Go 1.26.10+** and **Node.js 22.23.4+** installed (or download a prebuilt archive from [GitHub Releases](https://github.com/ghchinoy/homectl/releases)):
 
 ```bash
 git clone https://github.com/ghchinoy/homectl.git
 cd homectl
-go build -o homectl .
+make build
 ```
 
 ### 2. Discover Devices on Your Network
@@ -22,7 +22,7 @@ go build -o homectl .
 Run the multi-protocol discovery engine to scan your subnet for compatible devices:
 
 ```bash
-./homectl discover
+./bin/homectl discover
 ```
 
 Example output:
@@ -43,11 +43,11 @@ Total devices found: 5
 Launch the full-screen terminal dashboard built with Bubble Tea:
 
 ```bash
-./homectl ui
+./bin/homectl ui
 ```
 
-- Use **`Tab`** to switch between **Lights**, **Music**, and **Areas**.
-- Use number keys **`0`–`9`** to adjust dimming or speaker volume.
+- Use **`Tab`** to switch between **Lights**, **Music**, **Areas**, and **Groups**.
+- Press **`0`** to turn lights off or mute (`0%`), **`1`–`9`** for `10%`–`90%`, or **`+` / `-`** for `±1%` steps.
 - Press **`Space`** to toggle music playback.
 - Press **`e`** to set a custom nickname for any device.
 
@@ -57,27 +57,27 @@ Control your devices directly from the command line:
 
 ```bash
 # List all Lutron lighting devices with their real-time dimming levels
-./homectl lutron list devices
+./bin/homectl lutron list devices
 
 # Set a light to 50%
-./homectl lutron set level /zone/1 50
+./bin/homectl lutron set level /zone/1 50
 
 # Play music on a Sonos speaker
-./homectl sonos play 192.168.1.120
+./bin/homectl sonos play 192.168.1.120
 
 # View detailed playback metadata
-./homectl sonos details 192.168.1.120
+./bin/homectl sonos details 192.168.1.120
 
 # Jump to track 3 in the queue
-./homectl sonos seek 192.168.1.120 --track 3
+./bin/homectl sonos seek 192.168.1.120 --track 3
 ```
 
 ### 5. Launch the Web UI & API Server
 
-Serve the responsive Lit web dashboard and local REST API:
+Serve the responsive Lit web dashboard (automatically served from the embedded bundle, or via `--ui ./ui/dist` when developing locally) and local REST API:
 
 ```bash
-./homectl serve --port 8080 --ui ./ui/dist
+./bin/homectl serve -H 127.0.0.1 --port 8080
 ```
 
-Navigate to `http://localhost:8080` to interact with your dashboard from any web browser on your network.
+Navigate to `http://127.0.0.1:8080` to interact with your dashboard from any web browser.

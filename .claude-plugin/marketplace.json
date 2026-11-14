@@ -1,0 +1,16 @@
+{
+  "name": "homectl",
+  "metadata": {
+    "pluginRoot": "./plugins"
+  },
+  "plugins": [
+    {
+      "name": "sonos",
+      "source": "./plugins/sonos",
+      "description": "Smart home audio plugin for Sonos speakers: discovery, compact track metadata, playback control, and volume management.",
+      "skills": [
+        "./plugins/sonos/skills/sonos-soundscape"
+      ]
+    }
+  ]
+}

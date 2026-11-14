@@ -8,35 +8,41 @@ description: Install homectl as a standalone binary or a systemd service.
 ## Prerequisites
 
 - **Operating System:** Linux (Ubuntu/Debian, Arch, Fedora) or macOS (Darwin arm64/amd64).
-- **Go:** 1.25+ (for building from source).
-- **Node.js:** 20+ and `npm` (to build the Web UI).
+- **Go:** 1.26.10+ (when building from source).
+- **Node.js:** 22.23.4+ and `npm` (when building the Web UI or documentation from source).
 - **FFmpeg:** Optional; required only for RTSP camera transcoding.
 
 ---
 
-## Method 1: Building from Source
+## Method 1: Download a Prebuilt Binary (macOS & Linux)
 
-To compile the latest binary on your local machine:
+Download the latest signed archive for your platform (`darwin/arm64`, `darwin/amd64`, `linux/amd64`, `linux/arm64`) from [GitHub Releases](https://github.com/ghchinoy/homectl/releases), verify its SHA-256 checksum against `checksums.txt`, and place `homectl` and `homectl-mcp-sonos` on your `PATH`. Prebuilt `homectl` binaries bundle the compiled Web UI directly inside the executable.
+
+---
+
+## Method 2: Building from Source
+
+To compile all binaries (`homectl`, `mcp-sonos`, `sync-skills`) with embedded version metadata and the Web UI bundle:
 
 ```bash
 git clone https://github.com/ghchinoy/homectl.git
 cd homectl
 
-# Build the binary
-go build -o homectl .
+# Build UI bundle and Go binaries into ./bin/
+make build
 
-# Move to a system path
-sudo mv homectl /usr/local/bin/
+# Move homectl to a system path
+sudo cp ./bin/homectl /usr/local/bin/
 ```
 
 Verify your installation:
 ```bash
-homectl --help
+homectl version
 ```
 
 ---
 
-## Method 2: Systemd Daemon Installation (Linux)
+## Method 3: Systemd Daemon Installation (Linux)
 
 For dedicated Linux hosts (such as a Raspberry Pi or home server), `homectl` provides an automated installer script:
 
@@ -45,11 +51,11 @@ For dedicated Linux hosts (such as a Raspberry Pi or home server), `homectl` pro
 ```
 
 ### What the installer does:
-1. Compiles the Go binary `homectl`.
-2. Installs npm dependencies and builds the production Web UI (`ui/dist/`).
+1. Compiles the Go binary `homectl` with version LDFLAGS (`make bin-homectl`).
+2. Runs `npm ci` and builds the production Web UI (`ui/dist/`).
 3. Installs the executable to `/usr/local/bin/homectl`.
 4. Copies web assets to `/usr/local/share/homectl/ui`.
-5. Creates, enables, and starts a `systemd` user service:
+5. Creates, enables, and starts a system-level `systemd` unit (`/etc/systemd/system/homectl.service`):
    ```ini
    [Unit]
    Description=homectl Smart Home API Server

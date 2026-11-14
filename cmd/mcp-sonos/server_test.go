@@ -1694,3 +1694,82 @@ func TestSonosListSpeakersTool_IncludesGenerationAndRenderer(t *testing.T) {
 		t.Errorf("sonos_list_speakers(cached).Speakers[1] = %+v, want Generation=S1 IsRenderer=false", listRes.Speakers[1])
 	}
 }
+
+func TestSonosLegacyCacheZeroValueIsRenderer_Regression_ControlO15(t *testing.T) {
+	mockMove := &MockClient{ip: "192.168.1.120", volume: 20, state: "STOPPED"}
+	mockArc := &MockClient{ip: "192.168.1.100", volume: 25, state: "PLAYING"}
+
+	factory := func(ip string) ClientInterface {
+		if ip == "192.168.1.100" {
+			return mockArc
+		}
+		return mockMove
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	// Simulate pre-48551fc cached speakers where Generation=="" and IsRenderer==false
+	server := CreateMCPServer(
+		WithClientFactory(factory),
+		WithCacheLoader(func() ([]sonos.Device, error) {
+			return []sonos.Device{
+				{Name: "Move 2", IP: "192.168.1.120", RinconID: "RINCON_MOVE2", ModelName: "Sonos Move 2", ModelNumber: "S44"},
+				{Name: "Living Room Arc", IP: "192.168.1.100", RinconID: "RINCON_ARC", ModelName: "Sonos Arc", ModelNumber: "S19"},
+			}, nil
+		}),
+	)
+
+	go func() {
+		_ = server.Run(ctx, serverTransport)
+	}()
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("client.Connect(legacy cache) failed: %v", err)
+	}
+	defer session.Close()
+
+	// 1. sonos_list_speakers(refresh: false) should normalize IsRenderer=true & Generation=S2
+	listRes, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "sonos_list_speakers",
+		Arguments: map[string]any{"refresh": false},
+	})
+	if err != nil || listRes.IsError {
+		t.Fatalf("sonos_list_speakers(legacy) failed: err=%v res=%+v", err, listRes)
+	}
+	var parsed ListSpeakersResult
+	_ = json.Unmarshal([]byte(listRes.Content[1].(*mcp.TextContent).Text), &parsed)
+	for _, sp := range parsed.Speakers {
+		if !sp.IsRenderer || sp.Generation != "S2" {
+			t.Errorf("sonos_list_speakers(legacy) speaker %q = %+v, want IsRenderer=true Generation=S2", sp.Name, sp)
+		}
+	}
+
+	// 2. sonos_control(play), sonos_set_volume, and sonos_control(join) must succeed
+	playRes, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "sonos_control",
+		Arguments: map[string]any{"ip": "192.168.1.120", "action": "play"},
+	})
+	if err != nil || playRes.IsError {
+		t.Fatalf("sonos_control(play on legacy cached Move 2) failed: err=%v res=%+v", err, playRes)
+	}
+
+	volRes, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "sonos_set_volume",
+		Arguments: map[string]any{"ip": "192.168.1.120", "volume": 30},
+	})
+	if err != nil || volRes.IsError {
+		t.Fatalf("sonos_set_volume(legacy cached Move 2) failed: err=%v res=%+v", err, volRes)
+	}
+
+	joinRes, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "sonos_control",
+		Arguments: map[string]any{"ip": "192.168.1.120", "action": "join", "target": "192.168.1.100"},
+	})
+	if err != nil || joinRes.IsError {
+		t.Fatalf("sonos_control(join on legacy cached Move 2) failed: err=%v res=%+v", err, joinRes)
+	}
+}

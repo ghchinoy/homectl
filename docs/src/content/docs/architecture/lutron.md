@@ -3,7 +3,11 @@ title: Lutron Lighting Vertical Architecture
 description: Architecture of the Lutron LEAP mutual TLS integration, batch status optimization, and MCP tools.
 ---
 
-The Lutron vertical provides local control of Lutron Caseta and RA2 Select systems. It bypasses the Lutron cloud entirely, executing encrypted commands directly on the local Smart Bridge.
+The Lutron vertical provides local control of Lutron Caséta and RA2 Select systems. It bypasses the Lutron cloud entirely, executing encrypted commands directly on the local Smart Bridge.
+
+:::note[Implementation Status]
+The Go LEAP mTLS engine (`pkg/leap`), CLI (`homectl lutron`), TUI Lights/Areas tabs, and REST API (`/api/lutron/*`) are **shipped and active today**. Extraction into a standalone `modules/lutron` workspace module, `cmd/mcp-lutron` server, and `skills/lutron-lighting` plugin bundle follows the Sonos pilot blueprint and is planned for an upcoming release.
+:::
 
 ---
 
@@ -35,7 +39,7 @@ Exposes tools for lighting state and control:
 * **Resilient Auto-Reconnection:** Network dropouts are detected via `isNetErr(err)` (evaluating `io.EOF`, `net.OpError`, and timeout conditions), triggering automatic reconnection before retrying in-flight requests.
 
 ### 4. Physical Bridge & LEAP Protocol
-* **Port 8081 TLS:** Communcation takes place over newline-delimited JSON payloads:
+* **Port 8081 TLS:** Communication takes place over newline-delimited JSON payloads:
   ```json
   {
     "CommuniqueType": "CreateRequest",
