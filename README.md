@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/go-1.26.11+-00ADD8?logo=go)](go.mod)
 
-A modern, Go-powered toolkit for local smart home management, providing unified control of Lutron Caséta lighting, Sonos whole-home audio, Google Cast devices, and RTSP security cameras via CLI, Terminal UI (TUI), Web UI, and Model Context Protocol (MCP) Agent Plugins.
+A modern, Go-powered toolkit for local smart home management, providing unified control of Lutron Caséta lighting, Sonos whole-home audio, Google Cast devices, Roborock vacuums, Qolsys alarm panels, and RTSP security cameras via CLI, Terminal UI (TUI), Lustrous Web UI, and Model Context Protocol (MCP) Agent Plugins.
 
 📖 **Full Documentation & Architecture Deep Dives:** [https://ghchinoy.github.io/homectl/](https://ghchinoy.github.io/homectl/)
 
@@ -110,6 +110,14 @@ homectl sonos queue-mode 192.168.1.100 --shuffle on --repeat all
 homectl sonos join 192.168.1.101 192.168.1.100
 homectl sonos leave 192.168.1.101
 
+# Control Roborock vacuums locally over LAN (:58866/:58867) while keeping the official app
+homectl roborock login --email you@example.com
+homectl roborock discover
+homectl roborock list
+homectl roborock rooms "Saros 10R"
+homectl roborock clean "Saros 10R" --rooms 16,17 --dry-run
+homectl roborock dock "Saros 10R"
+
 # Stream Qolsys alarm panel telemetry (via env vars to keep secrets out of shell history)
 HOMECTL_QOLSYS_HOST=192.168.1.30 HOMECTL_QOLSYS_TOKEN=123456 homectl qolsys monitor --json
 ```
@@ -121,11 +129,15 @@ All CLI commands support `--json` (or `-o json`) for machine-readable output, `-
 `homectl` provides standalone MCP stdio servers under `./bin/` for AI agents (OpenCode, Claude Desktop, Cursor, Antigravity):
 
 ```bash
-# Run mcp-sonos directly over stdio
+# Run mcp-sonos or mcp-roborock directly over stdio
 ./bin/mcp-sonos
+./bin/mcp-roborock
 ```
 
-Exposes 12 token-budgeted tools (`sonos_list_speakers`, `sonos_get_now_playing`, `sonos_get_topology`, `sonos_control`, `sonos_set_volume`, `sonos_list_favorites`, `sonos_play_favorite`, `sonos_play_stream`, `sonos_add_to_queue`, `sonos_get_queue`, `sonos_queue_edit`, `sonos_list_services`) adhering to SEP-2106 object return schemas. See the [AI Agent Ecosystem Guide](https://ghchinoy.github.io/homectl/agents/overview/) for full client configuration details.
+- **`mcp-sonos`**: Exposes 12 token-budgeted tools (`sonos_list_speakers`, `sonos_get_now_playing`, `sonos_get_topology`, `sonos_control`, `sonos_set_volume`, `sonos_list_favorites`, `sonos_play_favorite`, `sonos_play_stream`, `sonos_add_to_queue`, `sonos_get_queue`, `sonos_queue_edit`, `sonos_list_services`).
+- **`mcp-roborock`**: Exposes 6 token-budgeted tools (`roborock_list_devices`, `roborock_get_status`, `roborock_get_telemetry`, `roborock_get_rooms`, `roborock_camera_info`, `roborock_control`) supporting both Keep-Official-App direct LAN TCP (`:58867`) and de-clouded local server modes.
+
+All tools adhere to SEP-2106 object return schemas. See the [AI Agent Ecosystem Guide](https://ghchinoy.github.io/homectl/agents/overview/) for full client configuration details.
 
 ### Web UI & API Server
 
@@ -136,7 +148,7 @@ Start the REST API server (serves the embedded Web UI automatically, or `--ui ./
 homectl serve -H 127.0.0.1 --port 8080
 ```
 
-Open `http://127.0.0.1:8080` in your browser to access the responsive Lit card dashboard.
+Open `http://127.0.0.1:8080` in your browser to access the **Lustrous Design System (`@ghchinoy/lustrous-lit`)** Lit Web Components dashboard — featuring a pre-hydration & progressive boot loading spinner, light/dark/system theming, sticky pill section jump navigation, and collapsible off-LAN Roborock device disclosure.
 
 ---
 
@@ -145,9 +157,12 @@ Open `http://127.0.0.1:8080` in your browser to access the responsive Lit card d
 - **Lutron Caséta & RA2 Select:** Local encrypted LEAP protocol communication over mutual TLS (port 8081). Single-roundtrip batch status queries.
 - **Sonos Whole-Home Audio:** Transport control (play/pause/stop/next/prev/seek), paginated queue inspection, UPnP GENA real-time push events, album art reverse proxying, Sonos Favorites (Spotify/Apple Music) playback, and direct web audio streaming.
 - **Google Cast:** Zero-config mDNS discovery (`_googlecast._tcp`) with IPv4 preference, receiver app tracking, and playback/volume control.
+- **Roborock Vacuums:** Dual-mode local control for V1 (`1.0`) and modern (`L01`) models (Q5 Max+ `a125`, Saros 10R `a144`, Saros 20 `a288`):
+  - **Keep Official App (Direct LAN):** One-time cloud V4 login (`homectl roborock login`) + passive UDP `:58866` discovery + encrypted direct LAN TCP `:58867` polling and room cleaning with zero Wi-Fi resets.
+  - **De-Clouded Local Server:** Optional single-binary HTTPS + embedded Mochi MQTT TLS (`:8881`) + embedded Pion TURN (`:3478`) stack with RSA public-key recovery.
 - **Security Cameras:** Concurrent mDNS and subnet port 554 RTSP probing with on-demand, context-managed FFmpeg MJPEG transcoding.
 - **Qolsys IQ Panel 4:** Encrypted WebSocket telemetry (`wss://:12345`) with token authentication and anti-replay nonce tracking.
-- **Agent Plugins (MCP):** Pre-packaged plugins with "Skill with Code" prompt token optimization (~94% savings) and physical actuator safety boundaries.
+- **Agent Plugins (MCP):** Pre-packaged plugins (`sonos`, `roborock`) with "Skill with Code" prompt token optimization (~94% savings) and physical actuator safety boundaries.
 - **State Isolation:** XDG-compliant runtime state (`~/.config/homectl/`) paired with a strictly gitignored `local/` folder for private residential inventories.
 
 ---
@@ -184,6 +199,7 @@ Create `~/.config/homectl/config.json`:
 The configuration directory also stores:
 * **`lutron_client.crt`, `lutron_client.key`, `lutron_ca.crt`**: Mutual TLS certificates for communicating with the Lutron Smart Bridge. See [Lutron Integration Guide](https://ghchinoy.github.io/homectl/integrations/lutron/) for pairing steps.
 * **`lutron_cache.json`, `sonos_cache.json`**: Discovered device caches for instant startup.
+* **`roborock/cloud_devices.json`**: (`0600`) Cached Roborock `duid`, `local_key`, room names, and discovered LAN IPs for Keep-Official-App direct LAN control.
 * **`nicknames.json`**: Custom device names mapped by IP or zone resource path.
 
 > **Privacy Notice:** Real physical device MAC addresses, static LAN IPs, and residential layouts belong in the gitignored `local/NETWORK_DISCOVERY.md` file. See [NETWORK_DISCOVERY.md](NETWORK_DISCOVERY.md) for the sanitized public baseline.

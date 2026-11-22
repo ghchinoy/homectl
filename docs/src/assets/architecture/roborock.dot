@@ -36,8 +36,8 @@ digraph RoborockVerticalArchitecture {
       fontcolor="#0f172a",
       fontsize=16,
       label=<<table border="0" cellborder="0" cellspacing="4">
-        <tr><td><font point-size="18" color="#ea580c"><b>Roborock Local Server &amp; Fleet Instrumentation Vertical</b></font></td></tr>
-        <tr><td><font point-size="11" color="#64748b">Single-Binary Go HTTPS Bootstrap, Embedded Mochi MQTT Broker, Pure-Go 1.0/L01 Codec &amp; Pion TURN Relay</font></td></tr>
+        <tr><td><font point-size="18" color="#ea580c"><b>Roborock Dual-Mode Local Control &amp; Fleet Instrumentation</b></font></td></tr>
+        <tr><td><font point-size="11" color="#64748b">Direct LAN TCP (:58867, Keep Official App) + Optional De-Clouded HTTPS / Mochi MQTT / Pion TURN Stack</font></td></tr>
       </table>>
     ];
   }
@@ -79,8 +79,8 @@ digraph RoborockVerticalArchitecture {
     cli_node [
       label=<<table border="0" cellborder="0" cellspacing="2">
         <tr><td><font color="#0284c7"><b>homectl roborock CLI</b></font></td></tr>
-        <tr><td><font color="#64748b" point-size="8">serve · onboard · list · status · monitor</font></td></tr>
-        <tr><td><font color="#64748b" point-size="8">clean · dock · find · camera · keys · import-state</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">login · discover · list · status · rooms · clean · dock</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">serve · onboard · monitor · camera · keys · import-state</font></td></tr>
       </table>>,
       fillcolor="#ffffff",
       color="#0284c7"
@@ -88,9 +88,9 @@ digraph RoborockVerticalArchitecture {
 
     web_ui [
       label=<<table border="0" cellborder="0" cellspacing="2">
-        <tr><td><font color="#0284c7"><b>Web UI &amp; SSE (/api/roborock/*)</b></font></td></tr>
-        <tr><td><font color="#64748b" point-size="8">roborock-card.ts (Lit component)</font></td></tr>
-        <tr><td><font color="#64748b" point-size="8">Live SSE telemetry stream &amp; control</font></td></tr>
+        <tr><td><font color="#0284c7"><b>Lustrous Web UI (/api/roborock/*)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">roborock-card.ts + collapsible off-LAN disclosure</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Direct LAN TCP fallback + SSE telemetry</font></td></tr>
       </table>>,
       fillcolor="#ffffff",
       color="#0284c7"
@@ -102,6 +102,16 @@ digraph RoborockVerticalArchitecture {
     style="rounded,dashed";
     color="#fde68a";
     bgcolor="#fffbeb";
+
+    lan_fleet [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#059669"><b>Direct LAN Fleet (Keep Official App)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Cloud V4 login -&gt; cloud_devices.json (0600)</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">UDP :58866 discovery + TCP :58867 (1.0 &amp; L01)</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#059669"
+    ];
 
     tls_sni [
       label=<<table border="0" cellborder="0" cellspacing="2">
@@ -157,7 +167,7 @@ digraph RoborockVerticalArchitecture {
   }
 
   subgraph cluster_hw {
-    label=<<table border="0" cellborder="0"><tr><td><font color="#dc2626" point-size="12"><b>4. ROBOROCK VACUUM FLEET (LAN ONLY, WAN BLOCKED)</b></font></td></tr></table>>;
+    label=<<table border="0" cellborder="0"><tr><td><font color="#dc2626" point-size="12"><b>4. ROBOROCK VACUUM FLEET (DIRECT LAN OR DE-CLOUDED)</b></font></td></tr></table>>;
     style="rounded,dashed";
     color="#fecaca";
     bgcolor="#fef2f2";
@@ -192,12 +202,17 @@ digraph RoborockVerticalArchitecture {
 
   title_node -> skill_doc [style="invis"];
   skill_doc -> mcp_tools [color="#7c3aed"];
-  mcp_tools -> cli_node [label="Local Control API", color="#0284c7"];
+  mcp_tools -> cli_node [label="Control API / LAN", color="#0284c7"];
+  cli_node -> lan_fleet [label="Direct LAN Mode", color="#059669"];
+  web_ui -> lan_fleet [label="Direct LAN Mode", color="#059669"];
   cli_node -> http_srv [color="#0284c7"];
   web_ui -> mqtt_srv [label="SSE / RPC", color="#0284c7"];
   http_srv -> key_rec [color="#d97706"];
   tls_sni -> http_srv [color="#d97706"];
   tls_sni -> mqtt_srv [color="#d97706"];
+  lan_fleet -> vac_v1 [label="UDP :58866 / TCP :58867", color="#059669"];
+  lan_fleet -> vac_10r [label="UDP :58866 / TCP :58867", color="#059669"];
+  lan_fleet -> vac_20 [label="UDP :58866 / TCP :58867", color="#059669"];
   vac_v1 -> tls_sni [label="HTTPS :443 / MQTT :8881", color="#dc2626"];
   vac_10r -> tls_sni [label="HTTPS :443 / MQTT :8881", color="#dc2626"];
   vac_20 -> tls_sni [label="HTTPS :443 / MQTT :8881", color="#dc2626"];

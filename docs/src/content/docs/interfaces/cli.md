@@ -64,6 +64,23 @@ homectl
 │   ├── services     # List streaming services catalog
 │   ├── join         # Bond speaker to another speaker's group
 │   └── leave        # Unjoin speaker into standalone group
+├── roborock         # Control Roborock vacuums (Direct LAN or Local Server)
+│   ├── login        # One-time cloud v4 email-code login to cache local_keys (keeps official app)
+│   ├── discover     # Passive UDP :58866 LAN discovery (1.0 & L01)
+│   ├── list         # List vacuums with online state, battery, and status
+│   ├── status       # Query live RPC status & consumables
+│   ├── rooms        # List segment/room IDs with cloud room names
+│   ├── clean        # Start whole-home or targeted --rooms clean (--dry-run)
+│   ├── pause        # Pause active cleaning
+│   ├── stop         # Stop active cleaning
+│   ├── dock         # Return vacuum to dock
+│   ├── find         # Ring vacuum locator chime
+│   ├── serve        # Run optional de-clouded HTTPS + MQTT TLS + TURN server
+│   ├── onboard      # Preflight or AP-provision a vacuum to local server
+│   ├── monitor      # Stream live decoded MQTT telemetry (local server mode)
+│   ├── camera       # Inspect TURN & 15-char camera bootstrap config
+│   ├── keys         # Inspect recovered RSA public keys (local server mode)
+│   └── import-state # Import state from Python local_roborock_server
 └── qolsys           # Qolsys alarm panel integration
     └── monitor      # Stream live panel events via WebSocket
 ```
@@ -219,23 +236,25 @@ HOMECTL_QOLSYS_HOST=192.168.1.30 HOMECTL_QOLSYS_TOKEN=123456 homectl qolsys moni
 ```
 
 ### `homectl roborock`
-Runs a local Roborock HTTPS + embedded Mochi MQTT TLS + optional Pion TURN server, onboards vacuums over their temporary Wi-Fi hotspot, streams live decoded MQTT telemetry, and controls the fleet:
+Supports **both** direct LAN TCP (`:58867`) control while keeping the official Roborock mobile app (`login` + `discover`) and an optional full de-clouded local HTTPS + embedded Mochi MQTT TLS + Pion TURN server (`serve` + `onboard`):
+
 ```bash
-# Start the local HTTPS (:443) + MQTT TLS (:8881) + embedded TURN (:3478) server
-homectl roborock serve --fqdn api-r.example.com --cert fullchain.pem --key privkey.pem --turn-mode embedded --turn-host r.example.com --turn-user rrturn --turn-pass secret
-
-# Verify DNS, TLS chains, MQTT TLS, and 15-char camera bootstrap before onboarding
-homectl roborock onboard --server api-r.example.com --camera-domain r.example.com --model a144 --preflight-only
-
-# Send Wi-Fi credentials while joined to the vacuum's roborock-vacuum-* hotspot
-homectl roborock onboard --server api-r.example.com --ssid "MyWiFi24" --password "Secret" --timezone America/Denver --camera-domain r.example.com
-
-# List devices, monitor live decoded MQTT telemetry, and send RPC commands
+# Mode 1: Keep Official App (direct LAN TCP :58867, zero Wi-Fi resets)
+homectl roborock login --email you@example.com
+homectl roborock discover --timeout 6s
 homectl roborock list --json
+homectl roborock status "Saros 10R"
+homectl roborock rooms "Saros 10R"
+homectl roborock clean "Saros 10R" --rooms 16,17 --dry-run
+homectl roborock pause "Saros 10R"
+homectl roborock dock "Saros 10R"
+homectl roborock find "Saros 10R"
+
+# Mode 2: De-Clouded Local Server (HTTPS :443 + MQTT TLS :8881 + embedded TURN :3478)
+homectl roborock serve --fqdn api-r.example.com --cert fullchain.pem --key privkey.pem --turn-mode embedded --turn-host r.example.com --turn-user rrturn --turn-pass secret
+homectl roborock onboard --server api-r.example.com --camera-domain r.example.com --model a144 --preflight-only
+homectl roborock onboard --server api-r.example.com --ssid "MyWiFi24" --password "Secret" --timezone America/Denver --camera-domain r.example.com
 homectl roborock monitor
-homectl roborock status a144
-homectl roborock clean a144 --rooms 16,17 --dry-run
-homectl roborock dock a144
 homectl roborock camera a144
 homectl roborock keys
 homectl roborock import-state /path/to/local_roborock_server/data

@@ -377,7 +377,9 @@ Edits the local playback queue on a Sonos speaker. Supports removing tracks (`ac
 
 ## 3b. `mcp-roborock` Tool Reference (6 SEP-2106 Tools)
 
-The Roborock MCP stdio server (`cmd/mcp-roborock`) queries and controls vacuums connected to `homectl roborock serve` (default control API `http://127.0.0.1:8889`, overridable via `HOMECTL_ROBOROCK_CONTROL_URL`).
+The Roborock MCP stdio server (`cmd/mcp-roborock`) supports **both** operating modes automatically:
+- **De-Clouded Local Server:** Connects to `homectl roborock serve` (default control API `http://127.0.0.1:8889`, overridable via `HOMECTL_ROBOROCK_CONTROL_URL`).
+- **Keep Official App (Direct LAN):** When the local server isn't running and `~/.config/homectl/roborock/cloud_devices.json` exists (`homectl roborock login`), `roborock_list_devices`, `roborock_get_status`, `roborock_get_rooms`, and `roborock_control` talk directly to vacuums over encrypted LAN TCP (`:58867`) using UDP `:58866` discovery.
 
 | Tool | Type | Description |
 | :--- | :--- | :--- |
