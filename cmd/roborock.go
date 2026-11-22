@@ -535,9 +535,213 @@ var roborockOnboardCmd = &cobra.Command{
 	},
 }
 
+func newRoborockLANFleet() (*roborock.LANFleet, bool) {
+	storage := core.NewDirStorage(roborockStorageDir())
+	store, err := roborock.NewCloudDeviceStore(storage)
+	if err != nil || len(store.Devices()) == 0 {
+		return nil, false
+	}
+	return roborock.NewLANFleet(store), true
+}
+
+var roborockLoginCmd = &cobra.Command{
+	Use:   "login",
+	Short: "Log into Roborock cloud once to fetch local_keys so vacuums work over LAN while keeping the official app",
+	Long: `Authenticates with your Roborock account (v4 email verification code) once to download each
+vacuum's DUID, local_key, model, firmware version, and room names into ~/.config/homectl/roborock/cloud_devices.json (0600).
+
+Your vacuums stay paired to the official Roborock mobile app with zero Wi-Fi resets, while homectl
+monitors and controls them directly over your local network (UDP :58866 discovery + TCP :58867).`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		email, _ := cmd.Flags().GetString("email")
+		code, _ := cmd.Flags().GetString("code")
+		password, _ := cmd.Flags().GetString("password")
+		baseURL, _ := cmd.Flags().GetString("base-url")
+		requestOnly, _ := cmd.Flags().GetBool("request-code")
+		noDiscover, _ := cmd.Flags().GetBool("no-discover")
+
+		reader := bufio.NewReader(os.Stdin)
+		if strings.TrimSpace(email) == "" {
+			fmt.Print("Roborock account email: ")
+			line, err := reader.ReadString('\n')
+			if err != nil && len(line) == 0 {
+				return fmt.Errorf("read email: %w", err)
+			}
+			email = strings.TrimSpace(line)
+		}
+		if email == "" {
+			return fmt.Errorf("--email is required")
+		}
+
+		client := roborock.NewCloudClient(email, baseURL)
+		info, err := client.GetURLByEmail(cmd.Context())
+		if err != nil {
+			return err
+		}
+
+		var userData *roborock.CloudUserData
+		if strings.TrimSpace(password) != "" {
+			userData, err = client.LoginWithPassword(cmd.Context(), password)
+			if err != nil {
+				return err
+			}
+		} else {
+			if strings.TrimSpace(code) == "" {
+				if err := client.RequestEmailCode(cmd.Context()); err != nil {
+					return err
+				}
+				if requestOnly {
+					if isJSON(cmd) {
+						return json.NewEncoder(os.Stdout).Encode(map[string]any{
+							"ok":       true,
+							"email":    email,
+							"base_url": info.BaseURL,
+							"country":  info.Country,
+							"message":  "verification code sent",
+						})
+					}
+					fmt.Printf("Verification code sent to %s (server: %s).\n", email, info.BaseURL)
+					fmt.Printf("Complete login with: homectl roborock login --email %s --code <6-DIGIT-CODE>\n", email)
+					return nil
+				}
+				fmt.Printf("Verification code sent to %s. Enter 6-digit code: ", email)
+				line, readErr := reader.ReadString('\n')
+				if readErr != nil && len(line) == 0 {
+					return fmt.Errorf("read verification code: %w", readErr)
+				}
+				code = strings.TrimSpace(line)
+			}
+			userData, err = client.LoginWithCode(cmd.Context(), code)
+			if err != nil {
+				return err
+			}
+		}
+
+		homeData, err := client.GetHomeData(cmd.Context(), userData)
+		if err != nil {
+			return err
+		}
+
+		storage := core.NewDirStorage(roborockStorageDir())
+		store, err := roborock.NewCloudDeviceStore(storage)
+		if err != nil {
+			return err
+		}
+		records, err := store.SaveHomeData(email, userData.Region, homeData)
+		if err != nil {
+			return err
+		}
+
+		var discovered []roborock.BroadcastDevice
+		if !noDiscover {
+			if !isJSON(cmd) {
+				fmt.Printf("Fetched %d vacuum(s) from %q. Scanning LAN (UDP :58866) for IP addresses...\n", len(records), homeData.Name)
+			}
+			fleet := roborock.NewLANFleet(store)
+			discovered, _, _ = fleet.SyncDiscovery(cmd.Context(), 5*time.Second)
+			records = store.Devices()
+		}
+
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"ok":         true,
+				"home":       homeData.Name,
+				"rooms":      len(homeData.Rooms),
+				"devices":    records,
+				"discovered": len(discovered),
+			})
+		}
+
+		fmt.Printf("\nSaved %d vacuum(s) and %d room name(s) to %s\n\n",
+			len(records), len(homeData.Rooms), filepath.Join(roborockStorageDir(), roborock.DefaultFileCloudDevices))
+		fmt.Printf("%-22s %-22s %-18s %-15s %s\n", "NAME", "MODEL", "DUID", "LAN IP", "PROTO")
+		fmt.Println(strings.Repeat("-", 90))
+		for _, r := range records {
+			ip := r.IP
+			if ip == "" {
+				ip = "(pending)"
+			}
+			proto := r.LocalProtocol
+			if proto == "" {
+				proto = "auto"
+			}
+			fmt.Printf("%-22s %-22s %-18s %-15s %s\n", r.Name, r.Model, r.DUID, ip, proto)
+		}
+		fmt.Println("\nOfficial Roborock app remains untouched. Try: homectl roborock list")
+		return nil
+	},
+}
+
+var roborockDiscoverCmd = &cobra.Command{
+	Use:   "discover",
+	Short: "Discover Roborock vacuums broadcasting on the LAN (UDP :58866)",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		timeout, _ := cmd.Flags().GetDuration("timeout")
+		storage := core.NewDirStorage(roborockStorageDir())
+		store, _ := roborock.NewCloudDeviceStore(storage)
+		fleet := roborock.NewLANFleet(store)
+		found, updated, err := fleet.SyncDiscovery(cmd.Context(), timeout)
+		if err != nil {
+			return err
+		}
+		if isJSON(cmd) {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"count":   len(found),
+				"updated": updated,
+				"devices": found,
+			})
+		}
+		if len(found) == 0 {
+			fmt.Printf("No Roborock UDP :58866 broadcasts heard within %s.\n", timeout)
+			return nil
+		}
+		fmt.Printf("%-22s %-16s %-8s %s\n", "DUID", "IP", "PROTO", "NAME / MODEL")
+		fmt.Println(strings.Repeat("-", 76))
+		for _, b := range found {
+			label := "(not in cloud_devices.json — run 'homectl roborock login')"
+			if store != nil {
+				if rec, ok := store.Find(b.DUID); ok {
+					label = fmt.Sprintf("%s (%s)", rec.Name, rec.Model)
+				}
+			}
+			fmt.Printf("%-22s %-16s %-8s %s\n", b.DUID, b.IP, b.Version, label)
+		}
+		return nil
+	},
+}
+
+var roborockRoomsCmd = &cobra.Command{
+	Use:   "rooms <device>",
+	Short: "List segment/room IDs (with room names) from a vacuum",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		base := roborockControlBaseURL(cmd)
+		u := fmt.Sprintf("%s/api/roborock/rooms?id=%s", base, url.QueryEscape(args[0]))
+		var out map[string]any
+		if err := getRoborockControlJSON(cmd.Context(), u, &out); err != nil {
+			fleet, ok := newRoborockLANFleet()
+			if !ok {
+				return err
+			}
+			entries, raw, lanErr := fleet.Rooms(cmd.Context(), args[0])
+			if lanErr != nil {
+				return lanErr
+			}
+			out = map[string]any{
+				"id":      args[0],
+				"rooms":   entries,
+				"mapping": raw,
+			}
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(out)
+	},
+}
+
 var roborockListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List Roborock vacuums with key-recovery state, connection status, and live telemetry",
+	Short: "List Roborock vacuums with connection status and live telemetry",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var resp struct {
 			Count   int                        `json:"count"`
@@ -545,23 +749,28 @@ var roborockListCmd = &cobra.Command{
 		}
 		base := roborockControlBaseURL(cmd)
 		if err := getRoborockControlJSON(cmd.Context(), base+"/api/roborock/devices", &resp); err != nil {
-			// Fallback to offline XDG store snapshot if daemon isn't running.
-			storage := core.NewDirStorage(roborockStorageDir())
-			ks, _ := roborock.NewKeyStore(storage, nil, nil)
-			cs, _ := roborock.NewCredentialStore(storage)
-			hub := roborock.NewTelemetryHub(10, "")
-			resp.Devices = hub.Snapshot(cs, ks)
-			resp.Count = len(resp.Devices)
+			if fleet, ok := newRoborockLANFleet(); ok {
+				resp.Devices = fleet.Snapshot(cmd.Context())
+				resp.Count = len(resp.Devices)
+			} else {
+				// Fallback to offline XDG store snapshot if daemon isn't running.
+				storage := core.NewDirStorage(roborockStorageDir())
+				ks, _ := roborock.NewKeyStore(storage, nil, nil)
+				cs, _ := roborock.NewCredentialStore(storage)
+				hub := roborock.NewTelemetryHub(10, "")
+				resp.Devices = hub.Snapshot(cs, ks)
+				resp.Count = len(resp.Devices)
+			}
 		}
 		if isJSON(cmd) {
 			return json.NewEncoder(os.Stdout).Encode(resp)
 		}
 		if len(resp.Devices) == 0 {
-			fmt.Println("No Roborock vacuums registered yet. Run 'homectl roborock serve' and 'homectl roborock onboard'.")
+			fmt.Println("No Roborock vacuums configured yet. Run 'homectl roborock login' (keep official app) or 'homectl roborock serve' + 'onboard' (de-clouded).")
 			return nil
 		}
-		fmt.Printf("%-20s %-18s %-10s %-10s %-8s %-12s %s\n", "NAME", "MODEL", "DID", "KEY", "ONLINE", "BATTERY", "STATE")
-		fmt.Println(strings.Repeat("-", 96))
+		fmt.Printf("%-20s %-22s %-18s %-14s %-8s %-10s %s\n", "NAME", "MODEL", "DUID", "MODE/KEY", "ONLINE", "BATTERY", "STATE")
+		fmt.Println(strings.Repeat("-", 108))
 		for _, d := range resp.Devices {
 			bat := "—"
 			if d.Battery != nil {
@@ -575,7 +784,11 @@ var roborockListCmd = &cobra.Command{
 			if keyState == "" {
 				keyState = "missing"
 			}
-			fmt.Printf("%-20s %-18s %-10s %-10s %-8v %-12s %s\n", d.Name, d.Model, d.DID, keyState, d.Connected, bat, state)
+			id := d.DUID
+			if id == "" {
+				id = d.DID
+			}
+			fmt.Printf("%-20s %-22s %-18s %-14s %-8v %-10s %s\n", d.Name, d.Model, id, keyState, d.Connected, bat, state)
 		}
 		return nil
 	},
@@ -590,7 +803,14 @@ var roborockStatusCmd = &cobra.Command{
 		u := fmt.Sprintf("%s/api/roborock/status?id=%s", base, url.QueryEscape(args[0]))
 		var out map[string]any
 		if err := getRoborockControlJSON(cmd.Context(), u, &out); err != nil {
-			return err
+			fleet, ok := newRoborockLANFleet()
+			if !ok {
+				return err
+			}
+			out, err = fleet.Status(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
 		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
@@ -664,7 +884,21 @@ func makeRoborockActionCmd(use, short, action string) *cobra.Command {
 			}
 			var out map[string]any
 			if err := postRoborockControlJSON(cmd.Context(), roborockControlBaseURL(cmd)+"/api/roborock/control", payload, &out); err != nil {
-				return err
+				fleet, ok := newRoborockLANFleet()
+				if !ok {
+					return err
+				}
+				if isDryRun(cmd) {
+					out = map[string]any{"ok": true, "dry_run": true, "id": args[0], "action": payload["action"], "transport": "lan_tcp"}
+				} else {
+					rooms, _ := cmd.Flags().GetIntSlice("rooms")
+					repeat, _ := cmd.Flags().GetInt("repeat")
+					res, lanErr := fleet.Control(cmd.Context(), args[0], fmt.Sprint(payload["action"]), rooms, repeat)
+					if lanErr != nil {
+						return lanErr
+					}
+					out = map[string]any{"ok": true, "id": args[0], "action": payload["action"], "transport": "lan_tcp", "result": res.Result}
+				}
 			}
 			if isJSON(cmd) {
 				return json.NewEncoder(os.Stdout).Encode(out)
@@ -838,11 +1072,23 @@ func init() {
 	roborockOnboardCmd.Flags().String("ap-host", roborock.DefaultCfgWiFiHost, "Vacuum hotspot gateway IP")
 	roborockOnboardCmd.Flags().Int("ap-port", roborock.DefaultCfgWiFiPort, "Vacuum hotspot UDP onboarding port")
 
+	roborockLoginCmd.Flags().String("email", "", "Roborock account email address")
+	roborockLoginCmd.Flags().String("code", "", "6-digit verification code from email (omit to request a new code interactively)")
+	roborockLoginCmd.Flags().Bool("request-code", false, "Request verification code email and exit without prompting")
+	roborockLoginCmd.Flags().String("password", "", "Optional legacy password login (prefer email code)")
+	roborockLoginCmd.Flags().String("base-url", "", "Optional regional API base URL override (default auto-detected)")
+	roborockLoginCmd.Flags().Bool("no-discover", false, "Skip initial UDP :58866 LAN discovery pass after login")
+
+	roborockDiscoverCmd.Flags().Duration("timeout", 6*time.Second, "How long to listen for UDP :58866 broadcasts")
+
 	roborockCmd.AddCommand(
+		roborockLoginCmd,
+		roborockDiscoverCmd,
 		roborockServeCmd,
 		roborockOnboardCmd,
 		roborockListCmd,
 		roborockStatusCmd,
+		roborockRoomsCmd,
 		roborockMonitorCmd,
 		makeRoborockActionCmd("clean", "Start whole-house or room cleaning", "start"),
 		makeRoborockActionCmd("pause", "Pause active cleaning", "pause"),

@@ -1,9 +1,38 @@
 ---
-title: Roborock Vacuums (Local Server)
-description: Configure local DNS, hot-reloaded TLS certificates, onboarding, telemetry monitoring, and WebRTC camera relay for Roborock vacuums.
+title: Roborock Vacuums
+description: Monitor and control Roborock vacuums locally over LAN TCP (:58867) while keeping the official app, or run a full local HTTPS/MQTT/TURN server.
 ---
 
-Modern Roborock vacuums reject unauthenticated local MiIO UDP handshakes on port `54321` and periodically reset Wi-Fi or deny commands (`-10002 rrcheck access denied`) if blocked from the cloud. `homectl roborock` runs a local HTTPS + MQTT TLS + TURN stack so your vacuums run 100% locally without rooting or hardware modification.
+`homectl roborock` supports **two local operating modes** for V1 (`1.0`) and modern (`L01`) Roborock vacuums (including Q5 Max+ `a125`, Saros 10R `a144`, and Saros 20 `a288`):
+
+1. **Keep Official App (Direct LAN TCP `:58867` + UDP `:58866`)** — recommended if you want to keep using the official Roborock mobile app with zero Wi-Fi resets. You authenticate once with `homectl roborock login` to cache each vacuum's `local_key`, `duid`, and room names in `~/.config/homectl/roborock/cloud_devices.json` (`0600`). Afterward, `homectl` CLI, Web UI (`homectl serve`), and `mcp-roborock` discover vacuums over UDP `:58866` and talk to them directly over encrypted local TCP (`:58867`, auto-negotiating `1.0` and `L01`).
+2. **Full De-Clouded Local Server (`homectl roborock serve`)** — replaces Roborock's cloud completely with a local HTTPS + embedded MQTT TLS + embedded Pion TURN WebRTC camera relay (requires a Wi-Fi reset per vacuum and disconnects onboarded units from the official Roborock app).
+
+## Mode 1: Keep Official App (Direct LAN Control)
+
+```bash
+# 1. One-time Roborock cloud login (email + 6-digit verification code) to fetch local_keys & room names
+homectl roborock login --email you@example.com
+
+# 2. Discover LAN IPs & protocol versions (1.0 / L01) on UDP :58866
+homectl roborock discover
+
+# 3. Monitor and control vacuums directly over local LAN TCP (:58867)
+homectl roborock list
+homectl roborock status "Saros"
+homectl roborock rooms "Saros"
+homectl roborock find "Saros"
+homectl roborock clean "Saros" --rooms 16,17
+homectl roborock dock "Saros"
+```
+
+Once `cloud_devices.json` is populated, `homectl serve` automatically exposes your vacuums in the **Roborock Vacuums** section of the Web UI with live battery, state, and Clean/Pause/Dock/Find controls.
+
+---
+
+## Mode 2: Full De-Clouded Local Server
+
+Modern Roborock vacuums reject unauthenticated local MiIO UDP handshakes on port `54321` and periodically reset Wi-Fi or deny commands (`-10002 rrcheck access denied`) if blocked from the cloud. `homectl roborock serve` runs a local HTTPS + MQTT TLS + TURN stack so your vacuums run 100% locally without rooting or hardware modification.
 
 ## Prerequisites
 

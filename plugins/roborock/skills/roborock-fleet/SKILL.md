@@ -10,7 +10,7 @@ metadata:
 
 # Roborock Fleet Management & Instrumentation Skill
 
-This skill guides AI agents in monitoring, diagnosing, and safely controlling Roborock vacuums connected to `homectl`'s local Roborock server (supporting V1 models like Q5 Max+ `a125` and V2/L01 models like Saros 10R `a144` and Saros 20 `a288`).
+This skill guides AI agents in monitoring, diagnosing, and safely controlling Roborock vacuums via `homectl` — supporting both **Keep Official App (Direct LAN TCP `:58867` + UDP `:58866`)** mode (`homectl roborock login`) and **De-Clouded Local Server** mode (`homectl roborock serve` + `onboard`), across V1 models like Q5 Max+ (`a125`) and V2/L01 models like Saros 10R (`a144`) and Saros 20 (`a288`).
 
 ---
 

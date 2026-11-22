@@ -919,6 +919,12 @@ func newAPIMuxWithUI(client lutronAPI, uiHandler http.Handler, debugEnabled bool
 			_ = json.NewEncoder(w).Encode(resp)
 			return
 		}
+		if fleet, ok := newRoborockLANFleet(); ok {
+			devs := fleet.Snapshot(r.Context())
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"count": len(devs), "devices": devs})
+			return
+		}
 		storage := core.NewDirStorage(roborockStorageDir())
 		ks, _ := roborock.NewKeyStore(storage, nil, nil)
 		cs, _ := roborock.NewCredentialStore(storage)
@@ -935,8 +941,40 @@ func newAPIMuxWithUI(client lutronAPI, uiHandler http.Handler, debugEnabled bool
 		}
 		var out map[string]any
 		if err := getRoborockControlJSON(r.Context(), resolveRRBase()+"/api/roborock/status?id="+url.QueryEscape(target), &out); err != nil {
-			http.Error(w, err.Error(), http.StatusBadGateway)
+			fleet, ok := newRoborockLANFleet()
+			if !ok {
+				http.Error(w, err.Error(), http.StatusBadGateway)
+				return
+			}
+			out, err = fleet.Status(r.Context(), target)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadGateway)
+				return
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+	})
+
+	mux.HandleFunc("/api/roborock/rooms", func(w http.ResponseWriter, r *http.Request) {
+		target := strings.TrimSpace(r.URL.Query().Get("id"))
+		if target == "" {
+			http.Error(w, "id is required", http.StatusBadRequest)
 			return
+		}
+		var out map[string]any
+		if err := getRoborockControlJSON(r.Context(), resolveRRBase()+"/api/roborock/rooms?id="+url.QueryEscape(target), &out); err != nil {
+			fleet, ok := newRoborockLANFleet()
+			if !ok {
+				http.Error(w, err.Error(), http.StatusBadGateway)
+				return
+			}
+			entries, raw, lanErr := fleet.Rooms(r.Context(), target)
+			if lanErr != nil {
+				http.Error(w, lanErr.Error(), http.StatusBadGateway)
+				return
+			}
+			out = map[string]any{"id": target, "rooms": entries, "mapping": raw}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(out)
@@ -999,14 +1037,40 @@ func newAPIMuxWithUI(client lutronAPI, uiHandler http.Handler, debugEnabled bool
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		var payload map[string]any
+		var payload struct {
+			ID        string `json:"id"`
+			Action    string `json:"action"`
+			Rooms     []int  `json:"rooms,omitempty"`
+			Repeat    int    `json:"repeat,omitempty"`
+			FanPower  int    `json:"fan_power,omitempty"`
+			WaterMode int    `json:"water_mode,omitempty"`
+			DryRun    bool   `json:"dry_run,omitempty"`
+		}
 		if !decodeJSONBody(w, r, &payload) {
 			return
 		}
 		var out map[string]any
 		if err := postRoborockControlJSON(r.Context(), resolveRRBase()+"/api/roborock/control", payload, &out); err != nil {
-			http.Error(w, err.Error(), http.StatusBadGateway)
-			return
+			fleet, ok := newRoborockLANFleet()
+			if !ok {
+				http.Error(w, err.Error(), http.StatusBadGateway)
+				return
+			}
+			if payload.DryRun {
+				out = map[string]any{"ok": true, "dry_run": true, "id": payload.ID, "action": payload.Action, "transport": "lan_tcp"}
+			} else {
+				res, lanErr := fleet.ControlWithOptions(r.Context(), payload.ID, payload.Action, roborock.ControlOptions{
+					Rooms:     payload.Rooms,
+					Repeat:    payload.Repeat,
+					FanPower:  payload.FanPower,
+					WaterMode: payload.WaterMode,
+				})
+				if lanErr != nil {
+					http.Error(w, lanErr.Error(), http.StatusBadGateway)
+					return
+				}
+				out = map[string]any{"ok": true, "id": payload.ID, "action": payload.Action, "transport": "lan_tcp", "result": res.Result}
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(out)

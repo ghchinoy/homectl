@@ -547,10 +547,10 @@ func TestLocalTCPClientL01HandshakeAndRPC(t *testing.T) {
 		var env map[string]any
 		_ = json.Unmarshal(msgs[0].Payload, &env)
 		dps, _ := env["dps"].(map[string]any)
-		req, _ := extractRPCFromDPS(dps, "4")
+		req, _ := extractRPCFromDPS(dps, "101")
 		id, _ := anyToInt(req["id"])
 		replyInner, _ := json.Marshal(map[string]any{"id": id, "result": []string{"ok"}})
-		replyEnv, _ := json.Marshal(map[string]any{"t": time.Now().Unix(), "dps": map[string]any{"4": string(replyInner)}})
+		replyEnv, _ := json.Marshal(map[string]any{"t": time.Now().Unix(), "dps": map[string]any{"102": string(replyInner)}})
 		replyWire, _ := EncodeMessage(Message{
 			Version:   VersionL01,
 			Seq:       msgs[0].Seq,

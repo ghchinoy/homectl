@@ -29,12 +29,10 @@ type LocalTCPClient struct {
 }
 
 // NewLocalTCPClient constructs a direct LAN TCP client for host:port (defaults to :58867).
+// If version is empty, Connect automatically negotiates between "1.0" and "L01".
 func NewLocalTCPClient(host, localKey, version string) *LocalTCPClient {
 	if _, _, err := net.SplitHostPort(host); err != nil {
 		host = fmt.Sprintf("%s:%d", host, DefaultLocalTCPPort)
-	}
-	if version == "" {
-		version = VersionL01
 	}
 	c := &LocalTCPClient{
 		addr:     host,
@@ -42,14 +40,29 @@ func NewLocalTCPClient(host, localKey, version string) *LocalTCPClient {
 		version:  version,
 	}
 	c.seq.Store(1)
-	c.reqID.Store(100)
+	c.reqID.Store(10000)
 	return c
 }
 
-// Connect dials the vacuum and performs the HELLO_REQUEST(0) / HELLO_RESPONSE(1) handshake.
+// ProtocolVersion returns the negotiated local protocol version ("1.0" or "L01").
+func (c *LocalTCPClient) ProtocolVersion() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.version
+}
+
+// Connect dials the vacuum and negotiates HELLO_REQUEST(0) / HELLO_RESPONSE(1),
+// trying the preferred version first (or 1.0 then L01 if unspecified).
 func (c *LocalTCPClient) Connect(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	versions := []string{Version10, VersionL01}
+	if c.version == VersionL01 {
+		versions = []string{VersionL01, Version10}
+	} else if c.version == Version10 {
+		versions = []string{Version10, VersionL01}
+	}
 
 	var dialer net.Dialer
 	conn, err := dialer.DialContext(ctx, "tcp", c.addr)
@@ -57,11 +70,27 @@ func (c *LocalTCPClient) Connect(ctx context.Context) error {
 		return fmt.Errorf("roborock: dial local tcp %s: %w", c.addr, err)
 	}
 	c.conn = conn
-	c.connectNonce = uint32(time.Now().UnixNano() & 0x7FFFFFFF)
+	c.connectNonce = uint32(10000 + (time.Now().UnixNano() % 22000))
 	c.ackNonce = nil
 
+	var lastErr error
+	for _, ver := range versions {
+		ack, helloErr := c.tryHelloLocked(ctx, conn, ver)
+		if helloErr == nil {
+			c.version = ver
+			c.ackNonce = &ack
+			return nil
+		}
+		lastErr = helloErr
+	}
+	_ = conn.Close()
+	c.conn = nil
+	return fmt.Errorf("roborock: local tcp hello negotiation failed on %s: %w", c.addr, lastErr)
+}
+
+func (c *LocalTCPClient) tryHelloLocked(ctx context.Context, conn net.Conn, version string) (uint32, error) {
 	hello := Message{
-		Version:   c.version,
+		Version:   version,
 		Seq:       c.seq.Add(1),
 		Random:    c.connectNonce,
 		Timestamp: uint32(time.Now().Unix()),
@@ -73,27 +102,23 @@ func (c *LocalTCPClient) Connect(ctx context.Context) error {
 		ConnectNonce: c.connectNonce,
 	})
 	if err != nil {
-		_ = conn.Close()
-		c.conn = nil
-		return err
+		return 0, err
 	}
-	if deadline, ok := ctx.Deadline(); ok {
-		_ = conn.SetDeadline(deadline)
-	} else {
-		_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+
+	helloDeadline := time.Now().Add(2500 * time.Millisecond)
+	if dl, ok := ctx.Deadline(); ok && dl.Before(helloDeadline) {
+		helloDeadline = dl
 	}
+	_ = conn.SetDeadline(helloDeadline)
+
 	if _, err := conn.Write(wire); err != nil {
-		_ = conn.Close()
-		c.conn = nil
-		return fmt.Errorf("roborock: write local tcp hello: %w", err)
+		return 0, fmt.Errorf("write %s hello: %w", version, err)
 	}
 
 	buf := make([]byte, 4096)
 	n, err := conn.Read(buf)
 	if err != nil {
-		_ = conn.Close()
-		c.conn = nil
-		return fmt.Errorf("roborock: read local tcp hello response: %w", err)
+		return 0, fmt.Errorf("read %s hello response: %w", version, err)
 	}
 	msgs, _, err := DecodeMessages(buf[:n], CodecOptions{
 		LocalKey:     c.localKey,
@@ -101,22 +126,19 @@ func (c *LocalTCPClient) Connect(ctx context.Context) error {
 		ConnectNonce: c.connectNonce,
 	})
 	if err != nil || len(msgs) == 0 {
-		_ = conn.Close()
-		c.conn = nil
-		return fmt.Errorf("roborock: decode local tcp hello response: %w", err)
+		return 0, fmt.Errorf("decode %s hello response: %w", version, err)
 	}
-	resp := msgs[0]
-	if resp.Protocol != ProtoHelloResponse {
-		_ = conn.Close()
-		c.conn = nil
-		return fmt.Errorf("roborock: expected HELLO_RESPONSE(1), got %s", resp.Protocol)
+	for _, resp := range msgs {
+		if resp.Protocol == ProtoHelloResponse {
+			return resp.Random, nil
+		}
 	}
-	ack := resp.Random
-	c.ackNonce = &ack
-	return nil
+	return 0, fmt.Errorf("expected HELLO_RESPONSE(1) for %s, got %s", version, msgs[0].Protocol)
 }
 
 // SendRPC sends an encrypted GENERAL_REQUEST(4) JSON-RPC call over the established local TCP session.
+// Per python-roborock V1Protocol, the inner DPS key is "101" (request) and replies arrive under "102"
+// (with fallback checks for "4"/"5" for mock compatibility).
 func (c *LocalTCPClient) SendRPC(ctx context.Context, method string, params any) (*RPCResponse, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -138,7 +160,7 @@ func (c *LocalTCPClient) SendRPC(ctx context.Context, method string, params any)
 	nowTS := uint32(time.Now().Unix())
 	envBytes, err := json.Marshal(map[string]any{
 		"t":   nowTS,
-		"dps": map[string]any{"4": string(rpcBytes)},
+		"dps": map[string]any{"101": string(rpcBytes)},
 	})
 	if err != nil {
 		return nil, err
@@ -192,7 +214,7 @@ func (c *LocalTCPClient) SendRPC(ctx context.Context, method string, params any)
 				continue
 			}
 			dps, _ := obj["dps"].(map[string]any)
-			for _, k := range []string{"4", "5", "102"} {
+			for _, k := range []string{"102", "4", "5"} {
 				if rpc, ok := extractRPCFromDPS(dps, k); ok {
 					if gotID, ok := anyToInt(rpc["id"]); ok && int64(gotID) == id {
 						res := &RPCResponse{ID: id, Error: rpc["error"]}

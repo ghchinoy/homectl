@@ -194,16 +194,29 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		Version: version.Version,
 	}, nil)
 
+	lanFleet := func() (*roborock.LANFleet, bool) {
+		store, err := roborock.NewCloudDeviceStore(cfg.Storage)
+		if err != nil || len(store.Devices()) == 0 {
+			return nil, false
+		}
+		return roborock.NewLANFleet(store), true
+	}
+
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "roborock_list_devices",
-		Description: "List all Roborock vacuums managed by the local server with online state, battery, cleaning state, firmware version, and RSA key-recovery progress.",
+		Description: "List all Roborock vacuums (via local server or direct LAN local_key mode) with online state, battery, cleaning state, and firmware version.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ ListDevicesParams) (*mcp.CallToolResult, ListDevicesResult, error) {
 		var out ListDevicesResult
 		if err := getJSON(ctx, cfg.HTTPClient, cfg.ControlURL+"/api/roborock/devices", &out); err != nil {
-			ks, _ := roborock.NewKeyStore(cfg.Storage, nil, nil)
-			cs, _ := roborock.NewCredentialStore(cfg.Storage)
-			out.Devices = roborock.NewTelemetryHub(10, "").Snapshot(cs, ks)
-			out.Count = len(out.Devices)
+			if fleet, ok := lanFleet(); ok {
+				out.Devices = fleet.Snapshot(ctx)
+				out.Count = len(out.Devices)
+			} else {
+				ks, _ := roborock.NewKeyStore(cfg.Storage, nil, nil)
+				cs, _ := roborock.NewCredentialStore(cfg.Storage)
+				out.Devices = roborock.NewTelemetryHub(10, "").Snapshot(cs, ks)
+				out.Count = len(out.Devices)
+			}
 		}
 		if out.Devices == nil {
 			out.Devices = []roborock.VacuumTelemetry{}
@@ -221,7 +234,16 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		var out StatusResult
 		u := cfg.ControlURL + "/api/roborock/status?id=" + url.QueryEscape(p.ID)
 		if err := getJSON(ctx, cfg.HTTPClient, u, &out); err != nil {
-			return nil, StatusResult{}, err
+			fleet, ok := lanFleet()
+			if !ok {
+				return nil, StatusResult{}, err
+			}
+			m, lanErr := fleet.Status(ctx, p.ID)
+			if lanErr != nil {
+				return nil, StatusResult{}, lanErr
+			}
+			raw, _ := json.Marshal(m)
+			_ = json.Unmarshal(raw, &out)
 		}
 		return nil, out, nil
 	})
@@ -260,7 +282,23 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		}
 		var out ControlResult
 		if err := postJSON(ctx, cfg.HTTPClient, cfg.ControlURL+"/api/roborock/control", p, &out); err != nil {
-			return nil, ControlResult{}, err
+			fleet, ok := lanFleet()
+			if !ok {
+				return nil, ControlResult{}, err
+			}
+			if p.DryRun {
+				return nil, ControlResult{OK: true, DryRun: true, ID: p.ID, Action: p.Action}, nil
+			}
+			res, lanErr := fleet.ControlWithOptions(ctx, p.ID, p.Action, roborock.ControlOptions{
+				Rooms:     p.Rooms,
+				Repeat:    p.Repeat,
+				FanPower:  p.FanPower,
+				WaterMode: p.WaterMode,
+			})
+			if lanErr != nil {
+				return nil, ControlResult{}, lanErr
+			}
+			return nil, ControlResult{OK: true, ID: p.ID, Action: p.Action, Result: res.Result}, nil
 		}
 		return nil, out, nil
 	})
@@ -275,7 +313,16 @@ func CreateMCPServer(opts ...ServerOption) *mcp.Server {
 		var out RoomsResult
 		u := cfg.ControlURL + "/api/roborock/rooms?id=" + url.QueryEscape(p.ID)
 		if err := getJSON(ctx, cfg.HTTPClient, u, &out); err != nil {
-			return nil, RoomsResult{}, err
+			fleet, ok := lanFleet()
+			if !ok {
+				return nil, RoomsResult{}, err
+			}
+			entries, _, lanErr := fleet.Rooms(ctx, p.ID)
+			if lanErr != nil {
+				return nil, RoomsResult{}, lanErr
+			}
+			raw, _ := json.Marshal(entries)
+			out = RoomsResult{ID: p.ID, Rooms: raw}
 		}
 		return nil, out, nil
 	})
