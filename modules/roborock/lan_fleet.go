@@ -30,7 +30,7 @@ func NewLANFleet(store *CloudDeviceStore) *LANFleet {
 		Store:       store,
 		DiscoverFn:  DiscoverLAN,
 		DialTimeout: 4 * time.Second,
-		minScanGap:  30 * time.Second,
+		minScanGap:  5 * time.Minute,
 		cachedSnaps: make(map[string]VacuumTelemetry),
 	}
 }
@@ -92,6 +92,7 @@ func (f *LANFleet) Snapshot(ctx context.Context) []VacuumTelemetry {
 	if f.Store == nil {
 		return []VacuumTelemetry{}
 	}
+	_ = f.Store.Reload()
 	f.ensureIPs(ctx)
 	devs := f.Store.Devices()
 	if len(devs) == 0 {

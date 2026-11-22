@@ -64,26 +64,25 @@ func (c *LocalTCPClient) Connect(ctx context.Context) error {
 		versions = []string{Version10, VersionL01}
 	}
 
-	var dialer net.Dialer
-	conn, err := dialer.DialContext(ctx, "tcp", c.addr)
-	if err != nil {
-		return fmt.Errorf("roborock: dial local tcp %s: %w", c.addr, err)
-	}
-	c.conn = conn
-	c.connectNonce = uint32(10000 + (time.Now().UnixNano() % 22000))
-	c.ackNonce = nil
-
 	var lastErr error
 	for _, ver := range versions {
+		var dialer net.Dialer
+		conn, err := dialer.DialContext(ctx, "tcp", c.addr)
+		if err != nil {
+			return fmt.Errorf("roborock: dial local tcp %s: %w", c.addr, err)
+		}
+		c.connectNonce = uint32(10000 + (time.Now().UnixNano() % 22000))
+		c.ackNonce = nil
 		ack, helloErr := c.tryHelloLocked(ctx, conn, ver)
 		if helloErr == nil {
+			c.conn = conn
 			c.version = ver
 			c.ackNonce = &ack
 			return nil
 		}
+		_ = conn.Close()
 		lastErr = helloErr
 	}
-	_ = conn.Close()
 	c.conn = nil
 	return fmt.Errorf("roborock: local tcp hello negotiation failed on %s: %w", c.addr, lastErr)
 }

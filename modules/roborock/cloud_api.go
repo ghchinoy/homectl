@@ -672,6 +672,13 @@ func NewCloudDeviceStore(storage core.Storage) (*CloudDeviceStore, error) {
 	return s, nil
 }
 
+// Reload re-reads cloud_devices.json from storage if it exists.
+func (s *CloudDeviceStore) Reload() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.load()
+}
+
 func (s *CloudDeviceStore) load() error {
 	raw, err := s.storage.ReadFile(s.filename)
 	if err != nil {

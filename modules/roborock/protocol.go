@@ -387,14 +387,12 @@ func EncodeMessage(msg Message, opts CodecOptions) ([]byte, error) {
 	}
 
 	// Body without optional 4-byte TCP length prefix:
-	// 3 (ver) + 4 (seq) + 4 (rand) + 4 (ts) + 2 (proto) + [2 (len) + payload + 4 (crc)]
-	bodyCap := 17
+	// 3 (ver) + 4 (seq) + 4 (rand) + 4 (ts) + 2 (proto) + [2 (len) + payload] + 4 (crc)
+	// Per python-roborock MessageParser, OptionalChecksum._build always appends the 4-byte
+	// IEEE CRC32 even for payloadless HELLO_REQUEST / PING_REQUEST frames (21-byte body).
+	bodyCap := 17 + 4
 	if len(encPayload) > 0 {
-		bodyCap += 2 + len(encPayload) + 4
-	} else {
-		// HELLO/PING frames carry zero payload length + CRC over 19 bytes (or 17 bytes when omitted).
-		// Match python-roborock EncryptionAdapter: payload==None omits length & checksum;
-		// non-empty payload writes uint16 len + bytes + uint32 CRC32.
+		bodyCap += 2 + len(encPayload)
 	}
 
 	body := make([]byte, 0, bodyCap)
@@ -414,10 +412,10 @@ func EncodeMessage(msg Message, opts CodecOptions) ([]byte, error) {
 		binary.BigEndian.PutUint16(b2[:], uint16(len(encPayload)))
 		body = append(body, b2[:]...)
 		body = append(body, encPayload...)
-		sum := crc32.ChecksumIEEE(body)
-		binary.BigEndian.PutUint32(b4[:], sum)
-		body = append(body, b4[:]...)
 	}
+	sum := crc32.ChecksumIEEE(body)
+	binary.BigEndian.PutUint32(b4[:], sum)
+	body = append(body, b4[:]...)
 
 	if !opts.Prefixed {
 		return body, nil
@@ -496,6 +494,14 @@ func DecodeMessages(data []byte, opts CodecOptions) ([]Message, []byte, error) {
 		}
 		if len(rem) < 19 {
 			break
+		}
+
+		// Payloadless frame with 17-byte header + trailing 4-byte CRC32 (21 bytes total,
+		// used by HELLO_REQUEST, HELLO_RESPONSE, PING_REQUEST, PING_RESPONSE).
+		if len(rem) >= 21 && binary.BigEndian.Uint32(rem[17:21]) == crc32.ChecksumIEEE(rem[:17]) {
+			messages = append(messages, msg)
+			offset += 21
+			continue
 		}
 
 		// If the next bytes start a new version header, treat this as a 17-byte payloadless frame.

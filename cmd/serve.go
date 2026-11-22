@@ -912,6 +912,20 @@ func newAPIMuxWithUI(client lutronAPI, uiHandler http.Handler, debugEnabled bool
 		return defaultRoborockControlURL
 	}
 
+	rrStorage := core.NewDirStorage(roborockStorageDir())
+	rrCloudStore, _ := roborock.NewCloudDeviceStore(rrStorage)
+	sharedLANFleet := roborock.NewLANFleet(rrCloudStore)
+	getLANFleet := func() (*roborock.LANFleet, bool) {
+		if sharedLANFleet == nil || sharedLANFleet.Store == nil {
+			return nil, false
+		}
+		_ = sharedLANFleet.Store.Reload()
+		if len(sharedLANFleet.Store.Devices()) == 0 {
+			return nil, false
+		}
+		return sharedLANFleet, true
+	}
+
 	mux.HandleFunc("/api/roborock/devices", func(w http.ResponseWriter, r *http.Request) {
 		var resp map[string]any
 		if err := getRoborockControlJSON(r.Context(), resolveRRBase()+"/api/roborock/devices", &resp); err == nil {
@@ -919,7 +933,7 @@ func newAPIMuxWithUI(client lutronAPI, uiHandler http.Handler, debugEnabled bool
 			_ = json.NewEncoder(w).Encode(resp)
 			return
 		}
-		if fleet, ok := newRoborockLANFleet(); ok {
+		if fleet, ok := getLANFleet(); ok {
 			devs := fleet.Snapshot(r.Context())
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{"count": len(devs), "devices": devs})
@@ -941,7 +955,7 @@ func newAPIMuxWithUI(client lutronAPI, uiHandler http.Handler, debugEnabled bool
 		}
 		var out map[string]any
 		if err := getRoborockControlJSON(r.Context(), resolveRRBase()+"/api/roborock/status?id="+url.QueryEscape(target), &out); err != nil {
-			fleet, ok := newRoborockLANFleet()
+			fleet, ok := getLANFleet()
 			if !ok {
 				http.Error(w, err.Error(), http.StatusBadGateway)
 				return
@@ -964,7 +978,7 @@ func newAPIMuxWithUI(client lutronAPI, uiHandler http.Handler, debugEnabled bool
 		}
 		var out map[string]any
 		if err := getRoborockControlJSON(r.Context(), resolveRRBase()+"/api/roborock/rooms?id="+url.QueryEscape(target), &out); err != nil {
-			fleet, ok := newRoborockLANFleet()
+			fleet, ok := getLANFleet()
 			if !ok {
 				http.Error(w, err.Error(), http.StatusBadGateway)
 				return
@@ -1051,7 +1065,7 @@ func newAPIMuxWithUI(client lutronAPI, uiHandler http.Handler, debugEnabled bool
 		}
 		var out map[string]any
 		if err := postRoborockControlJSON(r.Context(), resolveRRBase()+"/api/roborock/control", payload, &out); err != nil {
-			fleet, ok := newRoborockLANFleet()
+			fleet, ok := getLANFleet()
 			if !ok {
 				http.Error(w, err.Error(), http.StatusBadGateway)
 				return
