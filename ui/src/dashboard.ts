@@ -12,6 +12,7 @@ import {
 import '@ghchinoy/lustrous-lit/components/lustrous-badge';
 import '@ghchinoy/lustrous-lit/components/lustrous-banner';
 import '@ghchinoy/lustrous-lit/components/lustrous-button';
+import '@ghchinoy/lustrous-lit/components/lustrous-collapsible-card';
 import '@ghchinoy/lustrous-lit/components/lustrous-icon';
 import '@ghchinoy/lustrous-lit/components/lustrous-icon-button';
 import '@ghchinoy/lustrous-lit/components/lustrous-skeleton';
@@ -72,9 +73,12 @@ export class HomectlDashboard extends LustrousElement {
   @state() private subsystemErrors: Partial<Record<SubsystemKey, string>> = {};
   @state() private effectiveTheme: 'light' | 'dark' = 'light';
   @state() private themePreference: LustrousThemePreference = 'system';
+  @state() private activeSection: SubsystemKey = 'lutron';
 
   private pollTimer?: number;
   private darkMediaQuery?: MediaQueryList;
+  private sectionObserver?: IntersectionObserver;
+  private observedSections = new WeakSet<Element>();
   private readonly onSystemThemeChange = () => {
     this.syncResolvedTheme();
   };
@@ -199,6 +203,64 @@ export class HomectlDashboard extends LustrousElement {
         display: flex;
         flex-direction: column;
         gap: var(--lustrous-space-l);
+        scroll-margin-top: 84px;
+      }
+
+      /* State-aware sticky section jump bar (single-row horizontal pill nav) */
+      .sticky-nav-wrap {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        container-type: scroll-state;
+        container-name: section-nav;
+        margin-inline: calc(var(--lustrous-space-m) * -1);
+        padding: var(--lustrous-space-s) var(--lustrous-space-m);
+      }
+
+      .sticky-nav {
+        display: flex;
+        align-items: center;
+        gap: var(--lustrous-space-s);
+        overflow-x: auto;
+        overflow-y: hidden;
+        flex-wrap: nowrap;
+        scrollbar-width: none;
+        scroll-snap-type: inline proximity;
+        padding: var(--lustrous-space-xs);
+        border-radius: var(--lustrous-radius-full);
+        background-color: color-mix(in srgb, var(--lustrous-color-surface) 90%, transparent);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid var(--lustrous-color-outline-variant);
+        box-shadow: var(--lustrous-elevation-level1);
+        transition:
+          box-shadow var(--lustrous-duration-short200) var(--lustrous-easing-standard),
+          background-color var(--lustrous-duration-short200) var(--lustrous-easing-standard);
+      }
+
+      .sticky-nav::-webkit-scrollbar {
+        display: none;
+      }
+
+      .nav-pill {
+        flex: 0 0 auto;
+        scroll-snap-align: start;
+      }
+
+      .nav-pill-count {
+        opacity: 0.75;
+        font-variant-numeric: tabular-nums;
+      }
+
+      @container section-nav scroll-state(stuck: top) {
+        .sticky-nav {
+          background-color: color-mix(in srgb, var(--lustrous-color-surface-bright) 96%, transparent);
+          box-shadow: var(--lustrous-elevation-level2);
+        }
+      }
+
+      .off-lan-wrap {
+        margin-top: var(--lustrous-space-s);
       }
 
       .section-header {
@@ -243,9 +305,14 @@ export class HomectlDashboard extends LustrousElement {
 
       @media (forced-colors: active) {
         .boot-hero,
-        .skeleton-card {
+        .skeleton-card,
+        .sticky-nav {
           border: 1px solid CanvasText;
           box-shadow: none;
+        }
+        .nav-pill[aria-current='location'] {
+          outline: 2px solid Highlight;
+          border-radius: var(--lustrous-radius-full);
         }
       }
     `,
@@ -269,8 +336,55 @@ export class HomectlDashboard extends LustrousElement {
       window.clearInterval(this.pollTimer);
       this.pollTimer = undefined;
     }
+    this.sectionObserver?.disconnect();
+    this.sectionObserver = undefined;
     this.darkMediaQuery?.removeEventListener('change', this.onSystemThemeChange);
     window.removeEventListener('storage', this.onStorageChange);
+  }
+
+  protected override updated(): void {
+    this.observeSections();
+  }
+
+  private observeSections() {
+    if (this.booting || typeof IntersectionObserver === 'undefined') return;
+    if (!this.sectionObserver) {
+      this.sectionObserver = new IntersectionObserver(
+        (entries) => {
+          const visible = entries
+            .filter((e) => e.isIntersecting)
+            .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+          if (visible.length > 0) {
+            const id = visible[0].target.getAttribute('data-section') as SubsystemKey | null;
+            if (id) {
+              this.activeSection = id;
+            }
+          }
+        },
+        {
+          rootMargin: '-96px 0px -65% 0px',
+          threshold: [0, 0.1],
+        },
+      );
+    }
+    const sections = this.renderRoot.querySelectorAll('section[data-section]');
+    sections.forEach((el) => {
+      if (!this.observedSections.has(el)) {
+        this.observedSections.add(el);
+        this.sectionObserver?.observe(el);
+      }
+    });
+  }
+
+  private jumpToSection(key: SubsystemKey) {
+    this.activeSection = key;
+    const target = this.renderRoot.querySelector<HTMLElement>(`section[data-section="${key}"]`);
+    if (!target) return;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    target.scrollIntoView({
+      behavior: reduced ? 'auto' : 'smooth',
+      block: 'start',
+    });
   }
 
   private applyStoredTheme() {
@@ -332,13 +446,21 @@ export class HomectlDashboard extends LustrousElement {
     return Object.values(this.subsystemLoading).some(Boolean);
   }
 
+  private get lanRoborockDevices(): RoborockDevice[] {
+    return this.roborockDevices.filter((d) => Boolean(d.remote_ip) || d.connected);
+  }
+
+  private get offLanRoborockDevices(): RoborockDevice[] {
+    return this.roborockDevices.filter((d) => !d.remote_ip && !d.connected);
+  }
+
   private get totalDeviceCount(): number {
     const lutronCount = this.lutronDevices.filter((d) => d.LocalZones && d.LocalZones.length > 0).length;
     return (
       lutronCount +
       this.sonosDevices.length +
       this.castDevices.length +
-      this.roborockDevices.length +
+      this.lanRoborockDevices.length +
       this.cameras.length
     );
   }
@@ -659,9 +781,28 @@ export class HomectlDashboard extends LustrousElement {
 
   protected override render() {
     const lutronZones = this.lutronDevices.filter((d) => d.LocalZones && d.LocalZones.length > 0);
+    const lanRoborocks = this.lanRoborockDevices;
+    const offLanRoborocks = this.offLanRoborockDevices;
+    const showRoborockSection = this.subsystemLoading.roborock || this.roborockDevices.length > 0;
     const errorEntries = Object.entries(this.subsystemErrors);
     const nextThemeLabel =
       this.effectiveTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+
+    const navItems: Array<{
+      key: SubsystemKey;
+      label: string;
+      icon: 'lightbulb' | 'headset' | 'devices' | 'bolt' | 'photoCamera';
+      count: number;
+      loading: boolean;
+    }> = [
+      { key: 'lutron', label: 'Lighting', icon: 'lightbulb', count: lutronZones.length, loading: this.subsystemLoading.lutron },
+      { key: 'sonos', label: 'Music', icon: 'headset', count: this.sonosDevices.length, loading: this.subsystemLoading.sonos },
+      { key: 'cast', label: 'Video & Cast', icon: 'devices', count: this.castDevices.length, loading: this.subsystemLoading.cast },
+      ...(showRoborockSection
+        ? [{ key: 'roborock' as const, label: 'Roborock', icon: 'bolt' as const, count: lanRoborocks.length, loading: this.subsystemLoading.roborock }]
+        : []),
+      { key: 'cameras', label: 'Cameras', icon: 'photoCamera', count: this.cameras.length, loading: this.subsystemLoading.cameras },
+    ];
 
     return html`
       <div class="app-shell">
@@ -748,8 +889,29 @@ export class HomectlDashboard extends LustrousElement {
               </main>
             `
           : html`
+              <div class="sticky-nav-wrap">
+                <nav class="sticky-nav" aria-label="Dashboard sections">
+                  ${navItems.map((item) => {
+                    const isActive = this.activeSection === item.key;
+                    return html`
+                      <lustrous-button
+                        class="nav-pill"
+                        shape="pill"
+                        size="s"
+                        icon=${item.icon}
+                        variant=${isActive ? 'tonal' : 'on-surface-variant'}
+                        aria-current=${isActive ? 'location' : nothing}
+                        @click=${() => this.jumpToSection(item.key)}
+                      >
+                        ${item.label}${!item.loading ? html` <span class="nav-pill-count">(${item.count})</span>` : nothing}
+                      </lustrous-button>
+                    `;
+                  })}
+                </nav>
+              </div>
+
               <main class="boot-panel">
-                <section class="section">
+                <section class="section" id="section-lutron" data-section="lutron">
                   ${this.renderSectionHeader('Lighting', 'lightbulb', this.subsystemLoading.lutron, lutronZones.length)}
                   ${this.subsystemLoading.lutron
                     ? this.renderSkeletonCards(3)
@@ -780,7 +942,7 @@ export class HomectlDashboard extends LustrousElement {
                       `}
                 </section>
 
-                <section class="section">
+                <section class="section" id="section-sonos" data-section="sonos">
                   ${this.renderSectionHeader('Music', 'headset', this.subsystemLoading.sonos, this.sonosDevices.length)}
                   ${this.subsystemLoading.sonos
                     ? this.renderSkeletonCards(3)
@@ -822,7 +984,7 @@ export class HomectlDashboard extends LustrousElement {
                         `}
                 </section>
 
-                <section class="section">
+                <section class="section" id="section-cast" data-section="cast">
                   ${this.renderSectionHeader('Video & Cast', 'devices', this.subsystemLoading.cast, this.castDevices.length)}
                   ${this.subsystemLoading.cast
                     ? this.renderSkeletonCards(3)
@@ -847,35 +1009,66 @@ export class HomectlDashboard extends LustrousElement {
                         `}
                 </section>
 
-                ${this.subsystemLoading.roborock || this.roborockDevices.length > 0
+                ${showRoborockSection
                   ? html`
-                      <section class="section">
+                      <section class="section" id="section-roborock" data-section="roborock">
                         ${this.renderSectionHeader(
                           'Roborock Vacuums',
                           'bolt',
                           this.subsystemLoading.roborock,
-                          this.roborockDevices.length,
+                          lanRoborocks.length,
                         )}
                         ${this.subsystemLoading.roborock
                           ? this.renderSkeletonCards(2)
                           : html`
-                              <div class="grid">
-                                ${this.roborockDevices.map(
-                                  (d) => html`
-                                    <roborock-card
-                                      .device=${d}
-                                      @roborock-control=${(e: CustomEvent<{ id: string; action: string }>) =>
-                                        void this.handleRoborockControl(e.detail.id, e.detail.action)}
-                                    ></roborock-card>
-                                  `,
-                                )}
-                              </div>
+                              ${lanRoborocks.length > 0
+                                ? html`
+                                    <div class="grid">
+                                      ${lanRoborocks.map(
+                                        (d) => html`
+                                          <roborock-card
+                                            .device=${d}
+                                            @roborock-control=${(e: CustomEvent<{ id: string; action: string }>) =>
+                                              void this.handleRoborockControl(e.detail.id, e.detail.action)}
+                                          ></roborock-card>
+                                        `,
+                                      )}
+                                    </div>
+                                  `
+                                : html`<div class="empty-section">No Roborock vacuums detected on this local network.</div>`}
+                              ${offLanRoborocks.length > 0
+                                ? html`
+                                    <div class="off-lan-wrap">
+                                      <lustrous-collapsible-card
+                                        heading="Not on this network"
+                                        icon="cloudOff"
+                                        badge=${String(offLanRoborocks.length)}
+                                        badge-tone="default"
+                                        subtitle="Roborock account devices not discovered on this LAN"
+                                        .open=${false}
+                                        storage-key="homectl-roborock-off-lan"
+                                      >
+                                        <div class="grid">
+                                          ${offLanRoborocks.map(
+                                            (d) => html`
+                                              <roborock-card
+                                                .device=${d}
+                                                @roborock-control=${(e: CustomEvent<{ id: string; action: string }>) =>
+                                                  void this.handleRoborockControl(e.detail.id, e.detail.action)}
+                                              ></roborock-card>
+                                            `,
+                                          )}
+                                        </div>
+                                      </lustrous-collapsible-card>
+                                    </div>
+                                  `
+                                : nothing}
                             `}
                       </section>
                     `
                   : nothing}
 
-                <section class="section">
+                <section class="section" id="section-cameras" data-section="cameras">
                   ${this.renderSectionHeader(
                     'Security Cameras',
                     'photoCamera',
