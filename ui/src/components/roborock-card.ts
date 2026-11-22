@@ -1,5 +1,9 @@
-import { html, css } from 'lit';
+import { html, css, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import '@ghchinoy/lustrous-lit/components/lustrous-badge';
+import '@ghchinoy/lustrous-lit/components/lustrous-button';
+import '@ghchinoy/lustrous-lit/components/lustrous-progress-bar';
+import { lustrousType } from '@ghchinoy/lustrous-lit/theme';
 import { BaseCard } from './base-card';
 import type { RoborockDevice } from '../api';
 
@@ -7,96 +11,153 @@ import type { RoborockDevice } from '../api';
 export class RoborockCard extends BaseCard {
   @property({ type: Object }) device?: RoborockDevice;
 
-  static styles = [
+  static override styles = [
     ...BaseCard.styles,
     css`
-      .badge-roborock { background: #fff3e0; color: #e65100; }
-      .badge-online { background: #e8f5e9; color: #2e7d32; margin-left: 6px; }
-      .badge-offline { background: #eceff1; color: #546e7a; margin-left: 6px; }
-      .badge-error { background: #ffebee; color: #c62828; margin-left: 6px; }
-      .meta { font-size: 0.8rem; color: #7f8c8d; margin: 4px 0; }
-      .battery-bar {
-        height: 6px;
-        background: #ecf0f1;
-        border-radius: 3px;
-        overflow: hidden;
-        margin: 8px 0;
-      }
-      .battery-fill {
-        height: 100%;
-        background: #e65100;
-        transition: width 0.3s ease;
-      }
-      .rr-controls {
+      .meta-row {
         display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--lustrous-space-xs);
+        color: var(--lustrous-text-muted);
+        ${lustrousType('body-small')}
+      }
+
+      .meta-strong {
+        color: var(--lustrous-color-on-surface);
+        ${lustrousType('body-small-emphasized')}
+      }
+
+      .battery-section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--lustrous-space-xs);
+      }
+
+      .battery-header {
+        display: flex;
+        align-items: center;
         justify-content: space-between;
-        gap: 8px;
-        margin-top: 14px;
-        padding-top: 12px;
-        border-top: 1px solid #f1f2f6;
+        color: var(--lustrous-text-muted);
+        ${lustrousType('caption')}
       }
-      .rr-btn {
-        flex: 1;
-        padding: 6px 8px;
-        border: 1px solid #dee2e6;
-        border-radius: 6px;
-        background: #fff;
-        color: #2c3e50;
-        font-size: 0.8rem;
-        cursor: pointer;
-        transition: background 0.15s;
+
+      .rr-controls {
+        margin-top: auto;
+        padding-top: var(--lustrous-space-m);
+        border-top: 1px solid var(--lustrous-color-outline-variant);
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--lustrous-space-s);
       }
-      .rr-btn:hover { background: #f8f9fa; }
-      .rr-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-    `
+
+      .rr-controls lustrous-button {
+        width: 100%;
+      }
+    `,
   ];
 
   private _onAction(action: string) {
     if (!this.device) return;
-    this.dispatchEvent(new CustomEvent('roborock-control', {
-      detail: { id: this.device.did || this.device.duid, action },
-      bubbles: true,
-      composed: true
-    }));
+    this.dispatchEvent(
+      new CustomEvent('roborock-control', {
+        detail: { id: this.device.did || this.device.duid, action },
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
-  render() {
+  protected override render() {
     const d = this.device;
-    if (!d) return html``;
-    const battery = d.battery ?? 0;
+    if (!d) return nothing;
+
+    const battery = d.battery !== undefined ? Math.max(0, Math.min(100, Math.round(d.battery))) : undefined;
+    const batteryTone =
+      battery === undefined ? 'default' : battery <= 20 ? 'error' : battery <= 40 ? 'warning' : 'positive';
     const hasError = (d.error_code ?? 0) > 0;
+    const statusLabel = d.state_name || (d.connected ? 'ready' : d.key_recovery_state || 'onboarding');
 
     return html`
       <div class="card">
-        <div>
-          <span class="badge badge-roborock">Roborock</span>
-          <span class="badge ${d.connected ? 'badge-online' : 'badge-offline'}">
-            ${d.connected ? 'Online' : 'Offline'}
-          </span>
-          ${hasError ? html`<span class="badge badge-error">${d.error_name || 'Error'}</span>` : ''}
-        </div>
-
-        <h3>${d.name || d.model || d.did}</h3>
-        <div class="meta">
-          ${d.model || 'Unknown model'}
-          ${d.firmware_version ? ` · fw ${d.firmware_version}` : ''}
-        </div>
-        <div class="meta">
-          State: <strong>${d.state_name || (d.connected ? 'ready' : d.key_recovery_state || 'onboarding')}</strong>
-          ${d.battery !== undefined ? ` · Battery: ${d.battery}%` : ''}
-        </div>
-
-        ${d.battery !== undefined ? html`
-          <div class="battery-bar">
-            <div class="battery-fill" style="width: ${Math.max(0, Math.min(100, battery))}%"></div>
+        <div class="card-header">
+          <div class="badge-row">
+            <lustrous-badge tone="amber" icon="bolt">Roborock</lustrous-badge>
+            <lustrous-badge tone=${d.connected ? 'positive' : 'default'}>
+              ${d.connected ? 'Online' : 'Offline'}
+            </lustrous-badge>
+            ${hasError
+              ? html`<lustrous-badge tone="error" icon="warning">${d.error_name || 'Error'}</lustrous-badge>`
+              : nothing}
           </div>
-        ` : ''}
+        </div>
+
+        <div class="card-title-group">
+          <h3 class="card-title">${d.name || d.model || d.did}</h3>
+          <p class="card-subtitle">
+            ${d.model || 'Unknown model'}${d.firmware_version ? ` · fw ${d.firmware_version}` : ''}
+          </p>
+        </div>
+
+        <div class="meta-row">
+          <span>State:</span>
+          <span class="meta-strong">${statusLabel}</span>
+        </div>
+
+        ${battery !== undefined
+          ? html`
+              <div class="battery-section">
+                <div class="battery-header">
+                  <span>Battery</span>
+                  <span class="meta-strong">${battery}%</span>
+                </div>
+                <lustrous-progress-bar
+                  .value=${battery}
+                  tone=${batteryTone}
+                  label="${d.name || d.model || 'Roborock'} battery"
+                  decorative
+                ></lustrous-progress-bar>
+              </div>
+            `
+          : nothing}
 
         <div class="rr-controls">
-          <button class="rr-btn" ?disabled=${!d.connected} @click=${() => this._onAction('start')}>Clean</button>
-          <button class="rr-btn" ?disabled=${!d.connected} @click=${() => this._onAction('pause')}>Pause</button>
-          <button class="rr-btn" ?disabled=${!d.connected} @click=${() => this._onAction('dock')}>Dock</button>
-          <button class="rr-btn" ?disabled=${!d.connected} @click=${() => this._onAction('find')}>Find</button>
+          <lustrous-button
+            variant="tonal"
+            size="s"
+            icon="playArrow"
+            ?disabled=${!d.connected}
+            @click=${() => this._onAction('start')}
+          >
+            Clean
+          </lustrous-button>
+          <lustrous-button
+            variant="outline"
+            size="s"
+            icon="pause"
+            ?disabled=${!d.connected}
+            @click=${() => this._onAction('pause')}
+          >
+            Pause
+          </lustrous-button>
+          <lustrous-button
+            variant="outline"
+            size="s"
+            icon="home"
+            ?disabled=${!d.connected}
+            @click=${() => this._onAction('dock')}
+          >
+            Dock
+          </lustrous-button>
+          <lustrous-button
+            variant="outline"
+            size="s"
+            icon="locationOn"
+            ?disabled=${!d.connected}
+            @click=${() => this._onAction('find')}
+          >
+            Find
+          </lustrous-button>
         </div>
       </div>
     `;

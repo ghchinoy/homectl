@@ -1,16 +1,89 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="system" class="lustrous-root">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/homectl.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('homectl-theme');
+          var root = document.documentElement;
+          var meta = document.querySelector('meta[name="color-scheme"]');
+          if (saved === 'light' || saved === 'dark') {
+            root.dataset.theme = saved;
+            if (meta) meta.setAttribute('content', saved);
+          } else {
+            root.dataset.theme = 'system';
+            if (meta) meta.setAttribute('content', 'light dark');
+          }
+        } catch (e) {
+          /* localStorage may be blocked in restricted contexts */
+        }
+      })();
+    </script>
+    <link rel="icon" type="image/svg+xml" href="/homectl.svg" />
     <title>homectl</title>
     <style>
-      body { margin: 0; background: #fdfdfd; }
+      /* Lightweight pre-hydration boot splash so a spinner appears immediately before JS runs */
+      .boot-fallback {
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding: 24px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        color: light-dark(#0f172a, #e2e8f0);
+        background: light-dark(#f8fafc, #0b0f17);
+      }
+      .boot-fallback p {
+        margin: 0;
+        font-size: 0.95rem;
+        color: light-dark(#475569, #94a3b8);
+      }
+      progress.boot-spinner {
+        appearance: none;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 3px solid light-dark(#cbd5e1, #334155);
+        border-top-color: light-dark(#1d4ed8, #93c5fd);
+        background: transparent;
+        animation: homectl-boot-spin 0.9s linear infinite;
+      }
+      progress.boot-spinner::-webkit-progress-bar,
+      progress.boot-spinner::-webkit-progress-value,
+      progress.boot-spinner::-moz-progress-bar {
+        background: transparent;
+      }
+      @keyframes homectl-boot-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        progress.boot-spinner {
+          animation-duration: 6s;
+        }
+      }
+      @media (forced-colors: active) {
+        progress.boot-spinner {
+          forced-color-adjust: none;
+          border-color: GrayText;
+          border-top-color: Highlight;
+        }
+      }
     </style>
   </head>
   <body>
-    <homectl-dashboard></homectl-dashboard>
+    <homectl-dashboard>
+      <div class="boot-fallback" aria-busy="true">
+        <progress class="boot-spinner" aria-label="Starting homectl"></progress>
+        <p>Starting homectl&hellip;</p>
+      </div>
+    </homectl-dashboard>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

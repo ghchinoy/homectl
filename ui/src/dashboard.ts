@@ -1,7 +1,36 @@
-import { LitElement, html, css } from 'lit';
+import { html, css, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
+import {
+  LustrousElement,
+  lustrousBase,
+  lustrousFocusRing,
+  lustrousType,
+  resolveLustrousTheme,
+  setLustrousTheme,
+  type LustrousThemePreference,
+} from '@ghchinoy/lustrous-lit/theme';
+import '@ghchinoy/lustrous-lit/components/lustrous-badge';
+import '@ghchinoy/lustrous-lit/components/lustrous-banner';
+import '@ghchinoy/lustrous-lit/components/lustrous-button';
+import '@ghchinoy/lustrous-lit/components/lustrous-icon';
+import '@ghchinoy/lustrous-lit/components/lustrous-icon-button';
+import '@ghchinoy/lustrous-lit/components/lustrous-skeleton';
+import '@ghchinoy/lustrous-lit/components/lustrous-snackbar';
+import '@ghchinoy/lustrous-lit/components/lustrous-spinner';
+import '@ghchinoy/lustrous-lit/components/lustrous-text';
+import { showSnack } from '@ghchinoy/lustrous-lit/components/lustrous-snackbar';
 import { homectlApi } from './api';
-import type { LutronDevice, SonosDevice, SonosStatus, Camera, CastDevice, CastStatus, SonosFavorite, SonosService, RoborockDevice } from './api';
+import type {
+  LutronDevice,
+  SonosDevice,
+  SonosStatus,
+  Camera,
+  CastDevice,
+  CastStatus,
+  SonosFavorite,
+  SonosService,
+  RoborockDevice,
+} from './api';
 
 import './components/lutron-card';
 import './components/sonos-card';
@@ -10,8 +39,12 @@ import './components/camera-card';
 import './components/cast-card';
 import './components/roborock-card';
 
+const THEME_STORAGE_KEY = 'homectl-theme';
+
+type SubsystemKey = 'lutron' | 'sonos' | 'cast' | 'cameras' | 'roborock';
+
 @customElement('homectl-dashboard')
-export class HomectlDashboard extends LitElement {
+export class HomectlDashboard extends LustrousElement {
   @state() private lutronDevices: LutronDevice[] = [];
   @state() private lutronStatus: Record<string, number> = {};
   @state() private allLightsLevel = 0;
@@ -21,96 +54,435 @@ export class HomectlDashboard extends LitElement {
   @state() private sonosFavorites: SonosFavorite[] = [];
   @state() private sonosServices: SonosService[] = [];
   @state() private sonosDefaultService?: SonosService;
+  @state() private loadingSonosSource = false;
   @state() private castDevices: CastDevice[] = [];
   @state() private castStatus: Record<string, CastStatus> = {};
   @state() private cameras: Camera[] = [];
   @state() private roborockDevices: RoborockDevice[] = [];
-  @state() private loading = true;
 
-  static styles = css`
-    :host {
-      display: block;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      padding: 20px;
-      color: #2c3e50;
-      background: #f8f9fa;
-      min-height: 100vh;
-    }
-    .header {
-      margin-bottom: 30px;
-      border-bottom: 2px solid #dee2e6;
-      padding-bottom: 15px;
-    }
-    h1 { margin: 0; font-weight: 300; }
-    h2 { font-size: 1.25rem; font-weight: 600; margin-top: 0; }
-    
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-      gap: 25px;
-      margin-bottom: 40px;
-    }
-  `;
+  @state() private booting = true;
+  @state() private refreshing = false;
+  @state() private subsystemLoading: Record<SubsystemKey, boolean> = {
+    lutron: true,
+    sonos: true,
+    cast: true,
+    cameras: true,
+    roborock: true,
+  };
+  @state() private subsystemErrors: Partial<Record<SubsystemKey, string>> = {};
+  @state() private effectiveTheme: 'light' | 'dark' = 'light';
+  @state() private themePreference: LustrousThemePreference = 'system';
 
-  async connectedCallback() {
+  private pollTimer?: number;
+  private darkMediaQuery?: MediaQueryList;
+  private readonly onSystemThemeChange = () => {
+    this.syncResolvedTheme();
+  };
+  private readonly onStorageChange = (e: StorageEvent) => {
+    if (e.key === THEME_STORAGE_KEY) {
+      this.applyStoredTheme();
+    }
+  };
+
+  static override styles = [
+    lustrousBase,
+    lustrousFocusRing,
+    css`
+      :host {
+        display: block;
+        min-height: 100dvh;
+        background-color: var(--lustrous-color-background);
+        color: var(--lustrous-color-on-background);
+      }
+
+      .app-shell {
+        max-width: 1440px;
+        margin: 0 auto;
+        padding: var(--lustrous-space-xl) var(--lustrous-space-2xl) var(--lustrous-space-4xl);
+        display: flex;
+        flex-direction: column;
+        gap: var(--lustrous-space-3xl);
+      }
+
+      @media (max-width: 768px) {
+        .app-shell {
+          padding: var(--lustrous-space-l) var(--lustrous-space-l) var(--lustrous-space-3xl);
+          gap: var(--lustrous-space-2xl);
+        }
+      }
+
+      .header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--lustrous-space-l);
+        padding-bottom: var(--lustrous-space-l);
+        border-bottom: 1px solid var(--lustrous-color-outline-variant);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: var(--lustrous-space-m);
+      }
+
+      .brand-mark {
+        width: 40px;
+        height: 40px;
+        border-radius: var(--lustrous-radius-m);
+        background-color: var(--lustrous-color-primary-container);
+        color: var(--lustrous-color-on-primary-container);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+
+      .brand-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .brand-subtitle {
+        color: var(--lustrous-text-muted);
+        ${lustrousType('body-small')}
+      }
+
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: var(--lustrous-space-s);
+      }
+
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--lustrous-space-s);
+        padding: var(--lustrous-space-xs) var(--lustrous-space-m);
+        border-radius: var(--lustrous-radius-full);
+        background-color: var(--lustrous-color-surface-container);
+        color: var(--lustrous-text-muted);
+        ${lustrousType('caption')}
+      }
+
+      /* Initial full-screen boot experience */
+      .boot-panel {
+        display: flex;
+        flex-direction: column;
+        gap: var(--lustrous-space-2xl);
+      }
+
+      .boot-hero {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        gap: var(--lustrous-space-m);
+        padding: var(--lustrous-space-3xl) var(--lustrous-space-xl);
+        background-color: var(--lustrous-color-surface);
+        border: 1px solid var(--lustrous-color-outline-variant);
+        border-radius: var(--lustrous-radius-xl);
+        box-shadow: var(--lustrous-elevation-level1);
+      }
+
+      .boot-progress-copy {
+        color: var(--lustrous-text-muted);
+        max-width: 460px;
+        margin: 0;
+        ${lustrousType('body-medium')}
+      }
+
+      .section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--lustrous-space-l);
+      }
+
+      .section-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--lustrous-space-m);
+      }
+
+      .section-title-row {
+        display: flex;
+        align-items: center;
+        gap: var(--lustrous-space-s);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: var(--lustrous-space-xl);
+      }
+
+      .skeleton-card {
+        background-color: var(--lustrous-color-surface);
+        border: 1px solid var(--lustrous-color-outline-variant);
+        border-radius: var(--lustrous-radius-l);
+        padding: var(--lustrous-space-xl);
+        display: flex;
+        flex-direction: column;
+        gap: var(--lustrous-space-m);
+        min-height: 176px;
+      }
+
+      .empty-section {
+        padding: var(--lustrous-space-2xl);
+        border-radius: var(--lustrous-radius-l);
+        border: 1px dashed var(--lustrous-color-outline-variant);
+        background-color: var(--lustrous-color-surface-container-low);
+        color: var(--lustrous-text-muted);
+        ${lustrousType('body-medium')}
+      }
+
+      @media (forced-colors: active) {
+        .boot-hero,
+        .skeleton-card {
+          border: 1px solid CanvasText;
+          box-shadow: none;
+        }
+      }
+    `,
+  ];
+
+  override connectedCallback() {
     super.connectedCallback();
-    await this.fetchData();
-    setInterval(() => this.fetchStatus(), 10000);
+    this.applyStoredTheme();
+    this.darkMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    this.darkMediaQuery.addEventListener('change', this.onSystemThemeChange);
+    window.addEventListener('storage', this.onStorageChange);
+    void this.fetchData();
+    this.pollTimer = window.setInterval(() => {
+      void this.fetchStatus();
+    }, 10000);
+  }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    if (this.pollTimer !== undefined) {
+      window.clearInterval(this.pollTimer);
+      this.pollTimer = undefined;
+    }
+    this.darkMediaQuery?.removeEventListener('change', this.onSystemThemeChange);
+    window.removeEventListener('storage', this.onStorageChange);
+  }
+
+  private applyStoredTheme() {
+    let saved: string | null = null;
+    try {
+      saved = window.localStorage.getItem(THEME_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+    const pref: LustrousThemePreference = saved === 'light' || saved === 'dark' ? saved : 'system';
+    this.themePreference = pref;
+    setLustrousTheme(pref);
+    this.syncColorSchemeMeta(pref);
+    this.syncResolvedTheme();
+  }
+
+  private syncColorSchemeMeta(pref: LustrousThemePreference) {
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
+    if (meta) {
+      meta.content = pref === 'system' ? 'light dark' : pref;
+    }
+  }
+
+  private syncResolvedTheme() {
+    this.effectiveTheme = resolveLustrousTheme(document.documentElement);
+  }
+
+  /**
+   * Two-state header theme toggle: switches to the opposite of the currently
+   * rendered theme, storing a literal override only when it differs from OS
+   * preference and removing storage when returning to system default.
+   */
+  private _toggleTheme() {
+    const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const systemScheme: 'light' | 'dark' = systemDark ? 'dark' : 'light';
+    const targetScheme: 'light' | 'dark' = this.effectiveTheme === 'dark' ? 'light' : 'dark';
+    const nextPref: LustrousThemePreference = targetScheme === systemScheme ? 'system' : targetScheme;
+
+    this.themePreference = nextPref;
+    setLustrousTheme(nextPref);
+    this.syncColorSchemeMeta(nextPref);
+    try {
+      if (nextPref === 'system') {
+        window.localStorage.removeItem(THEME_STORAGE_KEY);
+      } else {
+        window.localStorage.setItem(THEME_STORAGE_KEY, nextPref);
+      }
+    } catch {
+      /* ignore storage errors */
+    }
+    this.syncResolvedTheme();
+  }
+
+  private get completedSubsystemsCount(): number {
+    return Object.values(this.subsystemLoading).filter((loading) => !loading).length;
+  }
+
+  private get isAnySubsystemLoading(): boolean {
+    return Object.values(this.subsystemLoading).some(Boolean);
+  }
+
+  private get totalDeviceCount(): number {
+    const lutronCount = this.lutronDevices.filter((d) => d.LocalZones && d.LocalZones.length > 0).length;
+    return (
+      lutronCount +
+      this.sonosDevices.length +
+      this.castDevices.length +
+      this.roborockDevices.length +
+      this.cameras.length
+    );
+  }
+
+  private markSubsystemDone(key: SubsystemKey, error?: unknown) {
+    this.subsystemLoading = { ...this.subsystemLoading, [key]: false };
+    if (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.subsystemErrors = { ...this.subsystemErrors, [key]: msg };
+    } else if (this.subsystemErrors[key]) {
+      const next = { ...this.subsystemErrors };
+      delete next[key];
+      this.subsystemErrors = next;
+    }
+    // Reveal the progressive dashboard as soon as the first subsystem completes
+    if (this.booting) {
+      this.booting = false;
+    }
   }
 
   async fetchData() {
-    this.loading = true;
-    try {
-      const [lutron, sonos, cameras, cast, roborockRes] = await Promise.all([
-        homectlApi.getLutronDevices(),
-        homectlApi.getSonosDevices(),
-        homectlApi.getCameras(),
-        homectlApi.getCastDevices(),
-        homectlApi.getRoborockDevices().catch(() => ({ count: 0, devices: [] }))
-      ]);
-      this.lutronDevices = lutron;
-      this.sonosDevices = sonos;
-      this.cameras = cameras;
-      this.castDevices = cast;
-      this.roborockDevices = roborockRes.devices || [];
-      if (this.sonosDevices.length > 0 && !this.selectedSpeakerIp) {
-        this.selectedSpeakerIp = this.sonosDevices[0].IP;
-        await this.fetchSonosSourceData(this.selectedSpeakerIp);
-      }
-      await this.fetchStatus();
-    } catch (error) {
-      console.error('Fetch error:', error);
-    } finally {
-      this.loading = false;
-    }
+    this.refreshing = true;
+    this.subsystemLoading = {
+      lutron: true,
+      sonos: true,
+      cast: true,
+      cameras: true,
+      roborock: true,
+    };
+
+    const lutronTask = homectlApi
+      .getLutronDevices()
+      .then(async (devices) => {
+        this.lutronDevices = devices || [];
+        this.markSubsystemDone('lutron');
+        await this.fetchLutronStatus();
+      })
+      .catch((err) => {
+        console.warn('Lutron discovery error:', err);
+        this.markSubsystemDone('lutron', err);
+      });
+
+    const sonosTask = homectlApi
+      .getSonosDevices()
+      .then(async (devices) => {
+        this.sonosDevices = devices || [];
+        this.markSubsystemDone('sonos');
+        if (this.sonosDevices.length > 0 && !this.selectedSpeakerIp) {
+          this.selectedSpeakerIp = this.sonosDevices[0].IP;
+          void this.fetchSonosSourceData(this.selectedSpeakerIp);
+        }
+        await this.fetchSonosStatus();
+      })
+      .catch((err) => {
+        console.warn('Sonos discovery error:', err);
+        this.markSubsystemDone('sonos', err);
+      });
+
+    const castTask = homectlApi
+      .getCastDevices()
+      .then((devices) => {
+        this.castDevices = devices || [];
+        this.markSubsystemDone('cast');
+        this.fetchCastStatuses();
+      })
+      .catch((err) => {
+        console.warn('Cast discovery error:', err);
+        this.markSubsystemDone('cast', err);
+      });
+
+    const cameraTask = homectlApi
+      .getCameras()
+      .then((cameras) => {
+        this.cameras = cameras || [];
+        this.markSubsystemDone('cameras');
+      })
+      .catch((err) => {
+        console.warn('Camera discovery error:', err);
+        this.markSubsystemDone('cameras', err);
+      });
+
+    const roborockTask = homectlApi
+      .getRoborockDevices()
+      .then((res) => {
+        this.roborockDevices = res.devices || [];
+        this.markSubsystemDone('roborock');
+      })
+      .catch(() => {
+        // Roborock is optional when unconfigured; treat gracefully as empty
+        this.roborockDevices = [];
+        this.markSubsystemDone('roborock');
+      });
+
+    await Promise.allSettled([lutronTask, sonosTask, castTask, cameraTask, roborockTask]);
+    this.booting = false;
+    this.refreshing = false;
   }
 
-  async fetchStatus() {
+  private async fetchLutronStatus() {
     try {
-      const [sonos, lutron] = await Promise.all([
-        homectlApi.getSonosStatus(),
-        homectlApi.getLutronStatus()
-      ]);
-      this.sonosStatus = sonos;
-      
+      const lutron = await homectlApi.getLutronStatus();
       const newLutronStatus: Record<string, number> = {};
-      lutron.forEach((s: any) => {
+      lutron.forEach((s: { Zone: { href: string }; Level: number }) => {
         const href = s.Zone.href.replace('/status', '');
         newLutronStatus[href] = s.Level;
       });
       this.lutronStatus = newLutronStatus;
+    } catch (e) {
+      console.warn('Lutron status error:', e);
+    }
+  }
 
-      // Fetch Cast statuses individually (backend limits concurrency)
-      for (const d of this.castDevices) {
-        homectlApi.getCastStatus(d.ip).then(status => {
+  private async fetchSonosStatus() {
+    try {
+      this.sonosStatus = await homectlApi.getSonosStatus();
+    } catch (e) {
+      console.warn('Sonos status error:', e);
+    }
+  }
+
+  private fetchCastStatuses() {
+    for (const d of this.castDevices) {
+      homectlApi
+        .getCastStatus(d.ip)
+        .then((status) => {
           this.castStatus = { ...this.castStatus, [d.ip]: status };
-        }).catch(e => console.warn('Cast status error for', d.ip, e));
-      }
-      // Refresh Roborock fleet telemetry
-      homectlApi.getRoborockDevices()
-        .then(res => { this.roborockDevices = res.devices || []; })
-        .catch(() => {});
-    } catch (e) { console.error('Status error:', e); }
+        })
+        .catch((e) => console.warn('Cast status error for', d.ip, e));
+    }
+  }
+
+  async fetchStatus() {
+    if (this.booting) return;
+    await Promise.allSettled([
+      this.fetchSonosStatus(),
+      this.fetchLutronStatus(),
+      homectlApi
+        .getRoborockDevices()
+        .then((res) => {
+          this.roborockDevices = res.devices || [];
+        })
+        .catch(() => {}),
+    ]);
+    this.fetchCastStatuses();
   }
 
   async handleLutronChange(href: string, level: number) {
@@ -119,51 +491,66 @@ export class HomectlDashboard extends LitElement {
       await homectlApi.setLutronLevel(href, level);
     } catch (e) {
       console.error('Failed to set level:', e);
-      await this.fetchStatus();
+      showSnack('Failed to update Lutron light level', { variant: 'error' });
+      await this.fetchLutronStatus();
     }
   }
 
   async handleAllLutronChange(level: number) {
     this.allLightsLevel = level;
     const nextStatus = { ...this.lutronStatus };
-    Object.keys(nextStatus).forEach(k => nextStatus[k] = level);
+    Object.keys(nextStatus).forEach((k) => {
+      nextStatus[k] = level;
+    });
     this.lutronStatus = nextStatus;
 
     try {
       await homectlApi.setAllLutronLevel(level);
-      setTimeout(() => this.fetchStatus(), 1000);
-    } catch (e) { console.error('All lights error:', e); }
+      window.setTimeout(() => void this.fetchLutronStatus(), 1000);
+    } catch (e) {
+      console.error('All lights error:', e);
+      showSnack('Failed to update all lights', { variant: 'error' });
+    }
   }
 
   async handleSonosControl(ip: string, action: string) {
     try {
       await homectlApi.controlSonos(ip, action);
-      setTimeout(() => this.fetchStatus(), 500);
-    } catch (e) { console.error('Sonos control error:', e); }
+      window.setTimeout(() => void this.fetchSonosStatus(), 500);
+    } catch (e) {
+      console.error('Sonos control error:', e);
+      showSnack(`Sonos ${action} failed`, { variant: 'error' });
+    }
   }
 
   async handleSonosVolume(ip: string, volume: number) {
-    this.sonosStatus = { 
-      ...this.sonosStatus, 
-      [ip]: { ...this.sonosStatus[ip], volume } 
+    this.sonosStatus = {
+      ...this.sonosStatus,
+      [ip]: { ...this.sonosStatus[ip], volume },
     };
     try {
       await homectlApi.controlSonos(ip, 'volume', volume);
-    } catch (e) { console.error('Volume error:', e); }
+    } catch (e) {
+      console.error('Volume error:', e);
+      showSnack('Failed to set Sonos volume', { variant: 'error' });
+    }
   }
 
   async fetchSonosSourceData(ip: string) {
     if (!ip) return;
+    this.loadingSonosSource = true;
     try {
       const [favResult, svcResult] = await Promise.all([
         homectlApi.getSonosFavorites(ip).catch(() => ({ count: 0, favorites: [] })),
-        homectlApi.getSonosServices(ip).catch(() => ({ count: 0, services: [], default: undefined }))
+        homectlApi.getSonosServices(ip).catch(() => ({ count: 0, services: [], default: undefined })),
       ]);
       this.sonosFavorites = favResult.favorites || [];
       this.sonosServices = svcResult.services || [];
       this.sonosDefaultService = svcResult.default;
     } catch (e) {
       console.warn('Failed to load Sonos source data for', ip, e);
+    } finally {
+      this.loadingSonosSource = false;
     }
   }
 
@@ -172,157 +559,346 @@ export class HomectlDashboard extends LitElement {
     await this.fetchSonosSourceData(ip);
   }
 
-  async handlePlayFavorite(ip: string, favoriteId: string) {
+  async handlePlayFavorite(ip: string, favoriteId: string, title?: string) {
     try {
       await homectlApi.playSonosFavorite(ip, favoriteId);
-      setTimeout(() => this.fetchStatus(), 1000);
+      showSnack(title ? `Playing "${title}"` : 'Playing Sonos favorite', { variant: 'positive' });
+      window.setTimeout(() => void this.fetchSonosStatus(), 1000);
     } catch (e) {
       console.error('Play favorite error:', e);
+      showSnack('Failed to play Sonos favorite', { variant: 'error' });
     }
   }
 
   async handlePlayStream(ip: string, url: string, title?: string) {
     try {
       await homectlApi.playSonosStream(ip, url, title);
-      setTimeout(() => this.fetchStatus(), 1000);
+      showSnack(title ? `Streaming "${title}"` : 'Started audio stream', { variant: 'positive' });
+      window.setTimeout(() => void this.fetchSonosStatus(), 1000);
     } catch (e) {
       console.error('Play stream error:', e);
+      showSnack('Failed to start audio stream', { variant: 'error' });
     }
   }
 
   async handleQueueAdd(ip: string, uri: string, asNext?: boolean) {
     try {
       await homectlApi.addSonosToQueue(ip, uri, asNext);
-      setTimeout(() => this.fetchStatus(), 1000);
+      showSnack('Added stream to Sonos queue', { variant: 'positive' });
+      window.setTimeout(() => void this.fetchSonosStatus(), 1000);
     } catch (e) {
       console.error('Queue add error:', e);
+      showSnack('Failed to add stream to queue', { variant: 'error' });
     }
   }
 
   async handleCastControl(ip: string, action: string) {
     try {
       await homectlApi.controlCast(ip, action);
-      setTimeout(() => this.fetchStatus(), 1000);
-    } catch (e) { console.error('Cast control error:', e); }
+      window.setTimeout(() => this.fetchCastStatuses(), 1000);
+    } catch (e) {
+      console.error('Cast control error:', e);
+      showSnack(`Cast ${action} failed`, { variant: 'error' });
+    }
   }
 
   async handleCastVolume(ip: string, volume: number) {
-    this.castStatus = { 
-      ...this.castStatus, 
-      [ip]: { ...this.castStatus[ip], volume } 
+    this.castStatus = {
+      ...this.castStatus,
+      [ip]: { ...this.castStatus[ip], volume },
     };
     try {
       await homectlApi.controlCast(ip, 'volume', volume);
-    } catch (e) { console.error('Cast volume error:', e); }
+    } catch (e) {
+      console.error('Cast volume error:', e);
+      showSnack('Failed to set Cast volume', { variant: 'error' });
+    }
   }
 
   async handleRoborockControl(id: string, action: string) {
     try {
       await homectlApi.controlRoborock(id, action);
-      setTimeout(() => this.fetchStatus(), 1000);
-    } catch (e) { console.error('Roborock control error:', e); }
+      showSnack(`Sent "${action}" to Roborock`, { variant: 'positive' });
+      window.setTimeout(() => void this.fetchStatus(), 1000);
+    } catch (e) {
+      console.error('Roborock control error:', e);
+      showSnack(`Roborock ${action} failed`, { variant: 'error' });
+    }
   }
 
-  render() {
-    if (this.loading) return html`<div style="padding: 40px; text-align: center;">Loading homectl...</div>`;
+  private renderSkeletonCards(count = 3) {
+    return html`
+      <div class="grid" aria-busy="true">
+        ${Array.from({ length: count }).map(
+          () => html`
+            <div class="skeleton-card">
+              <lustrous-skeleton width="84px" height="24px" border-radius="full"></lustrous-skeleton>
+              <lustrous-skeleton width="65%" height="22px" border-radius="s"></lustrous-skeleton>
+              <lustrous-skeleton width="45%" height="14px" border-radius="s"></lustrous-skeleton>
+              <lustrous-skeleton width="100%" height="36px" border-radius="m"></lustrous-skeleton>
+            </div>
+          `,
+        )}
+      </div>
+    `;
+  }
+
+  private renderSectionHeader(title: string, icon: 'lightbulb' | 'headset' | 'devices' | 'bolt' | 'photoCamera', loading: boolean, count: number) {
+    return html`
+      <div class="section-header">
+        <div class="section-title-row">
+          <lustrous-icon name=${icon} size="s" tone="primary"></lustrous-icon>
+          <lustrous-text heading="2" variant="headline-small">${title}</lustrous-text>
+          ${!loading
+            ? html`<lustrous-badge tone="default">${count}</lustrous-badge>`
+            : html`<lustrous-spinner variant="icon" size="xs" label="Discovering ${title}"></lustrous-spinner>`}
+        </div>
+      </div>
+    `;
+  }
+
+  protected override render() {
+    const lutronZones = this.lutronDevices.filter((d) => d.LocalZones && d.LocalZones.length > 0);
+    const errorEntries = Object.entries(this.subsystemErrors);
+    const nextThemeLabel =
+      this.effectiveTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
 
     return html`
-      <div class="header">
-        <h1>homectl</h1>
+      <div class="app-shell">
+        <header class="header">
+          <div class="brand">
+            <span class="brand-mark" aria-hidden="true">
+              <lustrous-icon name="home" size="m"></lustrous-icon>
+            </span>
+            <div class="brand-copy">
+              <lustrous-text heading="1" variant="headline-medium">homectl</lustrous-text>
+              <span class="brand-subtitle">
+                ${this.booting
+                  ? 'Discovering smart home devices...'
+                  : this.isAnySubsystemLoading
+                    ? `${this.totalDeviceCount} devices found · scanning remaining subsystems (${this.completedSubsystemsCount}/5)`
+                    : `${this.totalDeviceCount} connected devices across your home`}
+              </span>
+            </div>
+          </div>
+
+          <div class="header-actions">
+            ${this.refreshing || this.isAnySubsystemLoading
+              ? html`
+                  <span class="status-pill" aria-live="polite">
+                    <lustrous-spinner variant="icon" size="xs" label="Scanning network"></lustrous-spinner>
+                    <span>Scanning (${this.completedSubsystemsCount}/5)</span>
+                  </span>
+                `
+              : nothing}
+
+            <lustrous-icon-button
+              icon="refresh"
+              variant="on-surface-variant"
+              size="m"
+              aria-label="Refresh devices"
+              ?disabled=${this.refreshing}
+              @click=${() => void this.fetchData()}
+            ></lustrous-icon-button>
+
+            <lustrous-icon-button
+              icon=${this.effectiveTheme === 'dark' ? 'lightMode' : 'darkMode'}
+              variant="on-surface-variant"
+              size="m"
+              aria-label=${nextThemeLabel}
+              title=${this.themePreference === 'system'
+                ? `${nextThemeLabel} (currently following system)`
+                : `${nextThemeLabel}`}
+              @click=${this._toggleTheme}
+            ></lustrous-icon-button>
+          </div>
+        </header>
+
+        ${errorEntries.length > 0
+          ? html`
+              <lustrous-banner
+                variant="warning"
+                icon="warning"
+                heading="Some device subsystems did not respond"
+                description=${errorEntries.map(([k]) => k).join(', ') + ' could not be reached right now.'}
+                primary-action="Retry"
+                dismissible
+                @lustrous-action=${() => void this.fetchData()}
+              ></lustrous-banner>
+            `
+          : nothing}
+        ${this.booting
+          ? html`
+              <main class="boot-panel" aria-busy="true">
+                <section class="boot-hero">
+                  <lustrous-spinner
+                    variant="ring"
+                    size="l"
+                    label="Loading homectl devices"
+                  ></lustrous-spinner>
+                  <lustrous-text heading="2" variant="headline-small">
+                    Discovering your smart home
+                  </lustrous-text>
+                  <p class="boot-progress-copy">
+                    Connecting to Lutron lighting, Sonos speakers, Google Cast, security cameras, and
+                    Roborock vacuums&hellip;
+                  </p>
+                </section>
+                ${this.renderSkeletonCards(6)}
+              </main>
+            `
+          : html`
+              <main class="boot-panel">
+                <section class="section">
+                  ${this.renderSectionHeader('Lighting', 'lightbulb', this.subsystemLoading.lutron, lutronZones.length)}
+                  ${this.subsystemLoading.lutron
+                    ? this.renderSkeletonCards(3)
+                    : html`
+                        <div class="grid">
+                          <lutron-card
+                            name="ALL LIGHTS"
+                            subtitle="Master Control"
+                            .level=${this.allLightsLevel}
+                            isMaster
+                            @level-change=${(e: CustomEvent<{ level: number }>) =>
+                              void this.handleAllLutronChange(e.detail.level)}
+                          ></lutron-card>
+
+                          ${lutronZones.map((d) => {
+                            const href = d.LocalZones![0].href;
+                            return html`
+                              <lutron-card
+                                .name=${d.Nickname || d.FullyQualifiedName || d.Name}
+                                .subtitle=${d.DeviceType}
+                                .level=${this.lutronStatus[href] ?? 0}
+                                @level-change=${(e: CustomEvent<{ level: number }>) =>
+                                  void this.handleLutronChange(href, e.detail.level)}
+                              ></lutron-card>
+                            `;
+                          })}
+                        </div>
+                      `}
+                </section>
+
+                <section class="section">
+                  ${this.renderSectionHeader('Music', 'headset', this.subsystemLoading.sonos, this.sonosDevices.length)}
+                  ${this.subsystemLoading.sonos
+                    ? this.renderSkeletonCards(3)
+                    : this.sonosDevices.length === 0
+                      ? html`<div class="empty-section">No Sonos speakers discovered on the network.</div>`
+                      : html`
+                          <sonos-source-panel
+                            .devices=${this.sonosDevices}
+                            .selectedSpeakerIp=${this.selectedSpeakerIp}
+                            .favorites=${this.sonosFavorites}
+                            .services=${this.sonosServices}
+                            .defaultService=${this.sonosDefaultService}
+                            .loading=${this.loadingSonosSource}
+                            @speaker-change=${(e: CustomEvent<{ ip: string }>) =>
+                              void this.handleSpeakerChange(e.detail.ip)}
+                            @play-favorite=${(e: CustomEvent<{ ip: string; favoriteId: string; title?: string }>) =>
+                              void this.handlePlayFavorite(e.detail.ip, e.detail.favoriteId, e.detail.title)}
+                            @play-stream=${(e: CustomEvent<{ ip: string; url: string; title?: string }>) =>
+                              void this.handlePlayStream(e.detail.ip, e.detail.url, e.detail.title)}
+                            @queue-add=${(e: CustomEvent<{ ip: string; uri: string; asNext?: boolean }>) =>
+                              void this.handleQueueAdd(e.detail.ip, e.detail.uri, e.detail.asNext)}
+                          ></sonos-source-panel>
+
+                          <div class="grid">
+                            ${this.sonosDevices.map(
+                              (d) => html`
+                                <sonos-card
+                                  .name=${d.Nickname || d.Name}
+                                  .status=${this.sonosStatus[d.IP]}
+                                  .artUrl=${homectlApi.getArtUrl(d.IP, this.sonosStatus[d.IP]?.album_art)}
+                                  @control-change=${(e: CustomEvent<{ action: string }>) =>
+                                    void this.handleSonosControl(d.IP, e.detail.action)}
+                                  @volume-change=${(e: CustomEvent<{ volume: number }>) =>
+                                    void this.handleSonosVolume(d.IP, e.detail.volume)}
+                                ></sonos-card>
+                              `,
+                            )}
+                          </div>
+                        `}
+                </section>
+
+                <section class="section">
+                  ${this.renderSectionHeader('Video & Cast', 'devices', this.subsystemLoading.cast, this.castDevices.length)}
+                  ${this.subsystemLoading.cast
+                    ? this.renderSkeletonCards(3)
+                    : this.castDevices.length === 0
+                      ? html`<div class="empty-section">No Google Cast devices discovered on the network.</div>`
+                      : html`
+                          <div class="grid">
+                            ${this.castDevices.map(
+                              (d) => html`
+                                <cast-card
+                                  .name=${d.name}
+                                  .model=${d.model}
+                                  .status=${this.castStatus[d.ip]}
+                                  @control-change=${(e: CustomEvent<{ action: string }>) =>
+                                    void this.handleCastControl(d.ip, e.detail.action)}
+                                  @volume-change=${(e: CustomEvent<{ volume: number }>) =>
+                                    void this.handleCastVolume(d.ip, e.detail.volume)}
+                                ></cast-card>
+                              `,
+                            )}
+                          </div>
+                        `}
+                </section>
+
+                ${this.subsystemLoading.roborock || this.roborockDevices.length > 0
+                  ? html`
+                      <section class="section">
+                        ${this.renderSectionHeader(
+                          'Roborock Vacuums',
+                          'bolt',
+                          this.subsystemLoading.roborock,
+                          this.roborockDevices.length,
+                        )}
+                        ${this.subsystemLoading.roborock
+                          ? this.renderSkeletonCards(2)
+                          : html`
+                              <div class="grid">
+                                ${this.roborockDevices.map(
+                                  (d) => html`
+                                    <roborock-card
+                                      .device=${d}
+                                      @roborock-control=${(e: CustomEvent<{ id: string; action: string }>) =>
+                                        void this.handleRoborockControl(e.detail.id, e.detail.action)}
+                                    ></roborock-card>
+                                  `,
+                                )}
+                              </div>
+                            `}
+                      </section>
+                    `
+                  : nothing}
+
+                <section class="section">
+                  ${this.renderSectionHeader(
+                    'Security Cameras',
+                    'photoCamera',
+                    this.subsystemLoading.cameras,
+                    this.cameras.length,
+                  )}
+                  ${this.subsystemLoading.cameras
+                    ? this.renderSkeletonCards(2)
+                    : this.cameras.length === 0
+                      ? html`<div class="empty-section">No security cameras discovered on the network.</div>`
+                      : html`
+                          <div class="grid">
+                            ${this.cameras.map(
+                              (c) => html`<camera-card .name=${c.name} .ip=${c.ip}></camera-card>`,
+                            )}
+                          </div>
+                        `}
+                </section>
+              </main>
+            `}
       </div>
 
-      <section>
-        <h2>Lighting</h2>
-        <div class="grid">
-          <lutron-card 
-            name="ALL LIGHTS" 
-            subtitle="Master Control" 
-            .level=${this.allLightsLevel} 
-            isMaster
-            @level-change=${(e: any) => this.handleAllLutronChange(e.detail.level)}>
-          </lutron-card>
-
-          ${this.lutronDevices.filter(d => d.LocalZones && d.LocalZones.length > 0).map(d => {
-            const href = d.LocalZones![0].href;
-            return html`
-              <lutron-card 
-                .name=${d.Nickname || d.FullyQualifiedName || d.Name} 
-                .subtitle=${d.DeviceType} 
-                .level=${this.lutronStatus[href] ?? 0}
-                @level-change=${(e: any) => this.handleLutronChange(href, e.detail.level)}>
-              </lutron-card>
-            `;
-          })}
-        </div>
-      </section>
-
-      <section>
-        <h2>Music</h2>
-
-        ${this.sonosDevices.length > 0 ? html`
-          <sonos-source-panel
-            .devices=${this.sonosDevices}
-            .selectedSpeakerIp=${this.selectedSpeakerIp}
-            .favorites=${this.sonosFavorites}
-            .services=${this.sonosServices}
-            .defaultService=${this.sonosDefaultService}
-            @speaker-change=${(e: any) => this.handleSpeakerChange(e.detail.ip)}
-            @play-favorite=${(e: any) => this.handlePlayFavorite(e.detail.ip, e.detail.favoriteId)}
-            @play-stream=${(e: any) => this.handlePlayStream(e.detail.ip, e.detail.url, e.detail.title)}
-            @queue-add=${(e: any) => this.handleQueueAdd(e.detail.ip, e.detail.uri, e.detail.asNext)}>
-          </sonos-source-panel>
-        ` : ''}
-
-        <div class="grid">
-          ${this.sonosDevices.map(d => html`
-            <sonos-card 
-              .name=${d.Nickname || d.Name} 
-              .status=${this.sonosStatus[d.IP]}
-              .artUrl=${homectlApi.getArtUrl(d.IP, this.sonosStatus[d.IP]?.album_art)}
-              @control-change=${(e: any) => this.handleSonosControl(d.IP, e.detail.action)}
-              @volume-change=${(e: any) => this.handleSonosVolume(d.IP, e.detail.volume)}>
-            </sonos-card>
-          `)}
-        </div>
-      </section>
-
-      <section>
-        <h2>Video & Cast</h2>
-        <div class="grid">
-          ${this.castDevices.map(d => html`
-            <cast-card 
-              .name=${d.name} 
-              .model=${d.model} 
-              .status=${this.castStatus[d.ip]}
-              @control-change=${(e: any) => this.handleCastControl(d.ip, e.detail.action)}
-              @volume-change=${(e: any) => this.handleCastVolume(d.ip, e.detail.volume)}>
-            </cast-card>
-          `)}
-        </div>
-      </section>
-
-      ${this.roborockDevices.length > 0 ? html`
-        <section>
-          <h2>Roborock Vacuums</h2>
-          <div class="grid">
-            ${this.roborockDevices.map(d => html`
-              <roborock-card
-                .device=${d}
-                @roborock-control=${(e: any) => this.handleRoborockControl(e.detail.id, e.detail.action)}>
-              </roborock-card>
-            `)}
-          </div>
-        </section>
-      ` : ''}
-
-      <section>
-        <h2>Security Cameras</h2>
-        <div class="grid">
-          ${this.cameras.map(c => html`
-            <camera-card .name=${c.name} .ip=${c.ip}></camera-card>
-          `)}
-        </div>
-      </section>
+      <lustrous-snackbar position="bottom-end"></lustrous-snackbar>
     `;
   }
 }

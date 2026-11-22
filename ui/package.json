@@ -12,8 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@popperjs/core": "^2.11.8",
-    "bootstrap": "^5.3.9",
+    "@ghchinoy/lustrous-lit": "file:../../lustrous-lit",
     "lit": "^3.3.3"
   },
   "devDependencies": {

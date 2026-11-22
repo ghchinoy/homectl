@@ -1,6 +1,8 @@
-import { html, css } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
-import { styleMap } from 'lit/directives/style-map.js';
+import { html, css, nothing, type PropertyValues } from 'lit';
+import { customElement, property, query, state } from 'lit/decorators.js';
+import '@ghchinoy/lustrous-lit/components/lustrous-badge';
+import '@ghchinoy/lustrous-lit/components/lustrous-button';
+import '@ghchinoy/lustrous-lit/components/lustrous-icon';
 import { BaseCard } from './base-card';
 
 @customElement('lutron-card')
@@ -10,82 +12,136 @@ export class LutronCard extends BaseCard {
   @property({ type: Number }) level = 0;
   @property({ type: Boolean }) isMaster = false;
 
-  static styles = [
+  @state() private draftLevel: number | null = null;
+  @query('input.slider') private sliderEl!: HTMLInputElement | null;
+
+  static override styles = [
     ...BaseCard.styles,
     css`
-      .badge-lutron { background: rgba(13, 71, 161, 0.1); color: inherit; border: 1px solid currentColor; }
-      .btn-off {
-        background: #e74c3c;
-        color: white;
-        border: none;
-        padding: 5px 12px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 0.7rem;
-        font-weight: bold;
-        margin-left: auto;
+      .card {
+        position: relative;
+        overflow: hidden;
+        --_slider-accent: var(--lustrous-color-primary);
       }
-      .level-label {
-        font-size: 0.85rem;
-        font-weight: bold;
-        min-width: 35px;
-        text-align: right;
+
+      .card.is-lit {
+        border-color: color-mix(
+          in srgb,
+          var(--lustrous-color-warning) calc(var(--_light-pct, 0) * 0.45%),
+          var(--lustrous-color-outline-variant)
+        );
+        background-color: color-mix(
+          in srgb,
+          var(--lustrous-color-warning-container) calc(var(--_light-pct, 0) * 0.35%),
+          var(--lustrous-color-surface)
+        );
       }
-    `
+
+      .glow-strip {
+        position: absolute;
+        inset-block-start: 0;
+        inset-inline-start: 0;
+        block-size: 3px;
+        inline-size: var(--_light-width, 0%);
+        background: var(--lustrous-color-warning);
+        transition: inline-size var(--lustrous-duration-short200) var(--lustrous-easing-standard);
+        pointer-events: none;
+      }
+
+      @media (forced-colors: active) {
+        .glow-strip {
+          background: Highlight;
+        }
+      }
+    `,
   ];
 
-  private _getDynamicStyle() {
-    const ratio = this.level / 100;
-    const r = Math.round(44 + (255 - 44) * ratio);
-    const g = Math.round(62 + (255 - 62) * ratio);
-    const b = Math.round(80 + (255 - 80) * ratio);
-    
-    const backgroundColor = `rgb(${r}, ${g}, ${b})`;
-    const color = this.level < 50 ? '#ffffff' : '#2c3e50';
-    
-    return {
-      backgroundColor: backgroundColor,
-      color: color,
-      boxShadow: this.level > 0 ? `0 0 ${this.level/4}px rgba(255, 255, 200, ${ratio * 0.5})` : 'none',
-      border: this.level < 10 ? '1px solid #34495e' : '1px solid #eee'
-    };
+  private get effectiveLevel(): number {
+    return this.draftLevel ?? this.level;
   }
 
-  private _onLevelChange(e: any) {
-    const newLevel = parseInt(e.target.value);
-    this.dispatchEvent(new CustomEvent('level-change', {
-      detail: { level: newLevel },
-      bubbles: true,
-      composed: true
-    }));
+  protected override updated(changed: PropertyValues): void {
+    super.updated(changed);
+    const pct = Math.max(0, Math.min(100, Math.round(this.effectiveLevel)));
+    if (this.style) {
+      this.style.setProperty('--_light-pct', String(pct));
+      this.style.setProperty('--_light-width', `${pct}%`);
+    }
+    this.syncSliderProgress(this.sliderEl, pct);
   }
 
-  private _onOffClick() {
-    this.dispatchEvent(new CustomEvent('level-change', {
-      detail: { level: 0 },
-      bubbles: true,
-      composed: true
-    }));
+  private _onInput(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const val = parseInt(input.value, 10);
+    this.draftLevel = val;
+    this.syncSliderProgress(input, val);
   }
 
-  render() {
+  private _onLevelChange(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const newLevel = parseInt(input.value, 10);
+    this.draftLevel = null;
+    this.dispatchEvent(
+      new CustomEvent('level-change', {
+        detail: { level: newLevel },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private _onQuickToggle() {
+    const targetLevel = this.isMaster ? 0 : this.effectiveLevel > 0 ? 0 : 100;
+    this.draftLevel = null;
+    this.dispatchEvent(
+      new CustomEvent('level-change', {
+        detail: { level: targetLevel },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  protected override render() {
+    const pct = Math.max(0, Math.min(100, Math.round(this.effectiveLevel)));
+    const isLit = pct > 0;
+
     return html`
-      <div class="card" style=${styleMap(this._getDynamicStyle())}>
-        <div style="display: flex; align-items: flex-start;">
-          <div>
-            <span class="badge badge-lutron">Lutron</span>
-            <h3>${this.name}</h3>
-            <p style="opacity: 0.8;">${this.subtitle}</p>
+      <div class="card ${isLit ? 'is-lit' : ''}">
+        <div class="glow-strip" aria-hidden="true"></div>
+        <div class="card-header">
+          <div class="badge-row">
+            <lustrous-badge tone="cobalt" icon="lightbulb">Lutron</lustrous-badge>
+            ${this.isMaster ? html`<lustrous-badge tone="accent">Master</lustrous-badge>` : nothing}
           </div>
-          ${this.isMaster ? html`<button class="btn-off" @click=${this._onOffClick}>ALL OFF</button>` : ''}
-        </div>
-        
-        <div class="control-row">
-          <input type="range" class="slider" min="0" max="100" 
-            .value=${this.level.toString()} 
-            @change=${this._onLevelChange}
+          <lustrous-button
+            variant=${this.isMaster ? 'outline' : isLit ? 'tonal' : 'outline'}
+            size="xs"
+            @click=${this._onQuickToggle}
           >
-          <span class="level-label">${Math.round(this.level)}%</span>
+            ${this.isMaster ? 'All Off' : isLit ? 'Off' : 'On'}
+          </lustrous-button>
+        </div>
+
+        <div class="card-title-group">
+          <h3 class="card-title">${this.name}</h3>
+          ${this.subtitle ? html`<p class="card-subtitle">${this.subtitle}</p>` : nothing}
+        </div>
+
+        <div class="control-row">
+          <lustrous-icon name="lightbulb" size="s" ?muted=${!isLit}></lustrous-icon>
+          <input
+            type="range"
+            class="slider"
+            min="0"
+            max="100"
+            aria-label="${this.name} brightness"
+            aria-valuetext="${pct}%"
+            .value=${String(pct)}
+            @input=${this._onInput}
+            @change=${this._onLevelChange}
+          />
+          <span class="value-readout">${pct}%</span>
         </div>
       </div>
     `;

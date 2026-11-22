@@ -1,10 +1,28 @@
-import { html, css, LitElement } from 'lit';
+import { html, css, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import {
+  LustrousElement,
+  lustrousBase,
+  lustrousFocusRing,
+  lustrousStateLayer,
+  lustrousType,
+} from '@ghchinoy/lustrous-lit/theme';
+import '@ghchinoy/lustrous-lit/components/lustrous-badge';
+import '@ghchinoy/lustrous-lit/components/lustrous-banner';
+import '@ghchinoy/lustrous-lit/components/lustrous-button';
+import '@ghchinoy/lustrous-lit/components/lustrous-icon';
+import '@ghchinoy/lustrous-lit/components/lustrous-select';
+import '@ghchinoy/lustrous-lit/components/lustrous-spinner';
+import '@ghchinoy/lustrous-lit/components/lustrous-tabs';
+import '@ghchinoy/lustrous-lit/components/lustrous-text';
+import '@ghchinoy/lustrous-lit/components/lustrous-text-input';
 import type { SonosDevice, SonosFavorite, SonosService } from '../api';
 import { homectlApi } from '../api';
 
+type SourceTab = 'favorites' | 'stream' | 'services';
+
 @customElement('sonos-source-panel')
-export class SonosSourcePanel extends LitElement {
+export class SonosSourcePanel extends LustrousElement {
   @property({ type: Array }) devices: SonosDevice[] = [];
   @property({ type: String }) selectedSpeakerIp = '';
   @property({ type: Array }) favorites: SonosFavorite[] = [];
@@ -13,538 +31,499 @@ export class SonosSourcePanel extends LitElement {
   @property({ type: Boolean }) loading = false;
 
   @state() private searchQuery = '';
-  @state() private activeTab: 'favorites' | 'stream' | 'services' = 'favorites';
+  @state() private activeTab: SourceTab = 'favorites';
   @state() private streamUrl = '';
   @state() private streamTitle = '';
 
-  static styles = css`
-    :host {
-      display: block;
-      margin-bottom: 30px;
-    }
-    .panel {
-      background: #ffffff;
-      border-radius: 12px;
-      padding: 24px;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
-      border: 1px solid #edf2f7;
-    }
-    .panel-header {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      margin-bottom: 20px;
-      padding-bottom: 16px;
-      border-bottom: 1px solid #edf2f7;
-    }
-    .header-title-group {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .panel-badge {
-      background: #fff3e0;
-      color: #e65100;
-      font-size: 0.75rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      padding: 4px 8px;
-      border-radius: 4px;
-      letter-spacing: 0.5px;
-    }
-    h3 {
-      margin: 0;
-      font-size: 1.2rem;
-      font-weight: 600;
-      color: #2c3e50;
-    }
-    .speaker-selector-group {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    label {
-      font-size: 0.85rem;
-      color: #7f8c8d;
-      font-weight: 500;
-    }
-    select {
-      padding: 6px 12px;
-      border-radius: 6px;
-      border: 1px solid #cbd5e1;
-      background: #fff;
-      font-size: 0.9rem;
-      color: #2c3e50;
-      cursor: pointer;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-    select:focus {
-      border-color: #e67e22;
-    }
+  static override styles = [
+    lustrousBase,
+    lustrousFocusRing,
+    lustrousStateLayer,
+    css`
+      :host {
+        display: block;
+        margin-bottom: var(--lustrous-space-2xl);
+      }
 
-    /* Tabs */
-    .tabs {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 20px;
-      border-bottom: 2px solid #f1f5f9;
-      padding-bottom: 2px;
-    }
-    .tab-btn {
-      background: none;
-      border: none;
-      padding: 8px 16px;
-      font-size: 0.95rem;
-      font-weight: 500;
-      color: #64748b;
-      cursor: pointer;
-      border-radius: 6px 6px 0 0;
-      position: relative;
-      transition: all 0.2s;
-    }
-    .tab-btn:hover {
-      color: #2c3e50;
-      background: #f8fafc;
-    }
-    .tab-btn.active {
-      color: #e67e22;
-      font-weight: 600;
-    }
-    .tab-btn.active::after {
-      content: '';
-      position: absolute;
-      bottom: -4px;
-      left: 0;
-      right: 0;
-      height: 2px;
-      background: #e67e22;
-    }
+      .panel {
+        background-color: var(--lustrous-color-surface);
+        color: var(--lustrous-color-on-surface);
+        border: 1px solid var(--lustrous-color-outline-variant);
+        border-radius: var(--lustrous-radius-l);
+        padding: var(--lustrous-space-2xl);
+        box-shadow: var(--lustrous-elevation-level1);
+        display: flex;
+        flex-direction: column;
+        gap: var(--lustrous-space-xl);
+      }
 
-    /* Search Bar */
-    .search-bar-container {
-      margin-bottom: 20px;
-      display: flex;
-      gap: 12px;
-      align-items: center;
-    }
-    .search-input {
-      flex: 1;
-      padding: 10px 14px;
-      border-radius: 8px;
-      border: 1px solid #cbd5e1;
-      font-size: 0.95rem;
-      outline: none;
-      transition: all 0.2s;
-    }
-    .search-input:focus {
-      border-color: #e67e22;
-      box-shadow: 0 0 0 3px rgba(230, 126, 34, 0.15);
-    }
-    .search-count {
-      font-size: 0.85rem;
-      color: #94a3b8;
-      white-space: nowrap;
-    }
+      .panel-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: var(--lustrous-space-l);
+        padding-bottom: var(--lustrous-space-l);
+        border-bottom: 1px solid var(--lustrous-color-outline-variant);
+      }
 
-    /* Favorites Grid */
-    .favorites-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 16px;
-    }
-    .fav-card {
-      display: flex;
-      flex-direction: column;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      padding: 12px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      position: relative;
-    }
-    .fav-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.05);
-      border-color: #cbd5e1;
-      background: #ffffff;
-    }
-    .fav-art-wrap {
-      width: 100%;
-      aspect-ratio: 1;
-      border-radius: 6px;
-      overflow: hidden;
-      background: #e2e8f0;
-      margin-bottom: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .fav-art {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    .fav-art-placeholder {
-      font-size: 2.5rem;
-      color: #94a3b8;
-    }
-    .fav-title {
-      font-weight: 600;
-      font-size: 0.9rem;
-      color: #1e293b;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin-bottom: 4px;
-    }
-    .fav-desc {
-      font-size: 0.75rem;
-      color: #64748b;
-      margin-bottom: 8px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .fav-play-btn {
-      margin-top: auto;
-      background: #e67e22;
-      color: white;
-      border: none;
-      padding: 6px 12px;
-      border-radius: 6px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      transition: background 0.2s;
-    }
-    .fav-play-btn:hover {
-      background: #d35400;
-    }
+      .header-title-group {
+        display: flex;
+        flex-direction: column;
+        gap: var(--lustrous-space-xs);
+      }
 
-    /* Stream Form */
-    .form-group {
-      margin-bottom: 16px;
-    }
-    .form-label {
-      display: block;
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: #475569;
-      margin-bottom: 6px;
-    }
-    .text-input {
-      width: 100%;
-      box-sizing: border-box;
-      padding: 10px 14px;
-      border-radius: 8px;
-      border: 1px solid #cbd5e1;
-      font-size: 0.95rem;
-      outline: none;
-    }
-    .text-input:focus {
-      border-color: #e67e22;
-      box-shadow: 0 0 0 3px rgba(230, 126, 34, 0.15);
-    }
-    .btn-group {
-      display: flex;
-      gap: 12px;
-      margin-top: 20px;
-    }
-    .btn-primary {
-      background: #e67e22;
-      color: white;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 6px;
-      font-size: 0.9rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    .btn-primary:hover {
-      background: #d35400;
-    }
-    .btn-secondary {
-      background: #f1f5f9;
-      color: #334155;
-      border: 1px solid #cbd5e1;
-      padding: 10px 20px;
-      border-radius: 6px;
-      font-size: 0.9rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    .btn-secondary:hover {
-      background: #e2e8f0;
-    }
+      .speaker-selector {
+        min-width: 240px;
+        flex: 0 1 320px;
+      }
 
-    /* Services Table */
-    .services-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.9rem;
-    }
-    .services-table th {
-      text-align: left;
-      padding: 10px 12px;
-      background: #f8fafc;
-      color: #64748b;
-      font-weight: 600;
-      border-bottom: 2px solid #e2e8f0;
-    }
-    .services-table td {
-      padding: 10px 12px;
-      border-bottom: 1px solid #f1f5f9;
-      color: #1e293b;
-    }
-    .default-tag {
-      background: #dcfce7;
-      color: #15803d;
-      font-size: 0.75rem;
-      font-weight: 700;
-      padding: 3px 8px;
-      border-radius: 12px;
-      display: inline-block;
-    }
-    .service-info-callout {
-      margin-top: 16px;
-      padding: 12px 16px;
-      background: #f8fafc;
-      border-radius: 8px;
-      border-left: 4px solid #e67e22;
-      font-size: 0.85rem;
-      color: #64748b;
-      line-height: 1.5;
-    }
+      .search-bar-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--lustrous-space-m);
+        align-items: center;
+      }
 
-    .empty-state {
-      padding: 40px;
-      text-align: center;
-      color: #94a3b8;
-      font-size: 0.95rem;
-    }
-  `;
+      .search-field {
+        flex: 1 1 260px;
+      }
 
-  private _onSpeakerSelect(e: Event) {
-    const target = e.target as HTMLSelectElement;
-    const ip = target.value;
-    this.dispatchEvent(new CustomEvent('speaker-change', {
-      detail: { ip },
-      bubbles: true,
-      composed: true
-    }));
+      .search-count {
+        color: var(--lustrous-text-muted);
+        white-space: nowrap;
+        ${lustrousType('body-small')}
+      }
+
+      .loading-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--lustrous-space-m);
+        padding: var(--lustrous-space-3xl) var(--lustrous-space-l);
+        color: var(--lustrous-text-muted);
+        ${lustrousType('body-medium')}
+      }
+
+      .favorites-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+        gap: var(--lustrous-space-l);
+      }
+
+      .fav-card {
+        display: flex;
+        flex-direction: column;
+        gap: var(--lustrous-space-s);
+        background-color: var(--lustrous-color-surface-container-low);
+        border: 1px solid var(--lustrous-color-outline-variant);
+        border-radius: var(--lustrous-radius-m);
+        padding: var(--lustrous-space-m);
+        transition:
+          transform var(--lustrous-duration-short150) var(--lustrous-easing-standard),
+          box-shadow var(--lustrous-duration-short150) var(--lustrous-easing-standard),
+          border-color var(--lustrous-duration-short150) var(--lustrous-easing-standard);
+      }
+
+      .fav-card:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--lustrous-elevation-level1);
+        border-color: var(--lustrous-color-outline);
+      }
+
+      .fav-art-wrap {
+        width: 100%;
+        aspect-ratio: 1;
+        border-radius: var(--lustrous-radius-s);
+        overflow: hidden;
+        background-color: var(--lustrous-color-surface-container);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .fav-art {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+
+      .fav-title {
+        color: var(--lustrous-color-on-surface);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        ${lustrousType('body-medium-emphasized')}
+      }
+
+      .fav-desc {
+        color: var(--lustrous-text-muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        ${lustrousType('caption')}
+      }
+
+      .fav-play-action {
+        margin-top: auto;
+        width: 100%;
+      }
+
+      .stream-form {
+        display: flex;
+        flex-direction: column;
+        gap: var(--lustrous-space-l);
+        max-width: 640px;
+      }
+
+      .btn-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--lustrous-space-m);
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--lustrous-color-outline-variant);
+        border-radius: var(--lustrous-radius-m);
+      }
+
+      .services-table {
+        width: 100%;
+        border-collapse: collapse;
+        ${lustrousType('body-small')}
+      }
+
+      .services-table th {
+        text-align: start;
+        padding: var(--lustrous-space-m) var(--lustrous-space-l);
+        background-color: var(--lustrous-color-surface-container);
+        color: var(--lustrous-text-muted);
+        border-bottom: 1px solid var(--lustrous-color-outline-variant);
+        ${lustrousType('body-small-emphasized')}
+      }
+
+      .services-table td {
+        padding: var(--lustrous-space-m) var(--lustrous-space-l);
+        border-bottom: 1px solid var(--lustrous-color-outline-variant);
+        color: var(--lustrous-color-on-surface);
+      }
+
+      .services-table tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .cell-strong {
+        ${lustrousType('body-small-emphasized')}
+      }
+
+      .cell-muted {
+        color: var(--lustrous-text-muted);
+        font-family: var(--lustrous-font-code);
+      }
+
+      .services-stack {
+        display: flex;
+        flex-direction: column;
+        gap: var(--lustrous-space-l);
+      }
+
+      .empty-state {
+        padding: var(--lustrous-space-3xl) var(--lustrous-space-l);
+        text-align: center;
+        color: var(--lustrous-text-muted);
+        background-color: var(--lustrous-color-surface-container-low);
+        border-radius: var(--lustrous-radius-m);
+        border: 1px dashed var(--lustrous-color-outline-variant);
+        ${lustrousType('body-medium')}
+      }
+
+      @media (forced-colors: active) {
+        .panel,
+        .fav-card,
+        .table-wrap {
+          border: 1px solid CanvasText;
+          box-shadow: none;
+        }
+      }
+    `,
+  ];
+
+  private _onSpeakerSelect(e: CustomEvent<{ value: string }>) {
+    const ip = e.detail.value;
+    this.dispatchEvent(
+      new CustomEvent('speaker-change', {
+        detail: { ip },
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
-  private _onSearchChange(e: Event) {
-    const target = e.target as HTMLInputElement;
-    this.searchQuery = target.value;
+  private _onTabChange(e: CustomEvent<{ value: string }>) {
+    const next = e.detail.value;
+    if (next === 'favorites' || next === 'stream' || next === 'services') {
+      this.activeTab = next;
+    }
+  }
+
+  private _onSearchInput(e: Event) {
+    const target = e.currentTarget as HTMLElement & { value: string };
+    this.searchQuery = target.value ?? '';
   }
 
   private _playFavorite(fav: SonosFavorite) {
     if (!this.selectedSpeakerIp) return;
-    this.dispatchEvent(new CustomEvent('play-favorite', {
-      detail: { ip: this.selectedSpeakerIp, favoriteId: fav.id, title: fav.title },
-      bubbles: true,
-      composed: true
-    }));
+    this.dispatchEvent(
+      new CustomEvent('play-favorite', {
+        detail: { ip: this.selectedSpeakerIp, favoriteId: fav.id, title: fav.title },
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   private _playStream() {
     if (!this.selectedSpeakerIp || !this.streamUrl) return;
-    this.dispatchEvent(new CustomEvent('play-stream', {
-      detail: {
-        ip: this.selectedSpeakerIp,
-        url: this.streamUrl,
-        title: this.streamTitle || undefined
-      },
-      bubbles: true,
-      composed: true
-    }));
+    this.dispatchEvent(
+      new CustomEvent('play-stream', {
+        detail: {
+          ip: this.selectedSpeakerIp,
+          url: this.streamUrl,
+          title: this.streamTitle || undefined,
+        },
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   private _queueAdd() {
     if (!this.selectedSpeakerIp || !this.streamUrl) return;
-    this.dispatchEvent(new CustomEvent('queue-add', {
-      detail: {
-        ip: this.selectedSpeakerIp,
-        uri: this.streamUrl,
-        asNext: true
-      },
-      bubbles: true,
-      composed: true
-    }));
+    this.dispatchEvent(
+      new CustomEvent('queue-add', {
+        detail: {
+          ip: this.selectedSpeakerIp,
+          uri: this.streamUrl,
+          asNext: true,
+        },
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
-  render() {
-    const filteredFavorites = this.favorites.filter(f => {
+  protected override render() {
+    const filteredFavorites = this.favorites.filter((f) => {
       if (!this.searchQuery) return true;
       const q = this.searchQuery.toLowerCase();
-      return (f.title && f.title.toLowerCase().includes(q)) ||
-             (f.description && f.description.toLowerCase().includes(q)) ||
-             (f.type && f.type.toLowerCase().includes(q));
+      return (
+        (f.title && f.title.toLowerCase().includes(q)) ||
+        (f.description && f.description.toLowerCase().includes(q)) ||
+        (f.type && f.type.toLowerCase().includes(q))
+      );
     });
+
+    const speakerOptions = this.devices.map((d) => ({
+      value: d.IP,
+      label: d.Nickname || d.Name,
+      description: d.IP,
+      icon: 'headset' as const,
+    }));
+
+    const tabs = [
+      { value: 'favorites', label: `Favorites (${this.favorites.length})`, icon: 'star' as const },
+      { value: 'stream', label: 'Direct Stream', icon: 'link' as const },
+      { value: 'services', label: `Music Services (${this.services.length})`, icon: 'layers' as const },
+    ];
 
     return html`
       <div class="panel">
         <div class="panel-header">
           <div class="header-title-group">
-            <span class="panel-badge">Sonos Source</span>
-            <h3>Music Catalog & Streams</h3>
+            <lustrous-badge tone="amber" icon="headset">Sonos Source</lustrous-badge>
+            <lustrous-text heading="3" variant="headline-small">Music Catalog &amp; Streams</lustrous-text>
           </div>
 
-          <div class="speaker-selector-group">
-            <label for="speaker-select">Target Speaker:</label>
-            <select id="speaker-select" .value=${this.selectedSpeakerIp} @change=${this._onSpeakerSelect}>
-              ${this.devices.map(d => html`
-                <option value=${d.IP} ?selected=${d.IP === this.selectedSpeakerIp}>
-                  ${d.Nickname || d.Name} (${d.IP})
-                </option>
-              `)}
-            </select>
+          <div class="speaker-selector">
+            <lustrous-select
+              label="Target Speaker"
+              size="s"
+              .options=${speakerOptions}
+              .value=${this.selectedSpeakerIp}
+              @lustrous-change=${this._onSpeakerSelect}
+            ></lustrous-select>
           </div>
         </div>
 
-        <div class="tabs">
-          <button 
-            class="tab-btn ${this.activeTab === 'favorites' ? 'active' : ''}" 
-            @click=${() => this.activeTab = 'favorites'}>
-            Favorites & Playlists (${this.favorites.length})
-          </button>
-          <button 
-            class="tab-btn ${this.activeTab === 'stream' ? 'active' : ''}" 
-            @click=${() => this.activeTab = 'stream'}>
-            Direct Audio Stream
-          </button>
-          <button 
-            class="tab-btn ${this.activeTab === 'services' ? 'active' : ''}" 
-            @click=${() => this.activeTab = 'services'}>
-            Music Services (${this.services.length})
-          </button>
-        </div>
+        <lustrous-tabs
+          variant="underline"
+          label="Sonos audio sources"
+          .tabs=${tabs}
+          .value=${this.activeTab}
+          @lustrous-change=${this._onTabChange}
+        ></lustrous-tabs>
 
-        ${this.activeTab === 'favorites' ? html`
-          <div class="search-bar-container">
-            <input 
-              type="text" 
-              class="search-input" 
-              placeholder="Search favorites, playlists, albums, radio stations..."
-              .value=${this.searchQuery}
-              @input=${this._onSearchChange}
-            />
-            <span class="search-count">
-              ${this.searchQuery ? `Showing ${filteredFavorites.length} of ${this.favorites.length}` : `${this.favorites.length} total`}
-            </span>
-          </div>
-
-          ${filteredFavorites.length === 0 ? html`
-            <div class="empty-state">
-              ${this.searchQuery ? `No favorites found matching "${this.searchQuery}"` : 'No favorites pinned on this speaker yet. Pin playlists or radio stations in the Sonos app to access them here.'}
-            </div>
-          ` : html`
-            <div class="favorites-grid">
-              ${filteredFavorites.map(fav => {
-                const artUrl = fav.album_art_uri ? homectlApi.getArtUrl(this.selectedSpeakerIp, fav.album_art_uri) : '';
-                return html`
-                  <div class="fav-card" @click=${() => this._playFavorite(fav)}>
-                    <div class="fav-art-wrap">
-                      ${artUrl ? html`
-                        <img class="fav-art" src=${artUrl} alt=${fav.title} loading="lazy" />
-                      ` : html`
-                        <span class="fav-art-placeholder">🎵</span>
-                      `}
-                    </div>
-                    <div class="fav-title" title=${fav.title}>${fav.title}</div>
-                    <div class="fav-desc">${fav.description || 'Sonos Item'}</div>
-                    <button class="fav-play-btn" @click=${(e: Event) => { e.stopPropagation(); this._playFavorite(fav); }}>
-                      <span>▶</span> Play
-                    </button>
-                  </div>
-                `;
-              })}
-            </div>
-          `}
-        ` : ''}
-
-        ${this.activeTab === 'stream' ? html`
-          <div>
-            <div class="form-group">
-              <label class="form-label" for="stream-url">Audio Stream URL (HTTP/HTTPS):</label>
-              <input 
-                id="stream-url" 
-                type="url" 
-                class="text-input" 
-                placeholder="https://stream.somafm.com/groovesalad-128-mp3"
-                .value=${this.streamUrl}
-                @input=${(e: any) => this.streamUrl = e.target.value}
-              />
-            </div>
-
-            <div class="form-group">
-              <label class="form-label" for="stream-title">Display Title (optional):</label>
-              <input 
-                id="stream-title" 
-                type="text" 
-                class="text-input" 
-                placeholder="e.g. SomaFM Groove Salad"
-                .value=${this.streamTitle}
-                @input=${(e: any) => this.streamTitle = e.target.value}
-              />
-            </div>
-
-            <div class="btn-group">
-              <button class="btn-primary" @click=${this._playStream} ?disabled=${!this.streamUrl}>
-                ▶ Play Stream Now
-              </button>
-              <button class="btn-secondary" @click=${this._queueAdd} ?disabled=${!this.streamUrl}>
-                + Add as Next in Queue
-              </button>
-            </div>
-          </div>
-        ` : ''}
-
-        ${this.activeTab === 'services' ? html`
-          <div>
-            ${this.services.length === 0 ? html`
-              <div class="empty-state">No music services reported by this speaker.</div>
-            ` : html`
-              <table class="services-table">
-                <thead>
-                  <tr>
-                    <th>Service Name</th>
-                    <th>ID</th>
-                    <th>Status</th>
-                    <th>Version</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${this.services.map(s => html`
-                    <tr>
-                      <td style="font-weight: 600;">${s.name}</td>
-                      <td style="color: #64748b;">${s.id}</td>
-                      <td>
-                        ${s.is_default ? html`<span class="default-tag">DEFAULT SERVICE</span>` : ''}
-                      </td>
-                      <td style="color: #64748b;">${s.version || '1.1'}</td>
-                    </tr>
-                  `)}
-                </tbody>
-              </table>
-
-              <div class="service-info-callout">
-                <strong>Music Service Integration:</strong> Sonos Favorites provide instant, credential-free playback of pinned cloud playlists and radio across all registered providers. The marked default service is used by agents when selecting ambient music without an explicit provider.
+        ${this.loading
+          ? html`
+              <div class="loading-row" aria-busy="true">
+                <lustrous-spinner variant="ring" size="s" label="Loading speaker catalog"></lustrous-spinner>
+                <span>Loading favorites and music services&hellip;</span>
               </div>
-            `}
-          </div>
-        ` : ''}
+            `
+          : nothing}
+        ${!this.loading && this.activeTab === 'favorites'
+          ? html`
+              <div class="search-bar-container">
+                <lustrous-text-input
+                  class="search-field"
+                  type="search"
+                  size="s"
+                  leading-icon="search"
+                  aria-label="Search Sonos favorites"
+                  placeholder="Search favorites, playlists, albums, radio stations..."
+                  .value=${this.searchQuery}
+                  @input=${this._onSearchInput}
+                ></lustrous-text-input>
+                <span class="search-count">
+                  ${this.searchQuery
+                    ? `Showing ${filteredFavorites.length} of ${this.favorites.length}`
+                    : `${this.favorites.length} total`}
+                </span>
+              </div>
+
+              ${filteredFavorites.length === 0
+                ? html`
+                    <div class="empty-state">
+                      ${this.searchQuery
+                        ? `No favorites found matching "${this.searchQuery}".`
+                        : 'No favorites pinned on this speaker yet. Pin playlists or radio stations in the Sonos app to access them here.'}
+                    </div>
+                  `
+                : html`
+                    <div class="favorites-grid">
+                      ${filteredFavorites.map((fav) => {
+                        const artUrl = fav.album_art_uri
+                          ? homectlApi.getArtUrl(this.selectedSpeakerIp, fav.album_art_uri)
+                          : '';
+                        return html`
+                          <div class="fav-card">
+                            <div class="fav-art-wrap">
+                              ${artUrl
+                                ? html`<img class="fav-art" src=${artUrl} alt=${fav.title} loading="lazy" />`
+                                : html`<lustrous-icon name="headset" size="l" muted></lustrous-icon>`}
+                            </div>
+                            <div class="fav-title" title=${fav.title}>${fav.title}</div>
+                            <div class="fav-desc">${fav.description || 'Sonos Favorite'}</div>
+                            <lustrous-button
+                              class="fav-play-action"
+                              variant="tonal"
+                              size="xs"
+                              icon="playArrow"
+                              @click=${() => this._playFavorite(fav)}
+                            >
+                              Play
+                            </lustrous-button>
+                          </div>
+                        `;
+                      })}
+                    </div>
+                  `}
+            `
+          : nothing}
+        ${!this.loading && this.activeTab === 'stream'
+          ? html`
+              <div class="stream-form">
+                <lustrous-text-input
+                  label="Audio Stream URL (HTTP/HTTPS)"
+                  type="url"
+                  leading-icon="link"
+                  placeholder="https://stream.somafm.com/groovesalad-128-mp3"
+                  .value=${this.streamUrl}
+                  @input=${(e: Event) => {
+                    this.streamUrl = (e.currentTarget as HTMLElement & { value: string }).value ?? '';
+                  }}
+                ></lustrous-text-input>
+
+                <lustrous-text-input
+                  label="Display Title (optional)"
+                  type="text"
+                  placeholder="e.g. SomaFM Groove Salad"
+                  .value=${this.streamTitle}
+                  @input=${(e: Event) => {
+                    this.streamTitle = (e.currentTarget as HTMLElement & { value: string }).value ?? '';
+                  }}
+                ></lustrous-text-input>
+
+                <div class="btn-group">
+                  <lustrous-button
+                    variant="accent"
+                    size="s"
+                    icon="playArrow"
+                    ?disabled=${!this.streamUrl}
+                    @click=${this._playStream}
+                  >
+                    Play Stream Now
+                  </lustrous-button>
+                  <lustrous-button
+                    variant="outline"
+                    size="s"
+                    icon="add"
+                    ?disabled=${!this.streamUrl}
+                    @click=${this._queueAdd}
+                  >
+                    Add as Next in Queue
+                  </lustrous-button>
+                </div>
+              </div>
+            `
+          : nothing}
+        ${!this.loading && this.activeTab === 'services'
+          ? html`
+              <div class="services-stack">
+                ${this.services.length === 0
+                  ? html`<div class="empty-state">No music services reported by this speaker.</div>`
+                  : html`
+                      <div class="table-wrap">
+                        <table class="services-table">
+                          <thead>
+                            <tr>
+                              <th>Service Name</th>
+                              <th>ID</th>
+                              <th>Status</th>
+                              <th>Version</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            ${this.services.map(
+                              (s) => html`
+                                <tr>
+                                  <td class="cell-strong">${s.name}</td>
+                                  <td class="cell-muted">${s.id}</td>
+                                  <td>
+                                    ${s.is_default
+                                      ? html`<lustrous-badge tone="positive">Default</lustrous-badge>`
+                                      : nothing}
+                                  </td>
+                                  <td class="cell-muted">${s.version || '1.1'}</td>
+                                </tr>
+                              `,
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <lustrous-banner
+                        variant="info"
+                        icon="info"
+                        heading="Music Service Integration"
+                        description="Sonos Favorites provide instant, credential-free playback of pinned cloud playlists and radio across all registered providers. The marked default service is used by agents when selecting ambient music without an explicit provider."
+                      ></lustrous-banner>
+                    `}
+              </div>
+            `
+          : nothing}
       </div>
     `;
   }
