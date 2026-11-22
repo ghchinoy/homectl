@@ -1,13 +1,14 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { homectlApi } from './api';
-import type { LutronDevice, SonosDevice, SonosStatus, Camera, CastDevice, CastStatus, SonosFavorite, SonosService } from './api';
+import type { LutronDevice, SonosDevice, SonosStatus, Camera, CastDevice, CastStatus, SonosFavorite, SonosService, RoborockDevice } from './api';
 
 import './components/lutron-card';
 import './components/sonos-card';
 import './components/sonos-source-panel';
 import './components/camera-card';
 import './components/cast-card';
+import './components/roborock-card';
 
 @customElement('homectl-dashboard')
 export class HomectlDashboard extends LitElement {
@@ -23,6 +24,7 @@ export class HomectlDashboard extends LitElement {
   @state() private castDevices: CastDevice[] = [];
   @state() private castStatus: Record<string, CastStatus> = {};
   @state() private cameras: Camera[] = [];
+  @state() private roborockDevices: RoborockDevice[] = [];
   @state() private loading = true;
 
   static styles = css`
@@ -59,16 +61,18 @@ export class HomectlDashboard extends LitElement {
   async fetchData() {
     this.loading = true;
     try {
-      const [lutron, sonos, cameras, cast] = await Promise.all([
+      const [lutron, sonos, cameras, cast, roborockRes] = await Promise.all([
         homectlApi.getLutronDevices(),
         homectlApi.getSonosDevices(),
         homectlApi.getCameras(),
-        homectlApi.getCastDevices()
+        homectlApi.getCastDevices(),
+        homectlApi.getRoborockDevices().catch(() => ({ count: 0, devices: [] }))
       ]);
       this.lutronDevices = lutron;
       this.sonosDevices = sonos;
       this.cameras = cameras;
       this.castDevices = cast;
+      this.roborockDevices = roborockRes.devices || [];
       if (this.sonosDevices.length > 0 && !this.selectedSpeakerIp) {
         this.selectedSpeakerIp = this.sonosDevices[0].IP;
         await this.fetchSonosSourceData(this.selectedSpeakerIp);
@@ -102,6 +106,10 @@ export class HomectlDashboard extends LitElement {
           this.castStatus = { ...this.castStatus, [d.ip]: status };
         }).catch(e => console.warn('Cast status error for', d.ip, e));
       }
+      // Refresh Roborock fleet telemetry
+      homectlApi.getRoborockDevices()
+        .then(res => { this.roborockDevices = res.devices || []; })
+        .catch(() => {});
     } catch (e) { console.error('Status error:', e); }
   }
 
@@ -208,6 +216,13 @@ export class HomectlDashboard extends LitElement {
     } catch (e) { console.error('Cast volume error:', e); }
   }
 
+  async handleRoborockControl(id: string, action: string) {
+    try {
+      await homectlApi.controlRoborock(id, action);
+      setTimeout(() => this.fetchStatus(), 1000);
+    } catch (e) { console.error('Roborock control error:', e); }
+  }
+
   render() {
     if (this.loading) return html`<div style="padding: 40px; text-align: center;">Loading homectl...</div>`;
 
@@ -285,6 +300,20 @@ export class HomectlDashboard extends LitElement {
           `)}
         </div>
       </section>
+
+      ${this.roborockDevices.length > 0 ? html`
+        <section>
+          <h2>Roborock Vacuums</h2>
+          <div class="grid">
+            ${this.roborockDevices.map(d => html`
+              <roborock-card
+                .device=${d}
+                @roborock-control=${(e: any) => this.handleRoborockControl(e.detail.id, e.detail.action)}>
+              </roborock-card>
+            `)}
+          </div>
+        </section>
+      ` : ''}
 
       <section>
         <h2>Security Cameras</h2>

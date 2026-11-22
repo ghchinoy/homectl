@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "roborock",
+  "version": "0.5.0",
+  "description": "Local-only Roborock vacuum fleet plugin: embedded HTTPS/MQTT/TURN server instrumentation, telemetry monitoring, room cleaning control, and WebRTC camera diagnostics.",
+  "author": {
+    "name": "ghchinoy",
+    "url": "https://github.com/ghchinoy"
+  },
+  "repository": "https://github.com/ghchinoy/homectl",
+  "license": "Apache-2.0",
+  "keywords": [
+    "roborock",
+    "smart-home",
+    "vacuum",
+    "mqtt",
+    "webrtc",
+    "mcp",
+    "homectl"
+  ]
+}

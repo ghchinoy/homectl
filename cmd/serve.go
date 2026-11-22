@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ghchinoy/homectl/modules/core"
+	"github.com/ghchinoy/homectl/modules/roborock"
 	"github.com/ghchinoy/homectl/modules/sonos"
 	"github.com/ghchinoy/homectl/pkg/camera"
 	"github.com/ghchinoy/homectl/pkg/cast"
@@ -896,6 +898,118 @@ func newAPIMuxWithUI(client lutronAPI, uiHandler http.Handler, debugEnabled bool
 			return
 		}
 		w.WriteHeader(http.StatusOK)
+	}))
+
+	// --- Roborock Local Server Proxy & Fallback Routes ---
+	resolveRRBase := func() string {
+		if v := strings.TrimSpace(os.Getenv("HOMECTL_ROBOROCK_CONTROL_URL")); v != "" {
+			return strings.TrimRight(v, "/")
+		}
+		cfg := config.LoadConfig()
+		if cfg.Roborock != nil && strings.TrimSpace(cfg.Roborock.ControlAPIURL) != "" {
+			return strings.TrimRight(strings.TrimSpace(cfg.Roborock.ControlAPIURL), "/")
+		}
+		return defaultRoborockControlURL
+	}
+
+	mux.HandleFunc("/api/roborock/devices", func(w http.ResponseWriter, r *http.Request) {
+		var resp map[string]any
+		if err := getRoborockControlJSON(r.Context(), resolveRRBase()+"/api/roborock/devices", &resp); err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		storage := core.NewDirStorage(roborockStorageDir())
+		ks, _ := roborock.NewKeyStore(storage, nil, nil)
+		cs, _ := roborock.NewCredentialStore(storage)
+		devs := roborock.NewTelemetryHub(10, "").Snapshot(cs, ks)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"count": len(devs), "devices": devs})
+	})
+
+	mux.HandleFunc("/api/roborock/status", func(w http.ResponseWriter, r *http.Request) {
+		target := strings.TrimSpace(r.URL.Query().Get("id"))
+		if target == "" {
+			http.Error(w, "id is required", http.StatusBadRequest)
+			return
+		}
+		var out map[string]any
+		if err := getRoborockControlJSON(r.Context(), resolveRRBase()+"/api/roborock/status?id="+url.QueryEscape(target), &out); err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+	})
+
+	mux.HandleFunc("/api/roborock/camera", func(w http.ResponseWriter, r *http.Request) {
+		u := resolveRRBase() + "/api/roborock/camera"
+		if id := strings.TrimSpace(r.URL.Query().Get("id")); id != "" {
+			u += "?id=" + url.QueryEscape(id)
+		}
+		var out map[string]any
+		if err := getRoborockControlJSON(r.Context(), u, &out); err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+	})
+
+	mux.HandleFunc("/api/roborock/events", func(w http.ResponseWriter, r *http.Request) {
+		u := resolveRRBase() + "/api/roborock/events"
+		if id := strings.TrimSpace(r.URL.Query().Get("id")); id != "" {
+			u += "?id=" + url.QueryEscape(id)
+		}
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, u, nil)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		resp, err := (&http.Client{}).Do(req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		rc := http.NewResponseController(w)
+		_ = rc.SetWriteDeadline(time.Time{})
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(resp.StatusCode)
+		buf := make([]byte, 4096)
+		flusher, _ := w.(http.Flusher)
+		for {
+			n, readErr := resp.Body.Read(buf)
+			if n > 0 {
+				_, _ = w.Write(buf[:n])
+				if flusher != nil {
+					flusher.Flush()
+				}
+			}
+			if readErr != nil {
+				return
+			}
+		}
+	})
+
+	mux.HandleFunc("/api/roborock/control", requireLocalOrigin(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var payload map[string]any
+		if !decodeJSONBody(w, r, &payload) {
+			return
+		}
+		var out map[string]any
+		if err := postRoborockControlJSON(r.Context(), resolveRRBase()+"/api/roborock/control", payload, &out); err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
 	}))
 
 	if uiHandler != nil {

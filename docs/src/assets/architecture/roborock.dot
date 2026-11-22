@@ -1,0 +1,206 @@
+digraph RoborockVerticalArchitecture {
+  graph [
+    bgcolor="#ffffff",
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=14,
+    rankdir=TB,
+    splines=spline,
+    nodesep=0.5,
+    ranksep=0.65,
+    pad="0.4,0.4"
+  ];
+
+  node [
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=10,
+    fontcolor="#0f172a",
+    style="filled,rounded",
+    shape=box,
+    penwidth=1.5,
+    margin="0.2,0.14"
+  ];
+
+  edge [
+    fontname="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontsize=9,
+    fontcolor="#64748b",
+    color="#94a3b8",
+    penwidth=1.2,
+    arrowsize=0.75
+  ];
+
+  subgraph cluster_header {
+    style="invis";
+    title_node [
+      shape=plaintext,
+      fontcolor="#0f172a",
+      fontsize=16,
+      label=<<table border="0" cellborder="0" cellspacing="4">
+        <tr><td><font point-size="18" color="#ea580c"><b>Roborock Local Server &amp; Fleet Instrumentation Vertical</b></font></td></tr>
+        <tr><td><font point-size="11" color="#64748b">Single-Binary Go HTTPS Bootstrap, Embedded Mochi MQTT Broker, Pure-Go 1.0/L01 Codec &amp; Pion TURN Relay</font></td></tr>
+      </table>>
+    ];
+  }
+
+  subgraph cluster_agent {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#7c3aed" point-size="12"><b>1. AI AGENT, SKILL &amp; MCP LAYER (cmd/mcp-roborock)</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#ddd6fe";
+    bgcolor="#f5f3ff";
+
+    skill_doc [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#7c3aed"><b>skills/roborock-fleet/SKILL.md</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• Pre-flight error &amp; battery safety checks</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">• V1/V2 onboarding &amp; 15-char camera guidance</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#7c3aed"
+    ];
+
+    mcp_tools [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#7c3aed"><b>Registered MCP Tools (6 SEP-2106 Tools)</b></font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• <b>roborock_list_devices</b> · <b>roborock_get_status</b></font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• <b>roborock_get_telemetry</b> · <b>roborock_get_rooms</b></font></td></tr>
+        <tr><td><font color="#0f172a" point-size="8">• <b>roborock_camera_info</b> · <b>roborock_control</b> (dry_run)</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#7c3aed"
+    ];
+  }
+
+  subgraph cluster_interfaces {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#0284c7" point-size="12"><b>2. HOMECTL INTERFACES &amp; CLI</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#bae6fd";
+    bgcolor="#f0f9ff";
+
+    cli_node [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#0284c7"><b>homectl roborock CLI</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">serve · onboard · list · status · monitor</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">clean · dock · find · camera · keys · import-state</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#0284c7"
+    ];
+
+    web_ui [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#0284c7"><b>Web UI &amp; SSE (/api/roborock/*)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">roborock-card.ts (Lit component)</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Live SSE telemetry stream &amp; control</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#0284c7"
+    ];
+  }
+
+  subgraph cluster_engine {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#d97706" point-size="12"><b>3. GO ENGINE (modules/roborock)</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#fde68a";
+    bgcolor="#fffbeb";
+
+    tls_sni [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#d97706"><b>Multi-SNI TLS Manager (tls.go)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Automatic mtime hot-reload</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Wildcard + legacy TLS 1.0-1.2 SNI support</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#d97706"
+    ];
+
+    http_srv [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#d97706"><b>HTTPS Bootstrap &amp; Cloud API</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">/region (V1+V2) · /nc (multipart) · /time/now</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">/f/c &amp; /devices/{did}/sh (rrcheck forgery)</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">/devices/{did}/info · /fwapi/createca · App API</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#d97706"
+    ];
+
+    mqtt_srv [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#d97706"><b>Embedded Mochi MQTT v2 Broker</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">TLS :8881 · Auth &amp; provisional onboarding</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">In-process rr/d &lt;-&gt; rr/m topic bridge</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Pure-Go 1.0/A01/B01/L01 codec + RPC 101/102</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#d97706"
+    ];
+
+    turn_srv [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#059669"><b>Embedded Pion TURN/STUN Relay</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">UDP :3478 + Relay :49160-49179</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">WebRTC camera media relay</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#059669"
+    ];
+
+    key_rec [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#d97706"><b>KeyStore &amp; ModulusRecoverer</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">Pluggable -tags gmp (~16s/38s) + fallback</font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">XDG JSON stores (~/.config/homectl/roborock)</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#d97706"
+    ];
+  }
+
+  subgraph cluster_hw {
+    label=<<table border="0" cellborder="0"><tr><td><font color="#dc2626" point-size="12"><b>4. ROBOROCK VACUUM FLEET (LAN ONLY, WAN BLOCKED)</b></font></td></tr></table>>;
+    style="rounded,dashed";
+    color="#fecaca";
+    bgcolor="#fef2f2";
+
+    vac_v1 [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#dc2626"><b>Q5 Max+ (a125)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">V1 RSA-2048 · 1.0 AES-128-ECB</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#dc2626"
+    ];
+
+    vac_10r [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#dc2626"><b>Saros 10R (a144)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">V2 RSA-4096 · L01 AES-256-GCM · WebRTC Cam</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#dc2626"
+    ];
+
+    vac_20 [
+      label=<<table border="0" cellborder="0" cellspacing="2">
+        <tr><td><font color="#dc2626"><b>Saros 20 (a288)</b></font></td></tr>
+        <tr><td><font color="#64748b" point-size="8">V2 RSA-4096 · L01 AES-256-GCM · WebRTC Cam</font></td></tr>
+      </table>>,
+      fillcolor="#ffffff",
+      color="#dc2626"
+    ];
+  }
+
+  title_node -> skill_doc [style="invis"];
+  skill_doc -> mcp_tools [color="#7c3aed"];
+  mcp_tools -> cli_node [label="Local Control API", color="#0284c7"];
+  cli_node -> http_srv [color="#0284c7"];
+  web_ui -> mqtt_srv [label="SSE / RPC", color="#0284c7"];
+  http_srv -> key_rec [color="#d97706"];
+  tls_sni -> http_srv [color="#d97706"];
+  tls_sni -> mqtt_srv [color="#d97706"];
+  vac_v1 -> tls_sni [label="HTTPS :443 / MQTT :8881", color="#dc2626"];
+  vac_10r -> tls_sni [label="HTTPS :443 / MQTT :8881", color="#dc2626"];
+  vac_20 -> tls_sni [label="HTTPS :443 / MQTT :8881", color="#dc2626"];
+  vac_10r -> turn_srv [label="TURN UDP :3478", color="#059669"];
+  vac_20 -> turn_srv [label="TURN UDP :3478", color="#059669"];
+}

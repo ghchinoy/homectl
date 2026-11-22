@@ -91,6 +91,32 @@ export interface Camera {
   ip: string;
 }
 
+export interface RoborockDevice {
+  did: string;
+  duid: string;
+  name: string;
+  model: string;
+  connected: boolean;
+  remote_ip?: string;
+  firmware_version?: string;
+  battery?: number;
+  state?: number;
+  state_name?: string;
+  error_code?: number;
+  error_name?: string;
+  fan_power?: number;
+  water_box_mode?: number;
+  drying_status?: number;
+  has_public_key: boolean;
+  key_recovery_state?: string;
+  last_seen?: string;
+}
+
+export interface RoborockDevicesResult {
+  count: number;
+  devices: RoborockDevice[];
+}
+
 async function getJSON<T>(path: string, params?: Record<string, string | number | undefined>): Promise<T> {
   const url = new URL(`/api${path}`, window.location.origin);
   if (params) {
@@ -157,6 +183,11 @@ export const homectlApi = {
   getCastStatus: (ip: string) => getJSON<CastStatus>('/cast/status', { ip }),
   controlCast: (ip: string, action: string, volume?: number) =>
     postJSON('/cast/control', { ip, action, volume }),
+
+  // Roborock
+  getRoborockDevices: () => getJSON<RoborockDevicesResult>('/roborock/devices'),
+  controlRoborock: (id: string, action: string, rooms?: number[]) =>
+    postJSON('/roborock/control', { id, action, rooms }),
 
   // Utils
   getArtUrl: (ip: string, path: string) => {

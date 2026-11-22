@@ -375,6 +375,21 @@ Edits the local playback queue on a Sonos speaker. Supports removing tracks (`ac
 
 ---
 
+## 3b. `mcp-roborock` Tool Reference (6 SEP-2106 Tools)
+
+The Roborock MCP stdio server (`cmd/mcp-roborock`) queries and controls vacuums connected to `homectl roborock serve` (default control API `http://127.0.0.1:8889`, overridable via `HOMECTL_ROBOROCK_CONTROL_URL`).
+
+| Tool | Type | Description |
+| :--- | :--- | :--- |
+| `roborock_list_devices` | Read | Fleet list (`{count, devices}`): DID/DUID, model, online state, battery %, cleaning state, firmware, RSA key-recovery status |
+| `roborock_get_status` | Read | Live RPC `get_status` + `get_consumable` (battery, error code, fan power, water mode, consumable wear) |
+| `roborock_get_telemetry` | Read | Recent decoded MQTT DPS frames, RPC traces, OTA reports, and key-recovery events (`{count, events}`) |
+| `roborock_get_rooms` | Read | Segment/room mapping (`get_room_mapping`) for targeted room cleaning |
+| `roborock_camera_info` | Read | WebRTC TURN relay health and 15-character `/fwapi/createca` bootstrap diagnostics |
+| `roborock_control` | Mutate | Consolidated control action: `start`, `pause`, `stop`, `dock`, `find`, `clean_rooms`, `fan_power`, `water_mode`, `request_map` (supports `dry_run`) |
+
+---
+
 ## 4. MCP SEP-2106 Structured Output Compliance
 
 Per the Model Context Protocol specification (SEP-2106) and OpenCode client validation rules, tool outputs **must be Go structs/records (JSON objects)**, never bare arrays.

@@ -1,4 +1,4 @@
-.PHONY: all build build-ui test clean sync-skills check-skills bin-homectl bin-mcp-sonos bin-sync-skills install-mcp diagrams
+.PHONY: all build build-gmp build-linux-amd64 build-ui test clean sync-skills check-skills bin-homectl bin-mcp-sonos bin-mcp-roborock bin-sync-skills install-mcp diagrams
 
 BIN_DIR := ./bin
 
@@ -15,7 +15,17 @@ HOMECTL_BUILD_TAGS := $(shell [ -f ui/dist/index.html ] && echo "-tags embed_ui"
 all: build
 
 # Build all binaries into ./bin (gitignored); embeds ui/dist automatically when present
-build: bin-homectl bin-mcp-sonos bin-sync-skills
+build: bin-homectl bin-mcp-sonos bin-mcp-roborock bin-sync-skills
+
+# Build homectl with native libgmp CGO acceleration for fast Roborock RSA-2048/4096 key recovery
+build-gmp:
+	@mkdir -p $(BIN_DIR)
+	go build -tags "gmp $(if $(HOMECTL_BUILD_TAGS),embed_ui,)" -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/homectl .
+
+# Cross-compile pure-Go homectl binary for Linux x86_64 servers
+build-linux-amd64:
+	@mkdir -p $(BIN_DIR)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(HOMECTL_BUILD_TAGS) -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/homectl-linux-amd64 .
 
 # Compile the Lit + Vite Web UI bundle into ui/dist for embedding or static serving
 build-ui:
@@ -34,6 +44,10 @@ bin-mcp-sonos:
 	@mkdir -p $(BIN_DIR)
 	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/mcp-sonos ./cmd/mcp-sonos
 
+bin-mcp-roborock:
+	@mkdir -p $(BIN_DIR)
+	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/mcp-roborock ./cmd/mcp-roborock
+
 bin-sync-skills:
 	@mkdir -p $(BIN_DIR)
 	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/sync-skills ./cmd/sync-skills
@@ -48,7 +62,7 @@ check-skills:
 
 # Run race-enabled test suites across the workspace and modules
 test:
-	go test -race ./... ./modules/core/... ./modules/sonos/...
+	go test -race ./... ./modules/core/... ./modules/sonos/... ./modules/roborock/...
 
 clean:
 	rm -rf $(BIN_DIR)

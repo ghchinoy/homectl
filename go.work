@@ -4,4 +4,5 @@ use (
 	.
 	./modules/core
 	./modules/sonos
+	./modules/roborock
 )

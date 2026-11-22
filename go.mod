@@ -14,7 +14,19 @@ require (
 require (
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
+	github.com/gorilla/websocket v1.5.0 // indirect
+	github.com/mochi-mqtt/server/v2 v2.7.9 // indirect
+	github.com/pion/dtls/v3 v3.0.7 // indirect
+	github.com/pion/logging v0.2.4 // indirect
+	github.com/pion/randutil v0.1.0 // indirect
+	github.com/pion/stun/v3 v3.0.1 // indirect
+	github.com/pion/transport/v3 v3.0.8 // indirect
+	github.com/pion/transport/v4 v4.0.1 // indirect
+	github.com/pion/turn/v4 v4.1.4 // indirect
+	github.com/rs/xid v1.4.0 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
+	github.com/wlynxg/anet v0.0.5 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
 )
 
 require (
@@ -39,6 +51,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/ghchinoy/homectl/modules/core v0.0.0
+	github.com/ghchinoy/homectl/modules/roborock v0.0.0
 	github.com/ghchinoy/homectl/modules/sonos v0.0.0
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/h2non/filetype v1.1.3 // indirect
@@ -67,5 +80,7 @@ require (
 )
 
 replace github.com/ghchinoy/homectl/modules/core => ./modules/core
+
+replace github.com/ghchinoy/homectl/modules/roborock => ./modules/roborock
 
 replace github.com/ghchinoy/homectl/modules/sonos => ./modules/sonos

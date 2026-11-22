@@ -45,6 +45,7 @@ export default defineConfig({
             { label: 'Qolsys Security Vertical', slug: 'architecture/qolsys' },
             { label: 'Google Cast Vertical', slug: 'architecture/google-cast' },
             { label: 'Security Camera Vertical', slug: 'architecture/cameras' },
+            { label: 'Roborock Vacuum Vertical', slug: 'architecture/roborock' },
             { label: 'Maintaining Diagrams & Docs', slug: 'architecture/maintenance' },
           ],
         },
@@ -56,6 +57,7 @@ export default defineConfig({
             { label: 'Google Cast', slug: 'integrations/google-cast' },
             { label: 'Security Cameras (RTSP/ONVIF)', slug: 'integrations/cameras' },
             { label: 'Qolsys IQ Panel', slug: 'integrations/qolsys' },
+            { label: 'Roborock Vacuums (Local Server)', slug: 'integrations/roborock' },
           ],
         },
         {

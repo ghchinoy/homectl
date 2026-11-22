@@ -218,6 +218,29 @@ Connects to a Qolsys IQ Panel and prints incoming event frames (supports `HOMECT
 HOMECTL_QOLSYS_HOST=192.168.1.30 HOMECTL_QOLSYS_TOKEN=123456 homectl qolsys monitor --json
 ```
 
+### `homectl roborock`
+Runs a local Roborock HTTPS + embedded Mochi MQTT TLS + optional Pion TURN server, onboards vacuums over their temporary Wi-Fi hotspot, streams live decoded MQTT telemetry, and controls the fleet:
+```bash
+# Start the local HTTPS (:443) + MQTT TLS (:8881) + embedded TURN (:3478) server
+homectl roborock serve --fqdn api-r.example.com --cert fullchain.pem --key privkey.pem --turn-mode embedded --turn-host r.example.com --turn-user rrturn --turn-pass secret
+
+# Verify DNS, TLS chains, MQTT TLS, and 15-char camera bootstrap before onboarding
+homectl roborock onboard --server api-r.example.com --camera-domain r.example.com --model a144 --preflight-only
+
+# Send Wi-Fi credentials while joined to the vacuum's roborock-vacuum-* hotspot
+homectl roborock onboard --server api-r.example.com --ssid "MyWiFi24" --password "Secret" --timezone America/Denver --camera-domain r.example.com
+
+# List devices, monitor live decoded MQTT telemetry, and send RPC commands
+homectl roborock list --json
+homectl roborock monitor
+homectl roborock status a144
+homectl roborock clean a144 --rooms 16,17 --dry-run
+homectl roborock dock a144
+homectl roborock camera a144
+homectl roborock keys
+homectl roborock import-state /path/to/local_roborock_server/data
+```
+
 ### `homectl serve`
 Starts the HTTP API server (serving the embedded Web UI automatically when `--ui` is omitted, or reading from disk when `--ui` is specified):
 ```bash

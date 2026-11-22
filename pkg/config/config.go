@@ -8,15 +8,52 @@ import (
 	"strings"
 )
 
+// RoborockCertPair configures a PEM certificate/key pair for a Roborock SNI hostname.
+type RoborockCertPair struct {
+	CertFile string `json:"cert_file"`
+	KeyFile  string `json:"key_file"`
+}
+
+// RoborockTURNConfig configures the optional WebRTC TURN/STUN relay for camera-equipped vacuums.
+type RoborockTURNConfig struct {
+	Mode     string `json:"mode,omitempty"`      // disabled | embedded | external
+	BindHost string `json:"bind_host,omitempty"` // default 0.0.0.0
+	Host     string `json:"host,omitempty"`      // reachable hostname or IP
+	PublicIP string `json:"public_ip,omitempty"` // optional IPv4 override for embedded relay
+	Port     int    `json:"port,omitempty"`      // default 3478
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+	Realm    string `json:"realm,omitempty"`
+}
+
+// RoborockConfig stores local Roborock cloud emulator and fleet instrumentation settings.
+type RoborockConfig struct {
+	StackFQDN      string                      `json:"stack_fqdn,omitempty"`      // e.g. "api-r.example.com"
+	BindHost       string                      `json:"bind_host,omitempty"`       // default "0.0.0.0"
+	HTTPSPort      int                         `json:"https_port,omitempty"`      // default 443
+	AdvertisedPort int                         `json:"advertised_port,omitempty"` // optional external HTTPS port
+	MQTTTLSPort    int                         `json:"mqtt_tls_port,omitempty"`   // default 8881
+	Region         string                      `json:"region,omitempty"`          // default "us"
+	Timezone       string                      `json:"timezone,omitempty"`        // e.g. "America/Denver"
+	CameraDomain   string                      `json:"camera_domain,omitempty"`   // <=14-char hostname for Saros 10R/20 createca
+	CertsBySNI     map[string]RoborockCertPair `json:"certs_by_sni,omitempty"`    // SNI hostname or "*" -> cert/key
+	AllowLegacyTLS bool                        `json:"allow_legacy_tls,omitempty"`
+	KeyRecoverCmd  string                      `json:"key_recover_cmd,omitempty"`
+	TraceJSONL     bool                        `json:"trace_jsonl,omitempty"`
+	ControlAPIURL  string                      `json:"control_api_url,omitempty"` // e.g. "http://127.0.0.1:8889"
+	TURN           RoborockTURNConfig          `json:"turn,omitempty"`
+}
+
 // AppConfig represents the application configuration
 type AppConfig struct {
-	CallbackIP          string `json:"callback_ip"`            // Manual override for GENA listener
-	CameraAuth          string `json:"camera_auth"`            // global user:pass for cameras
-	LutronBridge        string `json:"lutron_bridge"`          // Lutron Caseta / RA2 Select bridge IP address
-	SonosDefaultService string `json:"sonos_default_service"`  // Default music service (e.g. Spotify, Apple Music)
-	APIHost             string `json:"api_host,omitempty"`     // Host/IP address for API server to bind to (e.g. 127.0.0.1, 0.0.0.0, or Tailscale IP)
-	QolsysHost          string `json:"qolsys_host,omitempty"`  // Qolsys IQ Panel IP address
-	QolsysToken         string `json:"qolsys_token,omitempty"` // Qolsys IQ Panel 6-digit access token
+	CallbackIP          string          `json:"callback_ip"`            // Manual override for GENA listener
+	CameraAuth          string          `json:"camera_auth"`            // global user:pass for cameras
+	LutronBridge        string          `json:"lutron_bridge"`          // Lutron Caseta / RA2 Select bridge IP address
+	SonosDefaultService string          `json:"sonos_default_service"`  // Default music service (e.g. Spotify, Apple Music)
+	APIHost             string          `json:"api_host,omitempty"`     // Host/IP address for API server to bind to (e.g. 127.0.0.1, 0.0.0.0, or Tailscale IP)
+	QolsysHost          string          `json:"qolsys_host,omitempty"`  // Qolsys IQ Panel IP address
+	QolsysToken         string          `json:"qolsys_token,omitempty"` // Qolsys IQ Panel 6-digit access token
+	Roborock            *RoborockConfig `json:"roborock,omitempty"`     // Local Roborock server & fleet configuration
 }
 
 // ConfigDir returns the path to the configuration directory, honoring XDG_CONFIG_HOME
